@@ -8,6 +8,7 @@ import type { MenuControls } from './menuView';
 import type { PlayerRun } from './player';
 import { RECORDINGS_HTML, showRecordings } from './recordingsView';
 import type { RecordingsList } from './recordingsView';
+import { playerHeading, RESULTS_HEADING } from './resultText';
 import { accuracy, stars } from './scoring';
 import type { Settings } from './settings';
 import { VideoPlayer } from './videoPlayer';
@@ -37,7 +38,7 @@ function resultCard(player: PlayerRun): HTMLElement {
   const card = document.createElement('section');
   card.style.setProperty('--player', PLAYER_COLORS[player.index]);
   card.innerHTML = `
-    <h2>Player ${player.index + 1} · Level ${player.level}</h2>
+    <h2>${playerHeading(player)}</h2>
     <div class="stars" aria-label="${starCount} out of 5 stars">
       ${'★'.repeat(starCount)}<span>${'☆'.repeat(5 - starCount)}</span>
     </div>
@@ -183,7 +184,7 @@ export class GameUI {
     this.openPanel(
       'results',
       `<div class="eyebrow">YOU MADE THE MUSIC MOVE</div>
-      <h1>What a dance! 🎉</h1>
+      <h1>${RESULTS_HEADING}</h1>
       <div class="result-players"></div>
       ${team}
       <p class="replay-prompt">Hands up to play again 🙌</p>
