@@ -130,7 +130,10 @@ export function generateChart(manifest: Manifest, options: ChartOptions): Cue[] 
     const busy = intensity[beat] >= CHART.busyIntensity;
     // One roll picks the kind of cue: the first share of it is a slide, the next share a
     // double, the rest a single tap. Each share is then exactly the chance in the level rules.
-    const slideShare = busy && isCueBeat(beat + 1) ? rules.slideChance : 0;
+    // A slide runs from this cue beat to the next cue beat: one beat on in a song with a cue
+    // on every beat, two or more beats on in a faster song.
+    const slideEndBeat = beat + strideAt(beat);
+    const slideShare = busy && isCueBeat(slideEndBeat) ? rules.slideChance : 0;
     const doubleAllowed = busy && (!rules.doublesOnBarStartsOnly || isBarStart(manifest, beat));
     const doubleShare = doubleAllowed ? rules.doubleChance : 0;
     let cue: Cue;
@@ -143,7 +146,7 @@ export function generateChart(manifest: Manifest, options: ChartOptions): Cue[] 
         timeSec,
         beatIndex: beat,
         cells: [master[beat], to],
-        times: [timeSec, beats[beat + 1]],
+        times: [timeSec, beats[slideEndBeat]],
       };
     } else if (roll.kind < slideShare + doubleShare) {
       cue = {
@@ -162,7 +165,7 @@ export function generateChart(manifest: Manifest, options: ChartOptions): Cue[] 
     }
 
     cues.push(cue);
-    previousEndBeat = cue.kind === 'slide' ? beat + 1 : beat;
+    previousEndBeat = cue.kind === 'slide' ? slideEndBeat : beat;
     previousEndSec = cue.times[cue.times.length - 1];
   }
   return cues;

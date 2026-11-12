@@ -164,6 +164,20 @@ describe('level 3', () => {
     expect(share(isDouble)).toBeCloseTo(LEVELS[3].doubleChance, 1);
   });
 
+  it('runs each slide to the next cue beat in a song too fast for a cue on every beat', () => {
+    // At 128 BPM a beat is 0.47 s, so cues sit on every second beat and a slide spans two beats.
+    const fastSong = synthetic(128, 600);
+    const fast = chart(fastSong, 3, 42);
+    const slides = fast.filter(isSlide);
+    expect(slides.length).toBeGreaterThan(30);
+    for (const cue of slides) {
+      expect(cue.times).toEqual([fastSong.beats[cue.beatIndex], fastSong.beats[cue.beatIndex + 2]]);
+    }
+    fast.forEach((cue, i) => {
+      if (isSlide(cue) && i < fast.length - 1) expect(fast[i + 1].beatIndex).toBeGreaterThanOrEqual(cue.beatIndex + 4);
+    });
+  });
+
   it('leaves the beat a slide ends on free, so no slide starts where another ends', () => {
     cues.forEach((cue, i) => {
       if (!isSlide(cue) || i === cues.length - 1) return;
