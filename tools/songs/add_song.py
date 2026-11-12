@@ -4,6 +4,7 @@ Usage, from the repo root, after `npm run setup-songs`:
 
     npm run add-song -- "/path/to/Song Name.mp3" [--title "Song Name"] [--id song-name]
         [--first-downbeat N] [--pacing rank|level] [--short-start auto|none|SECONDS]
+        [--half-beat keep|shift] [--beats BEATS.json]
         [--out-dir DIR] [--compare MANIFEST.json] [--keep-work]
 
 The steps, in order:
@@ -23,6 +24,10 @@ The steps, in order:
   7. Write two click-check clips, the audio copy and the manifest.
 
 Every step prints its evidence, so a reader can judge the result without running it again.
+When the evidence shows that a step chose wrong, an option overrules that step alone:
+--first-downbeat for the bar start, --half-beat for the choice between the beats and the
+pulses between them, and --beats for the whole beat grid (steps 3 and 4, but for the move
+onto the kick). The steps after it then run as usual.
 All times are in ffmpeg's decode of the file until the manifest is built: only there does
 the Chrome offset go on.
 
@@ -324,6 +329,11 @@ class Job:
     song_id: str
     extension: str
     first_downbeat: int | None
+    # 'keep' or 'shift' when the user overrules the half-beat step, else None.
+    half_beat: str | None
+    # Beat times in the file that replace the tool's own beat grid, or None.
+    given_beats: np.ndarray | None
+    given_beats_path: Path | None
     # 'rank' or 'level'.
     pacing: str
     # 'auto', 'none', or a time in seconds.
@@ -355,6 +365,12 @@ def parse_arguments(argv: list[str]) -> argparse.Namespace:
     parser.add_argument('--id', help='song id (default: the title in lower case with hyphens)')
     parser.add_argument('--first-downbeat', type=int, metavar='N',
                         help='index of the first bar start, to overrule the tool')
+    parser.add_argument('--half-beat', choices=['keep', 'shift'],
+                        help='keep the beats where the grid put them, or move them by half a beat onto the '
+                             'pulses between them, to overrule the tool')
+    parser.add_argument('--beats', type=Path, metavar='BEATS.json',
+                        help="use these beat times in place of the tool's own beat grid: a JSON list of "
+                             'seconds in the audio file')
     parser.add_argument('--pacing', choices=['rank', 'level'], default='rank',
                         help='how intensity sets the pace: by the rank of each bar in the song (default), '
                              'or by its level alone')
@@ -386,6 +402,20 @@ def read_reference(path: Path) -> dict:
     if not usable:
         raise SongError(f'{path} is not a song manifest the tool can compare with.')
     return reference
+
+
+def read_beats(path: Path) -> np.ndarray:
+    """Returns the beat times of --beats. Read before the analysis, so a bad file fails at once."""
+    try:
+        beats = np.array(json.loads(path.read_text(encoding='utf-8')), dtype=float)
+    except (OSError, ValueError, TypeError) as error:
+        raise SongError(f'Cannot read beat times from {path}: {error!r}') from error
+    usable = (beats.ndim == 1 and len(beats) >= MIN_BEATS and bool(np.all(np.isfinite(beats)))
+              and beats[0] >= 0 and bool(np.all(np.diff(beats) > 0)))
+    if not usable:
+        raise SongError(f'{path} must hold a JSON list of at least {MIN_BEATS} beat times in seconds, '
+                        'each later than the one before.')
+    return beats
 
 
 def read_short_start(text: str) -> str | float:
@@ -428,6 +458,9 @@ def plan_job(arguments: argparse.Namespace) -> Job:
         song_id=song_id,
         extension=extension,
         first_downbeat=arguments.first_downbeat,
+        half_beat=arguments.half_beat,
+        given_beats=read_beats(arguments.beats) if arguments.beats else None,
+        given_beats_path=arguments.beats,
         pacing=arguments.pacing,
         short_start=read_short_start(arguments.short_start),
         out_dir=arguments.out_dir.expanduser().resolve() if arguments.out_dir else SONGS_DIR,
@@ -2217,13 +2250,35 @@ def find_beat_grid(report: Report, envelopes: Envelopes, amplitude: np.ndarray, 
 # --- The whole pipeline ---
 
 
+def given_beat_grid(report: Report, job: Job, duration_sec: float) -> BeatGrid:
+    """Returns the beats of --beats as the beat grid, continued to cover the whole file.
+
+    For a song whose beat the tool cannot follow, the beats come from an analysis by hand.
+    The tool then fits no grid of its own. The later steps run as usual.
+    """
+    given = job.given_beats
+    if given[-1] >= duration_sec:
+        raise SongError(f'{job.given_beats_path} has a beat at {given[-1]:.2f} s, after the end of the audio '
+                        f'({duration_sec:.2f} s).')
+    tempo = [60 / float(np.mean(np.diff(part))) for part in np.array_split(given, 3)]
+    report.section('Beat grid')
+    report.line(f'Given: {len(given)} beats from {job.given_beats_path}, from {given[0]:.3f} s to {given[-1]:.3f} s. '
+                'The tool fits no grid of its own.')
+    report.line(f'Tempo: {tempo[0]:.2f} BPM in the first third, {tempo[1]:.2f} in the middle, {tempo[2]:.2f} in the last.')
+    return BeatGrid(beats=extend_beats(given, duration_sec), method='given beats', clear_to_sec=None)
+
+
 def settle_half_beat(report: Report, envelopes: Envelopes, harmony: tuple[np.ndarray, np.ndarray],
-                     beats: np.ndarray, duration_sec: float) -> np.ndarray:
+                     beats: np.ndarray, duration_sec: float, choice: str) -> np.ndarray:
     """Returns the beats, or the pulses halfway between them when those carry the bars.
 
     A fast song with a half-time feel has a pulse at twice the tempo the tool writes. The comb
     can then sit on either half of the pulses. The beats belong where the kick hits and the
     chords change: beats 1 and 3 of the fast bars, not 2 and 4.
+
+    `choice` is 'auto' for the tool's own decision. 'keep' and 'shift' are a decision made by
+    hand, for a song where the kick is syncopated and tells nothing: there the snare on beats
+    2 and 4 shows the beats, which this step does not read.
     """
     pulses = np.sort(np.concatenate((beats, (beats[:-1] + beats[1:]) / 2)))
     kick = beat_onset_strength(envelopes.kick, pulses)
@@ -2236,6 +2291,12 @@ def settle_half_beat(report: Report, envelopes: Envelopes, harmony: tuple[np.nda
     report.section('Beats, or the pulses between them')
     report.line(f'Kick hits: {kick_on:.2f} on the beats, {kick_between:.2f} between them. '
                 f'Chord and bass changes: {change_on:.2f} on the beats, {change_between:.2f} between them.')
+    if choice == 'shift':
+        report.line('The beats move by half a beat, onto the pulses between them: the choice was made by hand.')
+        return extend_beats(pulses[1::2], duration_sec)
+    if choice == 'keep':
+        report.line('The beats stay: the choice was made by hand.')
+        return beats
     if kick_between > kick_on and change_between > change_on:
         report.line('Both are stronger between the beats: the beats move by half a beat, onto those pulses.')
         return extend_beats(pulses[1::2], duration_sec)
@@ -2296,13 +2357,17 @@ def add_song(job: Job, work_dir: Path, report: Report) -> None:
 
     harmonic, percussive = librosa.effects.hpss(audio.samples)
     envelopes = onset_envelopes(audio.samples, percussive)
-    tempo = estimate_tempo(envelopes, audio.duration_sec)
-    report_tempo(report, tempo)
-
     amplitude = kick_amplitude(audio.samples)
-    grid = find_beat_grid(report, envelopes, amplitude, tempo, audio.duration_sec)
+    if job.given_beats is None:
+        tempo = estimate_tempo(envelopes, audio.duration_sec)
+        report_tempo(report, tempo)
+        grid = find_beat_grid(report, envelopes, amplitude, tempo, audio.duration_sec)
+    else:
+        grid = given_beat_grid(report, job, audio.duration_sec)
     harmony = harmony_chroma(audio.samples, harmonic)
-    file_beats = settle_half_beat(report, envelopes, harmony, grid.beats, audio.duration_sec)
+    # Given beats stay where they are, unless the user asks for the shift as well.
+    half_beat = job.half_beat or ('auto' if job.given_beats is None else 'keep')
+    file_beats = settle_half_beat(report, envelopes, harmony, grid.beats, audio.duration_sec, half_beat)
     file_beats, kick_sections = align_to_kick(report, amplitude, file_beats)
 
     file_onsets = beat_onset_strength(envelopes.full, file_beats)

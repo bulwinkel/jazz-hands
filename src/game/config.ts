@@ -40,6 +40,8 @@ export const SONGS: readonly SongEntry[] = [
   { manifest: '/songs/drum-and-bass-violins.json', title: 'Drum and Bass Violins' },
   { manifest: '/songs/all-eyes-on-us.json', title: 'All Eyes on Us' },
   { manifest: '/songs/return-to-the-lord.json', title: 'Return to the Lord' },
+  { manifest: '/songs/the-wilderness-knows.json', title: 'The Wilderness Knows' },
+  { manifest: '/songs/job-hold-on.json', title: 'Job, Hold On' },
 ];
 
 /** The part of a song that plays in the menu while the song is chosen. */

@@ -30,6 +30,9 @@ npm run add-song -- "/path/to/Song Name.mp3"
 | `--title "Song Name"` | The title. The default is the file name without its extension. |
 | `--id song-name` | The id and file name. The default is the title in lower case with hyphens. |
 | `--first-downbeat N` | The index of the first bar start. Overrules the tool. |
+| `--half-beat shift` | Move the beats by half a beat, onto the pulses between them. Overrules the tool. |
+| `--half-beat keep` | Keep the beats where the beat grid put them. Overrules the tool. |
+| `--beats BEATS.json` | Use these beat times in place of the tool's own beat grid: a JSON list of seconds in the audio file. The tool still moves them onto the kick, all together. |
 | `--pacing rank` | The default. The quietest 12% of the bars play slow, the next 18% medium, the rest full. |
 | `--pacing level` | The pace follows the level of each bar alone. A song with a wide dynamic range then plays slow for long. |
 | `--short-start auto` | The default. The Short round starts at the best 90 s, if they beat the first 90 s by 0.1. |
@@ -70,6 +73,21 @@ A song with no picture shows its title on a plain cover. To give it a picture:
 ```ts
 { manifest: '/songs/song-name.json', title: 'Song Name', cover: '/songs/song-name.jpg' },
 ```
+
+### Songs that needed a correction by hand
+
+Two songs did not come out right from the tool alone. These commands make their manifests again.
+
+| Song | Command options | Why |
+| --- | --- | --- |
+| Job, Hold On | `--half-beat shift` | The kick is syncopated (beat 1 and the "and" of 2), so it sits on the beats and between them alike, and the tool could not tell which pulses are the beats. The snare on beats 2 and 4 shows them. After the shift, every section has a clear kick on the beat and the music starts on the first beat. |
+| The Wilderness Knows | `--beats tools/songs/given-beats/the-wilderness-knows.json` | The opening is loose and the kick is soft. The tool's own grid lost the beat in the first 30 s. The given beats come from a comb on the eighth-note pulse (about 186 per minute), fitted in 10 s windows from the clearest window outward. |
+
+Signs in the report that a song needs this:
+
+- The kick readings of the beat grid jump by about half a beat from one 20 s block to the next.
+- The tool warns that the kick hits and the chord changes do not agree on which pulses are the beats.
+- The tool warns of no clear beat in a part of the song where you hear one.
 
 ### Read the report
 
