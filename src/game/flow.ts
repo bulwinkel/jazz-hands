@@ -150,6 +150,8 @@ export class DanceGame {
 
     this.ui.pauseButton.addEventListener('click', () => void this.togglePause());
     this.ui.resumeButton.addEventListener('click', () => void this.unlockAudio());
+    // A choice made by hand is a click made by the page, which the browser marks as not trusted.
+    this.ui.refitButton.addEventListener('click', (event) => this.refit(!event.isTrusted));
     window.addEventListener('keydown', this.onKey);
     window.addEventListener('pagehide', () => this.dispose(), { once: true });
 
@@ -168,6 +170,10 @@ export class DanceGame {
       player.hold = 0;
     }
     this.ui.pauseButton.hidden = phase !== 'play';
+    // The recalibrate button shows in the ready check: there the players see whether the grids
+    // fit. It keeps away from the hands-up cells, which are in other places with two players.
+    this.ui.refitButton.hidden = phase !== 'ready';
+    this.ui.refitButton.dataset.players = String(this.options.settings.playerCount);
     this.handMenu = newHandMenuState();
     this.ui.showHands([], null, 0);
     document.body.dataset.phase = phase; // The stylesheet places messages by phase.
@@ -364,6 +370,25 @@ export class DanceGame {
     this.setPhase('fit');
   }
 
+  /**
+   * Starts the reach fit again, from the fit itself or from any later phase of the round.
+   * The round then goes on from the ready check, with the same cues.
+   * `byHand` says that a pointing hand asked for it: the players then stand at their spots already.
+   */
+  private refit(byHand = false): void {
+    const inRound = ['fit', 'ready', 'countdown', 'play', 'results'].includes(this.phase);
+    if (!inRound || this.switchingTracker) return;
+    const session = this.session;
+    this.audio?.stop();
+    // A paused round has a stopped audio clock. The next countdown needs it running.
+    void this.audio?.resume().catch((error: unknown) => this.failIfCurrent(session, error));
+    this.paused = false;
+    this.feedback = [];
+    this.startedByHand = byHand;
+    this.ui.hidePanel();
+    this.beginFit();
+  }
+
   /** Starts, or restarts, the song from its 3-2-1 countdown. Keeps the fitted grids. */
   private beginCountdown = (): void => {
     if (this.phase !== 'ready' && this.phase !== 'results' && this.phase !== 'play') return;
@@ -404,7 +429,7 @@ export class DanceGame {
     this.report = this.buildReport();
     this.audio?.stop();
     this.setPhase('results');
-    this.ui.showResults(this.players, this.beginCountdown, this.showMenu);
+    this.ui.showResults(this.players, this.beginCountdown, this.showMenu, (byHand) => this.refit(byHand));
     if (import.meta.env.DEV) void this.saveReport(this.report);
   }
 
@@ -480,8 +505,12 @@ export class DanceGame {
     this.frame = frame;
     this.rememberFaces(frame);
 
-    const onPanel = this.phase === 'menu' || this.phase === 'results';
-    if (onPanel && this.options.settings.handControl) this.pointAtPanel(frame);
+    if (this.options.settings.handControl) {
+      if (this.phase === 'menu' || this.phase === 'results') this.pointAtPanel(frame, true);
+      // The ready check has one item to point at, the recalibrate button. The canvas draws a
+      // ring on each hand there already.
+      if (this.phase === 'ready') this.pointAtPanel(frame, false);
+    }
 
     if (this.phase === 'fit') {
       this.collectReach(frame);
@@ -502,15 +531,18 @@ export class DanceGame {
     }
   }
 
-  /** Menu and results: an open hand highlights an item of the panel, a fist held on it chooses it. */
-  private pointAtPanel(frame: TrackingFrame): void {
+  /**
+   * An open hand highlights an item on screen, a fist held on it chooses it.
+   * `showRings` draws a ring at each hand, for a phase where the canvas does not.
+   */
+  private pointAtPanel(frame: TrackingFrame, showRings: boolean): void {
     const hands = frame.players
       .flatMap((player) => player.hands)
       .filter((hand) => hand.y <= HAND_MENU.lowestY)
       .map((hand) => ({ ...this.toScreen(hand), fist: hand.gesture === 'fist' }));
     const step = stepHandMenu(this.handMenu, this.ui.handTargets(), hands, frame.timeMs);
     this.handMenu = step.state;
-    this.ui.showHands(hands, step.state.hoveredId, step.progress);
+    this.ui.showHands(showRings ? hands : [], step.state.hoveredId, step.progress);
     if (step.chooseId) this.ui.chooseHandTarget(step.chooseId);
   }
 
@@ -716,6 +748,9 @@ export class DanceGame {
         return;
       case 'r':
         if (this.phase === 'play') this.beginCountdown();
+        return;
+      case 'c':
+        this.refit();
         return;
       case 'arrowleft':
       case 'arrowright':

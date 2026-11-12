@@ -385,3 +385,21 @@ body[data-phase="countdown"] #message h1{font-size:clamp(140px,20vw,300px);line-
   border-style: dashed;
   color: #94a3b8;
 }
+
+/* The recalibrate button of the ready check. One player: top right, a little in from the
+   side, as the menu switches are. Two players: that place is the right player's hands-up
+   cell, so the button sits at the top between the two grids, where both players reach it. */
+#refit {
+  position: absolute;
+  z-index: 6;
+  top: 5%;
+  right: 17%;
+  padding: 12px 18px;
+  border-radius: 14px;
+  background: #0b1024cc;
+  font-size: 20px;
+}
+#refit[data-players="2"] {
+  right: 50%;
+  transform: translateX(50%);
+}

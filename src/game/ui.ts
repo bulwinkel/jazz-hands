@@ -19,6 +19,7 @@ const SHELL_HTML = `
   <div id="message" role="status" aria-live="polite"><h1></h1><p></p></div>
   <button id="resume" hidden>Click to start</button>
   <button id="pause" hidden aria-label="Pause game">Ⅱ Pause</button>
+  <button id="refit" hidden data-hand="refit" data-hand-hold="${HAND_MENU.slowHoldSec}">↺ Recalibrate · C</button>
   <pre id="debug" hidden></pre>`;
 
 const MENU_HTML = `
@@ -181,6 +182,9 @@ export class GameUI {
   readonly debug: HTMLElement;
   readonly pauseButton: HTMLButtonElement;
   readonly resumeButton: HTMLButtonElement;
+  /** Starts the reach fit again. It shows in the ready check, where a hand can choose it too. */
+  readonly refitButton: HTMLButtonElement;
+  private readonly root: HTMLElement;
   private readonly panel: HTMLElement;
   /** Rings that show where the game sees pointing hands. They sit above the panel. */
   private readonly cursors: HTMLElement;
@@ -193,6 +197,7 @@ export class GameUI {
 
   constructor(root: HTMLElement) {
     root.innerHTML = SHELL_HTML;
+    this.root = root;
     this.stage = find(root, '#stage');
     this.canvas = find(root, 'canvas');
     this.panel = find(root, '#panel');
@@ -203,6 +208,7 @@ export class GameUI {
     this.debug = find(root, '#debug');
     this.pauseButton = find(root, '#pause');
     this.resumeButton = find(root, '#resume');
+    this.refitButton = find(root, '#refit');
   }
 
   /** Shows a large message over the game. With no title, hides it. */
@@ -316,7 +322,13 @@ export class GameUI {
     find(this.panel, '#start').addEventListener('click', (event) => onStart(!event.isTrusted));
   }
 
-  showResults(players: readonly PlayerRun[], onReplay: () => void, onMenu: () => void): void {
+  /** `onRefit` hears whether a pointing hand chose it, and not a mouse. */
+  showResults(
+    players: readonly PlayerRun[],
+    onReplay: () => void,
+    onMenu: () => void,
+    onRefit: (byHand: boolean) => void,
+  ): void {
     const teamScore = players.reduce((sum, player) => sum + player.score.score, 0);
     const team =
       players.length > 1
@@ -333,6 +345,7 @@ export class GameUI {
       <div class="result-actions">
         <button id="replay" class="primary" data-hand="replay" data-hand-hold="${HAND_MENU.slowHoldSec}">Play again · Space</button>
         <button id="menu" data-hand="menu" data-hand-hold="${HAND_MENU.slowHoldSec}">Menu · Esc</button>
+        <button id="refit-results" data-hand="refit-results" data-hand-hold="${HAND_MENU.slowHoldSec}">↺ Recalibrate · C</button>
       </div>
       <div class="diagnostics" hidden>
         <button id="copy-diagnostics">Copy diagnostics</button>
@@ -342,14 +355,20 @@ export class GameUI {
     find(this.panel, '.result-players').append(...players.map(resultCard));
     find(this.panel, '#replay').addEventListener('click', onReplay);
     find(this.panel, '#menu').addEventListener('click', onMenu);
+    // A choice made by hand is a click made by the page, which the browser marks as not trusted.
+    find(this.panel, '#refit-results').addEventListener('click', (event) => onRefit(!event.isTrusted));
   }
 
   // --- Choosing items by hand ---
 
-  /** The items on the open panel that a hand can choose, with where they are on screen. */
+  /**
+   * The items a hand can choose now, with where they are on screen: those of the open panel,
+   * and the recalibrate button while it shows.
+   */
   handTargets(): HandTarget[] {
-    if (this.panel.hidden) return [];
-    return [...this.panel.querySelectorAll<HTMLElement>('[data-hand]')].map((element) => {
+    const onPanel = this.panel.hidden ? [] : [...this.panel.querySelectorAll<HTMLElement>('[data-hand]')];
+    const elements = this.refitButton.hidden ? onPanel : [...onPanel, this.refitButton];
+    return elements.map((element) => {
       const { left, top, width, height } = element.getBoundingClientRect();
       return {
         id: element.dataset.hand ?? '',
@@ -362,7 +381,7 @@ export class GameUI {
 
   /** Chooses an item as a click would. */
   chooseHandTarget(id: string): void {
-    this.panel.querySelector<HTMLElement>(`[data-hand="${id}"]`)?.click();
+    this.root.querySelector<HTMLElement>(`[data-hand="${id}"]`)?.click();
   }
 
   /**
@@ -385,10 +404,10 @@ export class GameUI {
       ring.classList.toggle('fist', hand.fist);
     });
 
-    for (const element of this.panel.querySelectorAll<HTMLElement>('.hand-hover')) {
+    for (const element of this.root.querySelectorAll<HTMLElement>('.hand-hover')) {
       if (element.dataset.hand !== hoveredId) element.classList.remove('hand-hover');
     }
-    const hovered = hoveredId ? this.panel.querySelector<HTMLElement>(`[data-hand="${hoveredId}"]`) : null;
+    const hovered = hoveredId ? this.root.querySelector<HTMLElement>(`[data-hand="${hoveredId}"]`) : null;
     hovered?.classList.add('hand-hover');
     hovered?.style.setProperty('--hold', progress.toFixed(3));
   }
