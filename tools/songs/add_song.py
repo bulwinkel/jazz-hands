@@ -1924,6 +1924,22 @@ def tempo_bpm(beats: np.ndarray, first_interval: int) -> float:
     return float(60 / intervals.mean())
 
 
+def manifest_duration_sec(chrome: ChromeDecode) -> float:
+    """Returns the manifest's `durationSec`: Chrome's length less the margin, rounded down to 0.01 s."""
+    return math.floor((chrome.duration_sec - DURATION_MARGIN_SEC) * 100 + 1e-6) / 100
+
+
+def beats_before_end(beats: np.ndarray, chrome: ChromeDecode) -> int:
+    """Returns how many of the beats, in ffmpeg's decode, fall before the manifest's end.
+
+    The manifest ends DURATION_MARGIN_SEC before the audio does, so a beat in the last few
+    milliseconds of the audio lies past it, and the game would refuse the manifest. The test
+    uses the beat times as the manifest writes them: in Chrome's time, rounded to 0.1 ms.
+    """
+    game_beats = np.round(beats + chrome.offset_sec, 4)
+    return int(np.count_nonzero(game_beats < manifest_duration_sec(chrome)))
+
+
 def build_manifest(job: Job, beats: np.ndarray, intensity: np.ndarray, first_downbeat: int,
                    chrome: ChromeDecode) -> dict:
     """Returns the manifest, with keys in the order of the `Manifest` type in types.ts.
@@ -1931,7 +1947,7 @@ def build_manifest(job: Job, beats: np.ndarray, intensity: np.ndarray, first_dow
     Beat times move from ffmpeg's decode to Chrome's here, because the game plays Chrome's.
     """
     game_beats = beats + chrome.offset_sec
-    duration_sec = math.floor((chrome.duration_sec - DURATION_MARGIN_SEC) * 100 + 1e-6) / 100
+    duration_sec = manifest_duration_sec(chrome)
     return {
         'id': job.song_id,
         'title': job.title,
@@ -2374,8 +2390,15 @@ def add_song(job: Job, work_dir: Path, report: Report) -> None:
     span = find_music_span(audio.samples, file_beats, file_onsets, earliest_sec=max(0.0, -chrome.offset_sec))
     sounding = file_beats[span.first:span.last + 1]
     onset_strength = file_onsets[span.first:span.last + 1]
+    # The beats are increasing, so the ones before the manifest's end come first.
+    before_end = beats_before_end(sounding, chrome)
+    past_end = len(sounding) - before_end
+    sounding, onset_strength = sounding[:before_end], onset_strength[:before_end]
     clear_beats = clear_beat_count(sounding, grid.clear_to_sec)
     report_music(report, sounding, span, clear_beats)
+    if past_end:
+        report.line(f'{past_end} beat(s) at the very end lie past the manifest\'s end '
+                    f'(durationSec {manifest_duration_sec(chrome)}), so the list leaves them out.')
     if clear_beats is not None:
         sounding, onset_strength = sounding[:clear_beats], onset_strength[:clear_beats]
 
