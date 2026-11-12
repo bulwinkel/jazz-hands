@@ -76,7 +76,8 @@ export class GameRenderer {
       }
       if (v.phase !== 'results') {
         const g = this.rect(grid); const s = v.scores[player];
-        this.text(`P${player + 1} · LEVEL ${level}`, g.x + g.width / 2, Math.max(size * 0.65, g.y - size * 1.75), size * 0.65, color);
+        // During play the score row takes this space; the label would overlap it on a tall grid.
+        if (v.phase !== 'play') this.text(`P${player + 1} · LEVEL ${level}`, g.x + g.width / 2, Math.max(size * 0.65, g.y - size * 0.9), size * 0.65, color);
         if (v.phase === 'play') {
           this.text(Math.round(s.score).toLocaleString(), g.x + g.width * 0.28, Math.max(size * 1.5, g.y - size * 0.75), size, '#fff');
           this.text(`${s.combo} COMBO`, g.x + g.width * 0.75, Math.max(size * 1.5, g.y - size * 0.75), size * 0.72, color);
