@@ -40,7 +40,10 @@ export interface Cue {
   speed?: SlideSpeed;
   /** Due time of the first cell. */
   timeSec: number;
-  /** The beat the cue starts on. An off-beat tap sits halfway to the next cue beat, so it is fractional. */
+  /**
+   * The beat the cue starts on. An off-beat tap sits halfway to the next cue beat: a half beat
+   * in a song with a cue on every beat, a whole beat in a faster song.
+   */
   beatIndex: number;
   /** Cell indices 0..8, row by row. 0 is top-left on screen. */
   cells: number[];
