@@ -69,6 +69,21 @@ export function sizeText(bytes: number): string {
   return megabytes < 10 ? `${megabytes.toFixed(1)} MB` : `${Math.round(megabytes)} MB`;
 }
 
+/** A display frame this close before a video frame's time still draws it, so screen jitter skips none. */
+const FRAME_SLACK_MS = 4;
+
+/**
+ * Paces the drawing of the game view to its video. The screen refreshes 60 times a second or
+ * more, and a 720p frame takes time to draw, but the video takes only `frameRate` frames a
+ * second. Returns the time the next frame is due when one is due at `nowMs`, else null.
+ */
+export function nextFrameDue(dueMs: number, nowMs: number, frameRate: number): number | null {
+  if (nowMs + FRAME_SLACK_MS < dueMs) return null;
+  const frameMs = 1000 / frameRate;
+  // After a long gap, such as a hidden tab, count on from now: no burst of frames to catch up.
+  return dueMs + frameMs > nowMs ? dueMs + frameMs : nowMs + frameMs;
+}
+
 /** One finished video. */
 export interface RecordedVideo {
   kind: VideoKind;
@@ -100,6 +115,8 @@ export class RoundRecorder {
   private tracks: Track[] = [];
   /** The video track of the game view's canvas. It ends with the recording. */
   private canvasTrack?: MediaStreamTrack;
+  /** When the next frame of the game view is due, in `performance.now()` time. */
+  private frameDueMs = 0;
   private ended = false;
 
   private constructor(format: VideoFormat) {
@@ -163,9 +180,16 @@ export class RoundRecorder {
     this.tracks.push({ kind, recorder, chunks, stopped });
   }
 
-  /** Draws one frame of the game view. Call it after the game has drawn its own canvas. */
+  /**
+   * Draws one frame of the game view, when the video's frame rate asks for one. Call it on
+   * every display frame, after the game has drawn its own canvas.
+   */
   drawFrame(scene: RecordingScene): void {
-    if (this.active) drawScene(this.ctx, scene);
+    if (!this.active) return;
+    const nextDueMs = nextFrameDue(this.frameDueMs, performance.now(), RECORDING.frameRate);
+    if (nextDueMs === null) return;
+    this.frameDueMs = nextDueMs;
+    drawScene(this.ctx, scene);
   }
 
   /** Holds both videos while the game is paused, so the pause is not in them. */

@@ -140,7 +140,7 @@ export class RoundRecordings {
     this.recorder?.resume();
   }
 
-  /** Draws one frame of the game view. Call it after the game has drawn its own canvas. */
+  /** Draws a frame of the game view when one is due. Call it after the game has drawn its own canvas. */
   drawFrame(scene: RecordingScene): void {
     this.recorder?.drawFrame(scene);
   }

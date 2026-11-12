@@ -83,6 +83,8 @@ export class GameUI {
   private readonly fitObserver = new ResizeObserver(() => this.fitPanel());
   /** The open menu. Unset while the menu is closed. */
   private menu?: MenuControls;
+  /** The item under a pointing hand, with its outset set for the hold mark. */
+  private hovered?: HTMLElement;
 
   constructor(root: HTMLElement) {
     root.innerHTML = SHELL_HTML;
@@ -262,13 +264,17 @@ export class GameUI {
     for (const element of this.root.querySelectorAll<HTMLElement>('.hand-hover')) {
       if (element.dataset.hand !== hoveredId) element.classList.remove('hand-hover');
     }
-    const hovered = hoveredId ? this.root.querySelector<HTMLElement>(`[data-hand="${hoveredId}"]`) : null;
+    const hovered = hoveredId ? this.root.querySelector<HTMLElement>(`[data-hand="${hoveredId}"]`) : undefined;
+    if (hovered && hovered !== this.hovered) {
+      // The shrink mark starts this far outside the item: as far as a cue's outline starts
+      // outside its cell, measured on the item's height. Reading the height costs a layout,
+      // so it happens once for each item a hand moves onto, not on every tracking frame.
+      hovered.style.setProperty('--outset', `${(hovered.offsetHeight * (SHRINK_START_SCALE - 1)) / 2}px`);
+    }
+    this.hovered = hovered ?? undefined;
     if (!hovered) return;
     hovered.classList.add('hand-hover');
     hovered.style.setProperty('--hold', progress.toFixed(3));
-    // The shrink mark starts this far outside the item: as far as a cue's outline starts
-    // outside its cell, measured on the item's height.
-    hovered.style.setProperty('--outset', `${(hovered.offsetHeight * (SHRINK_START_SCALE - 1)) / 2}px`);
   }
 
   /**

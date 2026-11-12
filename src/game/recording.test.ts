@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pickFormat, sizeText, videoFileName, videoSize } from './recording';
+import { nextFrameDue, pickFormat, sizeText, videoFileName, videoSize } from './recording';
 
 describe('video format', () => {
   it('is MP4 with H.264 and AAC when the browser can record it', () => {
@@ -56,5 +56,34 @@ describe('file size text', () => {
     expect(sizeText(422_225)).toBe('0.4 MB');
     expect(sizeText(9_440_000)).toBe('9.4 MB');
     expect(sizeText(45_300_000)).toBe('45 MB');
+  });
+});
+
+describe('game view pacing', () => {
+  /** Counts the frames drawn in ten seconds of display frames at `hz`, for a video of 30 frames a second. */
+  function framesDrawn(hz: number): number {
+    let dueMs = 0;
+    let drawn = 0;
+    for (let frame = 0; frame < hz * 10; frame++) {
+      const next = nextFrameDue(dueMs, 1000 + (frame * 1000) / hz, 30);
+      if (next === null) continue;
+      dueMs = next;
+      drawn++;
+    }
+    return drawn;
+  }
+
+  it.each([60, 120, 144])('draws the frames the video takes on a %d Hz screen, and no more', (hz) => {
+    expect(Math.abs(framesDrawn(hz) - 300)).toBeLessThanOrEqual(1);
+  });
+
+  it('draws every display frame when the screen is slower than the video', () => {
+    expect(framesDrawn(24)).toBe(240);
+  });
+
+  it('counts on from now after a long gap, with no burst of frames', () => {
+    const next = nextFrameDue(1000, 5000, 30);
+    expect(next).toBeCloseTo(5000 + 1000 / 30);
+    expect(nextFrameDue(next ?? 0, 5017, 30)).toBeNull();
   });
 });
