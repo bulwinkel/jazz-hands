@@ -340,12 +340,21 @@ body[data-phase="countdown"] #message h1{font-size:clamp(140px,20vw,300px);line-
   box-shadow: 0 0 34px #fde04755;
 }
 .song-step {
+  display: grid;
+  place-items: center;
   width: 64px;
   height: 96px;
   padding: 0;
-  font-size: 46px;
-  line-height: 1;
   background: #0b1024cc;
+}
+.song-step svg {
+  width: 36px;
+  height: 36px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 @media (prefers-reduced-motion: reduce) {
   .song-strip .song-card { transition: none; }

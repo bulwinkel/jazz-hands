@@ -10,6 +10,15 @@ const ALL_LEVELS: Level[] = [1, 2, 3, 4, 5];
 /** The song carousel shows this many cards on each side of the chosen song. */
 const CAROUSEL_REACH = 2;
 
+/**
+ * The arrow on a step button, drawn as a picture. A "‹" letter does not sit in the middle of
+ * its own line, so it looked low in the button.
+ */
+const chevron = (points: string): string =>
+  `<svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="${points}" /></svg>`;
+const CHEVRON_LEFT = chevron('15.5,5 8.5,12 15.5,19');
+const CHEVRON_RIGHT = chevron('8.5,5 15.5,12 8.5,19');
+
 const SHELL_HTML = `
   <main id="stage" aria-label="Dance game">
     <canvas aria-label="Player grids, hand positions and beat cues"></canvas>
@@ -28,9 +37,9 @@ const MENU_HTML = `
   <p class="subtitle">Reach for the beat. Make a little magic.</p>
   <fieldset class="songs">
     <legend>♫ <span id="song-title"></span><small id="song-count"></small></legend>
-    <button type="button" class="song-step" data-hand="song-previous" data-hand-repeat aria-label="Previous song">‹</button>
+    <button type="button" class="song-step" data-hand="song-previous" data-hand-repeat aria-label="Previous song">${CHEVRON_LEFT}</button>
     <div class="song-strip"></div>
-    <button type="button" class="song-step" data-hand="song-next" data-hand-repeat aria-label="Next song">›</button>
+    <button type="button" class="song-step" data-hand="song-next" data-hand-repeat aria-label="Next song">${CHEVRON_RIGHT}</button>
   </fieldset>
   <fieldset class="count choices">
     <legend>Players</legend>
