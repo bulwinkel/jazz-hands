@@ -248,7 +248,7 @@ export class DanceGame {
     const session = this.session;
     const { settings } = this.options;
     const audio = new SongAudio();
-    audio.avOffsetMs = settings.avOffsetMs;
+    audio.setOffsets(settings.avOffsetMs, settings.inputLatencyMs);
     this.audio = audio;
     // Browsers allow sound only after a click or key press. Resume now, inside the Start
     // gesture, before the first await. If it fails, the "Click to start" button retries.
@@ -407,10 +407,9 @@ export class DanceGame {
       return;
     }
     this.recordings.begin({
-      audio,
+      sound: audio.recordingStreams(),
       video: this.inputs.input?.video,
       song: { id: this.manifest?.id ?? 'song', title: this.manifest?.title ?? '' },
-      settings,
     });
   }
 
@@ -794,12 +793,13 @@ export class DanceGame {
       case '[':
       case ']':
         settings.inputLatencyMs += key === ']' ? 10 : -10;
+        this.audio?.setOffsets(settings.avOffsetMs, settings.inputLatencyMs);
         this.saveSettings();
         return;
       case ',':
       case '.':
         settings.avOffsetMs += key === '.' ? 10 : -10;
-        if (this.audio) this.audio.avOffsetMs = settings.avOffsetMs;
+        this.audio?.setOffsets(settings.avOffsetMs, settings.inputLatencyMs);
         this.saveSettings();
         return;
       case ' ':

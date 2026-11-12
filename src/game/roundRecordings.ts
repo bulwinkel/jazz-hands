@@ -1,4 +1,3 @@
-import type { SongAudio } from './audio';
 import { PLAYER_COLORS } from './config';
 import type { PlayerRun } from './player';
 import { RECORDING, RoundRecorder, videoFileName } from './recording';
@@ -6,7 +5,6 @@ import type { RoundVideos } from './recording';
 import type { RecordingScene, ResultLine } from './recordingScene';
 import { playerHeading } from './resultText';
 import { accuracy, stars } from './scoring';
-import type { Settings } from './settings';
 
 /** What the list of recorded rounds shows. */
 export interface RecordingsView {
@@ -20,12 +18,12 @@ export interface RecordingsView {
 
 /** What a recording of a round needs. */
 export interface RecordingSource {
-  audio: SongAudio;
+  /** The song's sound for each video, each with its own delay. */
+  sound: { game: MediaStream; camera: MediaStream };
   /** The camera picture. Unset with a test input. */
   video?: HTMLVideoElement;
   /** The round's song, for the names of the files. */
   song: { id: string; title: string };
-  settings: Pick<Settings, 'avOffsetMs' | 'inputLatencyMs'>;
 }
 
 /** Each player's result, as the end card of the game view shows it. */
@@ -56,8 +54,6 @@ export class RoundRecordings {
   /** Counts the rounds of this visit, so a finished recording knows whether a newer round has begun. */
   private roundNumber = 0;
   private lastRound?: RoundVideos;
-  /** The song's sound for the two videos, each with its own delay. They belong to `audio`. */
-  private sound?: { audio: SongAudio; game: MediaStream; camera: MediaStream };
 
   /** `onChange` hears when a recording starts or ends, and when the list changes. */
   constructor(onChange: () => void) {
@@ -85,19 +81,8 @@ export class RoundRecordings {
     const recorder = RoundRecorder.create();
     if (!recorder) return;
 
-    const { audio, settings } = source;
-    // In the game view, the sound must fit the cues: later by what the speakers add. In the
-    // camera view it must fit the dancers: later again by what the camera adds.
-    const heardLateSec = audio.outputLatencySec + settings.avOffsetMs / 1000;
-    if (this.sound?.audio !== audio) {
-      this.sound = {
-        audio,
-        game: audio.recordingStream(heardLateSec),
-        camera: audio.recordingStream(heardLateSec + settings.inputLatencyMs / 1000),
-      };
-    }
     try {
-      recorder.start(source.video, this.sound.game, this.sound.camera);
+      recorder.start(source.video, source.sound.game, source.sound.camera);
     } catch {
       // One video may have started before the other failed. Stop it: nothing else would.
       recorder.discard();

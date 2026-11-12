@@ -1,6 +1,46 @@
 import { TIMING } from './config';
+import { AV_OFFSET_RANGE_MS, INPUT_LATENCY_RANGE_MS } from './settings';
 
-const MAX_RECORDING_DELAY_SEC = 2;
+/** Room for the speakers' own delay in a recording's sound. Bluetooth speakers add about 0.3 s. */
+const OUTPUT_LATENCY_ROOM_SEC = 1;
+/**
+ * The longest delay a recording's sound can need: the largest picture offset and camera delay
+ * the settings allow, plus the speakers' delay.
+ */
+export const MAX_RECORDING_DELAY_SEC =
+  (AV_OFFSET_RANGE_MS[1] + INPUT_LATENCY_RANGE_MS[1]) / 1000 + OUTPUT_LATENCY_ROOM_SEC;
+
+/** How late each video of a recording carries the song's sound, in seconds. */
+export interface RecordingDelays {
+  game: number;
+  camera: number;
+}
+
+/**
+ * The delays of a recording's sound. The speakers and the camera both add a delay to what a
+ * video shows, so its sound must come later by the same amount. In the game view, the sound
+ * must fit the cues: later by what the speakers add, and by the picture offset. In the camera
+ * view it must fit the dancers: later again by what the camera adds.
+ */
+export function recordingDelays(outputLatencySec: number, avOffsetMs: number, inputLatencyMs: number): RecordingDelays {
+  const gameSec = outputLatencySec + avOffsetMs / 1000;
+  return { game: applicableDelay(gameSec), camera: applicableDelay(gameSec + inputLatencyMs / 1000) };
+}
+
+/**
+ * A delay node can only make the sound later. A negative total would need the sound earlier
+ * than the song plays it, which cannot be done: it applies as no delay, and the video's sound
+ * is then early by that much.
+ */
+function applicableDelay(sec: number): number {
+  return Math.max(0, Math.min(MAX_RECORDING_DELAY_SEC, sec));
+}
+
+/** A copy of the song's sound for one video, behind its own delay. */
+interface RecordingTap {
+  delay: DelayNode;
+  stream: MediaStream;
+}
 
 /**
  * Plays the song. Its audio context is the only clock in the game:
@@ -9,7 +49,9 @@ const MAX_RECORDING_DELAY_SEC = 2;
 export class SongAudio {
   readonly context = new AudioContext();
   /** Extra delay between sound and picture, set by the player. */
-  avOffsetMs = 0;
+  private avOffsetMs = 0;
+  /** The camera's delay, set by the player. The camera view of a recording follows it. */
+  private inputLatencyMs = 0;
 
   private buffer?: AudioBuffer;
   private source?: AudioBufferSourceNode;
@@ -20,8 +62,8 @@ export class SongAudio {
   private startOffsetSec = 0;
   /** Context time at which the current playback runs out. */
   private endCtxTime = 0;
-  /** Where copies of the song's sound go, for recordings. Each is a delay in front of a stream. */
-  private readonly recordingTaps: DelayNode[] = [];
+  /** The song's sound for the two videos of a recording. Made once, for the first recording. */
+  private recordingTaps?: { game: RecordingTap; camera: RecordingTap };
 
   /** Delay between the context clock and the sound leaving the speakers. */
   get outputLatencySec(): number {
@@ -39,14 +81,33 @@ export class SongAudio {
     return this.source !== undefined && this.context.currentTime >= this.endCtxTime;
   }
 
+  /** Sets the player's offsets. The song clock follows the picture offset, and a recording's sound follows both. */
+  setOffsets(avOffsetMs: number, inputLatencyMs: number): void {
+    this.avOffsetMs = avOffsetMs;
+    this.inputLatencyMs = inputLatencyMs;
+    this.setRecordingDelays();
+  }
+
   /**
-   * A copy of the song's sound for a video recording, `delaySec` behind the sound this
-   * context makes. The speakers and the camera both add a delay to what a video shows, so a
-   * recording needs its sound later by the same amount. Ask for the stream before `play`.
+   * The song's sound for the two videos of a recording, each with its own delay. Ask for the
+   * streams before `play`. Each call sets the delays again, from the offsets and the speakers'
+   * delay of that moment.
    */
-  recordingStream(delaySec: number): MediaStream {
+  recordingStreams(): { game: MediaStream; camera: MediaStream } {
+    this.recordingTaps ??= { game: this.createTap(), camera: this.createTap() };
+    this.setRecordingDelays();
+    return { game: this.recordingTaps.game.stream, camera: this.recordingTaps.camera.stream };
+  }
+
+  private setRecordingDelays(): void {
+    if (!this.recordingTaps) return;
+    const delays = recordingDelays(this.outputLatencySec, this.avOffsetMs, this.inputLatencyMs);
+    this.recordingTaps.game.delay.delayTime.value = delays.game;
+    this.recordingTaps.camera.delay.delayTime.value = delays.camera;
+  }
+
+  private createTap(): RecordingTap {
     const delay = this.context.createDelay(MAX_RECORDING_DELAY_SEC);
-    delay.delayTime.value = Math.max(0, Math.min(MAX_RECORDING_DELAY_SEC, delaySec));
     const output = this.context.createMediaStreamDestination();
     delay.connect(output);
     // A source of silence that is always on. Without it, the stream stops while no song
@@ -55,8 +116,7 @@ export class SongAudio {
     silence.offset.value = 0;
     silence.connect(output);
     silence.start();
-    this.recordingTaps.push(delay);
-    return output.stream;
+    return { delay, stream: output.stream };
   }
 
   async load(url: string): Promise<void> {
@@ -92,7 +152,10 @@ export class SongAudio {
     source.buffer = this.buffer;
     source.connect(gain);
     gain.connect(this.context.destination);
-    for (const tap of this.recordingTaps) gain.connect(tap);
+    if (this.recordingTaps) {
+      gain.connect(this.recordingTaps.game.delay);
+      gain.connect(this.recordingTaps.camera.delay);
+    }
 
     // Start slightly in the future so the first samples are never cut.
     this.startCtxTime = this.context.currentTime + 0.1;
