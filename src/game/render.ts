@@ -1,4 +1,5 @@
 import type { GestureName, TrackingFrame } from '../tracking/types';
+import { cueColor, withAlpha } from './colors';
 import { FACE_EMOJI, GESTURE_EMOJI, HANDS_UP_CELL, LEVELS, PLAYER_COLORS, TIMING } from './config';
 import { openFaceCue } from './faceJudgment';
 import { cellRect, containRect } from './geometry';
@@ -58,12 +59,6 @@ function pointOnPath(path: readonly Point[], times: readonly number[], nowSec: n
   if (nowSec >= times[last]) return path[last];
   const leg = times.findIndex((_, k) => k < last && nowSec < times[k + 1]);
   return lerp(path[leg], path[leg + 1], (nowSec - times[leg]) / (times[leg + 1] - times[leg]));
-}
-
-/** A `#rrggbb` colour with an alpha from 0 to 1, as `#rrggbbaa`. */
-function withAlpha(hex: string, alpha: number): string {
-  const byte = Math.round(clamp01(alpha) * 255);
-  return hex + byte.toString(16).padStart(2, '0');
 }
 
 function scaleAboutCentre(rect: Rect, scale: number): Rect {
@@ -184,10 +179,12 @@ export class GameRenderer {
     }
   }
 
-  private drawTap(state: CueState, player: PlayerRun, nowSec: number, color: string, isNext: boolean): void {
+  private drawTap(state: CueState, player: PlayerRun, nowSec: number, playerColor: string, isNext: boolean): void {
     const { cue, marks } = state;
     const rects = cue.cells.map((cell) => this.toScreen(cellRect(player.grid, cell)));
     const remaining = (cue.timeSec - nowSec) / LEVELS[player.level].approachSec;
+    // The colour says how soon the cue is due, so several cues on screen show their order.
+    const color = cueColor(playerColor, remaining);
 
     // Two cells at once: a line joins them, so it reads as one move for two hands.
     if (rects.length === 2) {
@@ -200,9 +197,13 @@ export class GameRenderer {
     });
   }
 
-  private drawSlide(state: CueState, player: PlayerRun, nowSec: number, color: string, isNext: boolean): void {
+  private drawSlide(state: CueState, player: PlayerRun, nowSec: number, playerColor: string, isNext: boolean): void {
     const { cue, marks } = state;
+    const { approachSec } = LEVELS[player.level];
     const rects = cue.cells.map((cell) => this.toScreen(cellRect(player.grid, cell)));
+    // Each cell has the colour of its own due time. The path fades from the colour of its first
+    // cell to that of its last, so the end to start from is the one nearer the due colour.
+    const colors = cue.times.map((dueSec) => cueColor(playerColor, (dueSec - nowSec) / approachSec));
     const path = rects.map(centreOf);
     const last = rects.length - 1;
     const startSec = cue.times[0];
@@ -214,23 +215,24 @@ export class GameRenderer {
 
     // The path: a wide band from the first cell to the last. Chevrons at its end show the
     // speed before the slide starts: one for slow, two for normal, three for fast.
-    this.line(path[0], path[last], withAlpha(color, 0.32 * strength), cellSize * 0.35);
+    const band = this.fade(path[0], path[last], colors.map((color) => withAlpha(color, 0.32 * strength)));
+    this.line(path[0], path[last], band, cellSize * 0.35);
     const chevrons = SLIDE_CHEVRONS[cue.speed ?? 'normal'];
     this.drawChevrons(path[0], path[last], chevrons, cellSize * 0.24, withAlpha(WHITE, 0.8 * strength));
 
     // The first cell works like a tap: its outline closes when the slide starts.
-    this.drawTargetCell(rects[0], color, isNext, marks[0] === 'perfect');
-    this.drawClosingOutline(rects[0], (startSec - nowSec) / LEVELS[player.level].approachSec, color, isNext);
+    this.drawTargetCell(rects[0], colors[0], isNext, marks[0] === 'perfect');
+    this.drawClosingOutline(rects[0], (startSec - nowSec) / approachSec, colors[0], isNext);
 
     // A slow slide passes through a middle cell, which is judged on its own beat.
-    for (let k = 1; k < last; k++) this.drawTargetCell(rects[k], color, false, marks[k] === 'perfect');
+    for (let k = 1; k < last; k++) this.drawTargetCell(rects[k], colors[k], false, marks[k] === 'perfect');
 
     // The last cell lights up as the dot arrives.
     if (marks[last] === 'perfect') {
-      this.drawTargetCell(rects[last], color, isNext, true);
+      this.drawTargetCell(rects[last], colors[last], isNext, true);
     } else {
-      const border = withAlpha(color, (0.5 + 0.5 * progress) * strength);
-      const fill = withAlpha(color, (0.1 + 0.3 * progress) * strength);
+      const border = withAlpha(colors[last], (0.5 + 0.5 * progress) * strength);
+      const fill = withAlpha(colors[last], (0.1 + 0.3 * progress) * strength);
       this.outline(rects[last], border, 2 + 3 * progress, fill);
     }
 
@@ -243,7 +245,8 @@ export class GameRenderer {
     if (cue.gesture) {
       this.text(GESTURE_EMOJI[cue.gesture] ?? '✋', dot.x, dot.y, cellSize * 0.42);
     } else {
-      ctx.shadowColor = color;
+      // The dot glows in the colour of the first cell: the due colour from the start of the slide.
+      ctx.shadowColor = colors[0];
       ctx.shadowBlur = 18;
       ctx.fillStyle = WHITE;
       ctx.beginPath();
@@ -309,7 +312,7 @@ export class GameRenderer {
    * The face to pull: an emoji laid over the player's own face like a mask, with a ring
    * that closes onto it and meets it on the beat, as the outline of a hand cue does.
    */
-  private drawFaceCue(player: PlayerRun, nowSec: number, color: string): void {
+  private drawFaceCue(player: PlayerRun, nowSec: number, playerColor: string): void {
     const state = openFaceCue(player.faceStates, player.level, nowSec);
     if (!state) return;
 
@@ -317,6 +320,7 @@ export class GameRenderer {
     const emojiSize = this.faceEmojiSize(player);
     const radius = emojiSize * FACE_RING_SCALE;
     const remaining = (state.cue.timeSec - nowSec) / LEVELS[player.level].approachSec;
+    const color = cueColor(playerColor, remaining);
     const closingScale = 1 + (OUTLINE_START_SCALE - 1) * clamp01(remaining);
     const ctx = this.ctx;
 
@@ -490,7 +494,14 @@ export class GameRenderer {
     ctx.stroke();
   }
 
-  private line(from: Point, to: Point, color: string, lineWidth: number): void {
+  /** A stroke colour that fades along the line from `from` to `to`, through the colours in order. */
+  private fade(from: Point, to: Point, colors: readonly string[]): CanvasGradient {
+    const gradient = this.ctx.createLinearGradient(from.x, from.y, to.x, to.y);
+    colors.forEach((color, k) => gradient.addColorStop(k / (colors.length - 1), color));
+    return gradient;
+  }
+
+  private line(from: Point, to: Point, color: string | CanvasGradient, lineWidth: number): void {
     const ctx = this.ctx;
     ctx.strokeStyle = color;
     ctx.lineWidth = lineWidth;
