@@ -1,4 +1,6 @@
-import { PREVIEW } from './config';
+import { PREVIEW, SONGS } from './config';
+import { fetchManifest, previewStartSec } from './manifest';
+import type { Manifest } from './types';
 
 /** How often the volume is set while a preview plays. Short enough for a smooth fade. */
 const TICK_MS = 40;
@@ -116,4 +118,61 @@ export class SongPreview {
     const fade = Math.min(playedSec / PREVIEW.fadeInSec, leftSec / PREVIEW.fadeOutSec);
     audio.volume = PREVIEW.volume * clamp01(fade);
   };
+}
+
+/**
+ * The song preview of the menu. The game says which song to follow, or none. The preview then
+ * plays the liveliest part of that song, and moves on when the song changes.
+ */
+export class MenuPreview {
+  private readonly preview = new SongPreview();
+  /** The song whose preview plays or is about to play, as an index into SONGS. */
+  private song: number | null = null;
+  private timer = 0;
+
+  get state(): PreviewState {
+    return this.preview.state;
+  }
+
+  /**
+   * Plays a part of `song`. Null stops the preview: outside the menu, with previews off, or
+   * while the video player is open. Call it after every change: it acts only when the song
+   * is a new one, or when the preview goes on or off.
+   */
+  follow(song: number | null): void {
+    if (song === null) {
+      this.stop();
+      return;
+    }
+    if (song === this.song) return;
+    this.song = song;
+    this.preview.stop();
+    // Wait a moment: a player who steps through the songs hears only the one they stop on.
+    window.clearTimeout(this.timer);
+    this.timer = window.setTimeout(() => void this.start(song), PREVIEW.waitSec * 1000);
+  }
+
+  /** Stops the preview at once, with no fade. For the end of the visit. */
+  dispose(): void {
+    window.clearTimeout(this.timer);
+    this.preview.halt();
+  }
+
+  private async start(song: number): Promise<void> {
+    let manifest: Manifest;
+    try {
+      manifest = await fetchManifest(SONGS[song].manifest);
+    } catch {
+      return; // No preview for a song whose data does not load. Starting the round reports the error.
+    }
+    // The player may have picked another song, or left the menu, while this loaded.
+    if (this.song !== song) return;
+    this.preview.start(manifest.audio, previewStartSec(manifest));
+  }
+
+  private stop(): void {
+    window.clearTimeout(this.timer);
+    this.song = null;
+    this.preview.stop();
+  }
 }
