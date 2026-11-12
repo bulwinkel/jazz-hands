@@ -1,9 +1,9 @@
 import { HAND_MENU, LEVELS, PLAYER_COLORS, SONGS } from './config';
-import type { HandTarget } from './handMenu';
+import type { HandTarget, MenuHand } from './handMenu';
 import type { PlayerRun } from './player';
 import { accuracy, stars } from './scoring';
 import type { Settings } from './settings';
-import type { Level, PlayerCount, PlayerIndex, Point, SongLength } from './types';
+import type { Level, PlayerCount, PlayerIndex, SongLength } from './types';
 
 const ALL_LEVELS: Level[] = [1, 2, 3, 4];
 
@@ -36,9 +36,9 @@ const MENU_HTML = `
     <label data-hand="length-short"><input type="radio" name="length" value="short"><span>Short · about 90 seconds</span></label>
     <label data-hand="length-full"><input type="radio" name="length" value="full"><span>Full song</span></label>
   </fieldset>
-  <button class="primary" id="start" data-hand="start" data-hand-dwell="${HAND_MENU.slowDwellSec}">Let’s dance →</button>
+  <button class="primary" id="start" data-hand="start" data-hand-hold="${HAND_MENU.slowHoldSec}">Let’s dance →</button>
   <p class="keys">
-    Point at an item and hold your hand there to choose it · Space or Enter to start · F fullscreen<br>
+    Point with an open hand ✋, then make a fist ✊ to choose · Space or Enter to start · F fullscreen<br>
     <span id="stand-hint"></span>
     <span id="sound-hint" hidden><br>Click or press a key once, so the browser lets the music play.</span>
   </p>`;
@@ -214,7 +214,7 @@ export class GameUI {
       settings.length = value as SongLength;
       onChange();
     });
-    // A press by a pointing hand is a click made by the page, which the browser marks as not trusted.
+    // A choice made by hand is a click made by the page, which the browser marks as not trusted.
     find(this.panel, '#start').addEventListener('click', (event) => onStart(!event.isTrusted));
   }
 
@@ -233,8 +233,8 @@ export class GameUI {
       <p class="replay-prompt">Hands up to play again 🙌</p>
       <p>Raise a hand above your head and hold</p>
       <div class="result-actions">
-        <button id="replay" class="primary" data-hand="replay" data-hand-dwell="${HAND_MENU.slowDwellSec}">Play again · Space</button>
-        <button id="menu" data-hand="menu" data-hand-dwell="${HAND_MENU.slowDwellSec}">Menu · Esc</button>
+        <button id="replay" class="primary" data-hand="replay" data-hand-hold="${HAND_MENU.slowHoldSec}">Play again · Space</button>
+        <button id="menu" data-hand="menu" data-hand-hold="${HAND_MENU.slowHoldSec}">Menu · Esc</button>
       </div>
       <div class="diagnostics" hidden>
         <button id="copy-diagnostics">Copy diagnostics</button>
@@ -246,9 +246,9 @@ export class GameUI {
     find(this.panel, '#menu').addEventListener('click', onMenu);
   }
 
-  // --- Pointing at items by hand ---
+  // --- Choosing items by hand ---
 
-  /** The items on the open panel that a hand can press, with where they are on screen. */
+  /** The items on the open panel that a hand can choose, with where they are on screen. */
   handTargets(): HandTarget[] {
     if (this.panel.hidden) return [];
     return [...this.panel.querySelectorAll<HTMLElement>('[data-hand]')].map((element) => {
@@ -256,21 +256,22 @@ export class GameUI {
       return {
         id: element.dataset.hand ?? '',
         rect: { x: left, y: top, width, height },
-        dwellSec: Number(element.dataset.handDwell ?? HAND_MENU.dwellSec),
+        holdSec: Number(element.dataset.handHold ?? HAND_MENU.holdSec),
       };
     });
   }
 
-  /** Presses an item as a click would. */
-  pressHandTarget(id: string): void {
+  /** Chooses an item as a click would. */
+  chooseHandTarget(id: string): void {
     this.panel.querySelector<HTMLElement>(`[data-hand="${id}"]`)?.click();
   }
 
   /**
-   * Shows a ring at each pointing hand, and on the item under a hand how far the hold has come.
+   * Shows a ring at each hand (filled while the hand is a fist), a highlight on the item under
+   * a hand, and inside that item a bar for how far the fist hold has come.
    * `hands` are screen positions. Call it with no hands to clear everything.
    */
-  showHands(hands: readonly Point[], hoveredId: string | null, progress: number): void {
+  showHands(hands: readonly MenuHand[], hoveredId: string | null, progress: number): void {
     // Reuse the ring elements: this runs on every tracking frame.
     while (this.cursors.children.length < hands.length) {
       const ring = document.createElement('div');
@@ -280,7 +281,9 @@ export class GameUI {
     [...this.cursors.children].forEach((ring, i) => {
       const hand = hands[i];
       (ring as HTMLElement).hidden = hand === undefined;
-      if (hand) (ring as HTMLElement).style.transform = `translate(${hand.x}px, ${hand.y}px)`;
+      if (!hand) return;
+      (ring as HTMLElement).style.transform = `translate(${hand.x}px, ${hand.y}px)`;
+      ring.classList.toggle('fist', hand.fist);
     });
 
     for (const element of this.panel.querySelectorAll<HTMLElement>('.hand-hover')) {
@@ -288,7 +291,7 @@ export class GameUI {
     }
     const hovered = hoveredId ? this.panel.querySelector<HTMLElement>(`[data-hand="${hoveredId}"]`) : null;
     hovered?.classList.add('hand-hover');
-    hovered?.style.setProperty('--dwell', progress.toFixed(3));
+    hovered?.style.setProperty('--hold', progress.toFixed(3));
   }
 
   /**
