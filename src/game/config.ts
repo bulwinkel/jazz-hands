@@ -32,16 +32,63 @@ export interface SongEntry {
   cover?: string;
 }
 
-/** Add a song with one line here. The menu shows the songs in this order. */
+/** Add a song with one entry here. The menu shows the songs in this order. */
 export const SONGS: readonly SongEntry[] = [
-  { manifest: '/songs/blessed-on-the-hillside.json', title: 'Blessed on the Hillside' },
-  { manifest: '/songs/todo-bueno.json', title: 'Todo Bueno' },
-  { manifest: '/songs/from-the-garden-to-the-cross.json', title: 'From the Garden to the Cross' },
-  { manifest: '/songs/drum-and-bass-violins.json', title: 'Drum and Bass Violins' },
-  { manifest: '/songs/all-eyes-on-us.json', title: 'All Eyes on Us' },
-  { manifest: '/songs/return-to-the-lord.json', title: 'Return to the Lord' },
-  { manifest: '/songs/the-wilderness-knows.json', title: 'The Wilderness Knows' },
-  { manifest: '/songs/job-hold-on.json', title: 'Job, Hold On' },
+  {
+    manifest: '/songs/blessed-on-the-hillside.json',
+    title: 'Blessed on the Hillside',
+    cover: '/songs/blessed-on-the-hillside.jpg',
+  },
+  {
+    manifest: '/songs/todo-bueno.json',
+    title: 'Todo Bueno',
+    cover: '/songs/todo-bueno.jpg',
+  },
+  {
+    manifest: '/songs/from-the-garden-to-the-cross.json',
+    title: 'From the Garden to the Cross',
+    cover: '/songs/from-the-garden-to-the-cross.jpg',
+  },
+  {
+    manifest: '/songs/drum-and-bass-violins.json',
+    title: 'Drum and Bass Violins',
+    cover: '/songs/drum-and-bass-violins.jpg',
+  },
+  {
+    manifest: '/songs/all-eyes-on-us.json',
+    title: 'All Eyes on Us',
+    cover: '/songs/all-eyes-on-us.jpg',
+  },
+  {
+    manifest: '/songs/return-to-the-lord.json',
+    title: 'Return to the Lord',
+    cover: '/songs/return-to-the-lord.jpg',
+  },
+  {
+    manifest: '/songs/the-wilderness-knows.json',
+    title: 'The Wilderness Knows',
+    cover: '/songs/the-wilderness-knows.jpg',
+  },
+  {
+    manifest: '/songs/job-hold-on.json',
+    title: 'Job, Hold On',
+    cover: '/songs/job-hold-on.jpg',
+  },
+  {
+    manifest: '/songs/all-aboard.json',
+    title: 'All Aboard',
+    cover: '/songs/all-aboard.jpg',
+  },
+  {
+    manifest: '/songs/nebuchadnezzars-dream.json',
+    title: "Nebuchadnezzar's Dream",
+    cover: '/songs/nebuchadnezzars-dream.jpg',
+  },
+  {
+    manifest: '/songs/the-valley-waits.json',
+    title: 'The Valley Waits',
+    cover: '/songs/the-valley-waits.jpg',
+  },
 ];
 
 /** The part of a song that plays in the menu while the song is chosen. */
