@@ -14,6 +14,8 @@ import {
 import type { RunReport, TrackingStats } from './diagnostics';
 import { generateFaceCues } from './faceChart';
 import { judgeFaceFrame, needsFace, newFaceCueState } from './faceJudgment';
+import { fitMomentAt, planFit } from './fitTiming';
+import type { FitBegunBy, FitPlan } from './fitTiming';
 import { cellRect, containRect, defaultGrid, faceRegion, fitGrid, insideCell } from './geometry';
 import { newHandMenuState, stepHandMenu } from './handMenu';
 import type { InputView } from './input';
@@ -89,8 +91,8 @@ export class DanceGame {
   private readonly inputs: InputHost;
   /** Whether hand control was on at the last look from the menu. See `syncMenuInput`. */
   private menuHandControl = false;
-  /** True when a hand chose Start: the players are then already at their spots. */
-  private startedByHand = false;
+  /** Who began the next or current reach fit. It sets the fit's timing: see `planFit`. */
+  private fitBegunBy: FitBegunBy = 'not-by-hand';
   /** Which item a hand is on and how far its fist hold has come, in the menu and on the results screen. */
   private handMenu = newHandMenuState();
   private manifest?: Manifest;
@@ -241,7 +243,7 @@ export class DanceGame {
   /** Loads the song and the tracker for this round, then begins the reach fit. */
   private async start(byHand = false): Promise<void> {
     if (this.phase !== 'menu') return;
-    this.startedByHand = byHand;
+    this.fitBegunBy = byHand ? 'start-by-hand' : 'not-by-hand';
     this.saveSettings();
     this.preview.follow(null);
     this.setPhase('loading');
@@ -365,7 +367,8 @@ export class DanceGame {
   /**
    * Starts the reach fit again, from the fit itself or from any later phase of the round.
    * The round then goes on from the ready check, with the same cues.
-   * `byHand` says that a pointing hand asked for it: the players then stand at their spots already.
+   * `byHand` says that a pointing hand asked for it: the players then stand at their spots
+   * already, and the fit waits a moment for that hand to leave the button (see `planFit`).
    */
   private refit(byHand = false): void {
     const inRound = ['fit', 'ready', 'countdown', 'play', 'results'].includes(this.phase);
@@ -377,7 +380,7 @@ export class DanceGame {
     void this.audio?.resume().catch((error: unknown) => this.failIfCurrent(session, error));
     this.paused = false;
     this.feedback = [];
-    this.startedByHand = byHand;
+    this.fitBegunBy = byHand ? 'recalibrate-by-hand' : 'not-by-hand';
     this.ui.hidePanel();
     this.beginFit();
   }
@@ -573,8 +576,10 @@ export class DanceGame {
 
   /** Reach fit: grows each player's grid around the hand positions seen so far. */
   private collectReach(frame: TrackingFrame): void {
-    // Ignore hands while the players walk from the laptop to their spots.
-    if (performance.now() - this.phaseStartedMs < this.walkBackSec() * 1000) return;
+    // Ignore hands while the players walk from the laptop to their spots, and while a hand
+    // that chose Recalibrate leaves the button.
+    const elapsedSec = (performance.now() - this.phaseStartedMs) / 1000;
+    if (!fitMomentAt(this.fitPlan(), elapsedSec).handsCount) return;
     for (const player of this.players) {
       for (const hand of frame.players[player.index].hands) {
         player.reachSamples.push({ x: hand.x, y: hand.y });
@@ -870,12 +875,11 @@ export class DanceGame {
   };
 
   private updateFit(elapsedSec: number): void {
-    const walkSec = this.walkBackSec();
-    const fitLeftSec = walkSec + TIMING.fitSec - elapsedSec;
-    if (elapsedSec < walkSec) {
-      this.ui.showMessage('Walk back to your spot!', String(Math.ceil(walkSec - elapsedSec)));
-    } else if (fitLeftSec > 0) {
-      this.ui.showMessage('Draw the biggest circles you can with both arms!', String(Math.ceil(fitLeftSec)));
+    const { stage, secondsLeft } = fitMomentAt(this.fitPlan(), elapsedSec);
+    if (stage === 'walk') {
+      this.ui.showMessage('Walk back to your spot!', String(secondsLeft));
+    } else if (stage === 'draw') {
+      this.ui.showMessage('Draw the biggest circles you can with both arms!', String(secondsLeft));
     } else {
       this.setPhase('ready');
       this.ui.showMessage('Hands up to start!', 'Hold a hand in the glowing cell · Space also starts');
@@ -957,12 +961,9 @@ export class DanceGame {
     return video && video.videoHeight > 0 ? video.videoWidth / video.videoHeight : 16 / 9;
   }
 
-  /**
-   * Time to walk from the laptop to the play spot. Not needed when a pointing hand started
-   * the round, and not for the test inputs.
-   */
-  private walkBackSec(): number {
-    return this.options.input === 'camera' && !this.startedByHand ? TIMING.walkBackSec : 0;
+  /** The timing of the reach fit, from who began it. Test inputs need no time to walk back. */
+  private fitPlan(): FitPlan {
+    return planFit(this.fitBegunBy, this.options.input === 'camera');
   }
 
   private inputView = (): InputView => ({
