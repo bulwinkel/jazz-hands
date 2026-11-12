@@ -129,7 +129,7 @@ export class DanceGame {
     this.ui.resumeButton.addEventListener('click', () => void this.unlockAudio());
     // A choice made by hand is a click made by the page, which the browser marks as not trusted.
     this.ui.refitButton.addEventListener('click', (event) => this.refit(!event.isTrusted));
-    this.ui.onPlayerChange = this.onPlayerChange;
+    this.ui.player.onChange = this.onPlayerChange;
     this.ui.showCueStyle(this.options.settings.cueStyle);
     window.addEventListener('keydown', this.onKey);
     window.addEventListener('pagehide', () => this.dispose(), { once: true });
@@ -148,7 +148,7 @@ export class DanceGame {
       player.holdStartMs = null;
       player.hold = 0;
     }
-    this.ui.closePlayer();
+    this.ui.player.close();
     this.ui.pauseButton.hidden = phase !== 'play';
     // The recalibrate button shows in the ready check: there the players see whether the grids
     // fit. It keeps away from the hands-up cells, which are in other places with two players.
@@ -308,7 +308,7 @@ export class DanceGame {
   private showRecordings(): void {
     const { rounds, status, lastRound } = this.recordings.view;
     // The results show the videos of their own round as a preview.
-    this.ui.showRecordings(rounds, status, this.phase === 'results' ? lastRound : undefined);
+    this.ui.showRecordings({ rounds, status, preview: this.phase === 'results' ? lastRound : undefined });
   }
 
   /**
@@ -331,7 +331,7 @@ export class DanceGame {
    */
   private followPreview(): void {
     const { songIndex, previews } = this.options.settings;
-    const isOn = this.phase === 'menu' && previews && !this.ui.playerOpen;
+    const isOn = this.phase === 'menu' && previews && !this.ui.player.isOpen;
     this.preview.follow(isOn ? songIndex : null);
   }
 
@@ -513,7 +513,7 @@ export class DanceGame {
 
     if (this.phase === 'fit') {
       this.collectReach(frame);
-    } else if (this.phase === 'ready' || (this.phase === 'results' && !this.ui.playerOpen)) {
+    } else if (this.phase === 'ready' || (this.phase === 'results' && !this.ui.player.isOpen)) {
       this.trackHandsUp(frame, previous);
     } else if (this.phase === 'play' && !this.paused && this.audio?.context.state === 'running') {
       this.countFrame(frame);
@@ -728,9 +728,9 @@ export class DanceGame {
 
     // The open video player takes the keys: Esc closes it, Space pauses it, and no key
     // starts or leaves a round behind it.
-    if (this.ui.playerOpen) {
-      if (key === 'escape') this.ui.closePlayer();
-      else if (key === ' ') this.ui.togglePlayerPause();
+    if (this.ui.player.isOpen) {
+      if (key === 'escape') this.ui.player.close();
+      else if (key === ' ') this.ui.player.togglePause();
       else return;
       event.preventDefault();
       return;
