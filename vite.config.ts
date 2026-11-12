@@ -79,6 +79,7 @@ export default defineConfig({
       input: {
         main: 'index.html',
         trackerTest: 'tracker-test.html',
+        zoneTest: 'zone-test.html',
       },
     },
   },
