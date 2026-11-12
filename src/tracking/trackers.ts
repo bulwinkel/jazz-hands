@@ -3,6 +3,7 @@ import type { GestureRecognizerResult } from '@mediapipe/tasks-vision';
 import { TRACKING_THRESHOLDS } from './config';
 import { assignHands, cropToFrame, FULL_FRAME, gestureName, handSize, palmCentre, posePlayers } from './geometry';
 import type { Crop } from './geometry';
+import { shapeFromLandmarks } from './shapes';
 import type { TrackedHand, Tracker, TrackerDelegate, TrackerMode, TrackingFrame } from './types';
 
 let fileset: ReturnType<typeof FilesetResolver.forVisionTasks> | undefined;
@@ -15,8 +16,16 @@ function handsFromResult(result: GestureRecognizerResult, crop: Crop, aspect: nu
     if (raw.length < 21) return [];
     const landmarks = raw.map((point) => cropToFrame(point, crop));
     const category = result.gestures[index]?.toSorted((a, b) => b.score - a.score)[0];
-    return { ...palmCentre(landmarks), size: handSize(landmarks, aspect),
-      gesture: gestureName(category?.categoryName), gestureScore: category?.score ?? 0, landmarks };
+    // Read the shape from the fingers first: that works at any hand angle. The gesture model
+    // only reads upright hands well, so it is the fallback, and it adds thumbs up and the like.
+    const shapeFromFingers = shapeFromLandmarks(landmarks, aspect);
+    return {
+      ...palmCentre(landmarks),
+      size: handSize(landmarks, aspect),
+      gesture: shapeFromFingers ?? gestureName(category?.categoryName),
+      gestureScore: shapeFromFingers ? 1 : category?.score ?? 0,
+      landmarks,
+    };
   });
 }
 
