@@ -104,6 +104,15 @@ function pickSlideSpeed(shares: Record<SlideSpeed, number>, roll: number, slowPo
 /** How many cue intervals after its start a slide ends on a cue beat. A fast slide ends between two. */
 const SLIDE_END_STRIDES: Record<SlideSpeed, number> = { fast: 0, normal: 1, slow: 2 };
 
+/**
+ * The cues of a round that starts partway into the song. Players need a moment to find the
+ * beat, so cues in the first seconds after the start are left out.
+ */
+export function cuesFrom(cues: Cue[], startSec: number): Cue[] {
+  if (startSec <= 0) return cues;
+  return cues.filter((cue) => cue.timeSec >= startSec + CHART.leadSec);
+}
+
 /** The cue list for one player. The same manifest and options always give the same list. */
 export function generateChart(manifest: Manifest, options: ChartOptions): Cue[] {
   const rules = LEVELS[options.level];

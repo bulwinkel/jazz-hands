@@ -1,6 +1,6 @@
 import type { TrackerMode, TrackingFrame } from '../tracking/types';
 import { SongAudio } from './audio';
-import { generateChart } from './chart';
+import { cuesFrom, generateChart } from './chart';
 import { DEFAULT_TRACKER, HANDS_UP_CELL, LEVELS, SONGS, TIMING } from './config';
 import { buildRunReport, newObservation, newTrackingStats, observeFrame } from './diagnostics';
 import type { RunReport, TrackingStats } from './diagnostics';
@@ -9,7 +9,7 @@ import { createInput } from './input';
 import type { GameInput, InputView } from './input';
 import { frameSongTime, judgeFrame, newCueState } from './judgment';
 import type { CueState } from './judgment';
-import { playLengthSec, validateManifest } from './manifest';
+import { playEndSec, playStartSec, validateManifest } from './manifest';
 import { createPlayers, summariseChart } from './player';
 import type { ChartSummary, PlayerRun } from './player';
 import { GameRenderer } from './render';
@@ -167,8 +167,9 @@ export class DanceGame {
 
       const manifest = song.value;
       this.manifest = manifest;
-      this.endSec = playLengthSec(manifest, settings.length);
-      this.startSec = this.options.startSec;
+      this.endSec = playEndSec(manifest, settings.length);
+      // The URL can start the song anywhere, for tests. Otherwise the song sets its own start.
+      this.startSec = this.options.startSec > 0 ? this.options.startSec : playStartSec(manifest, settings.length);
       if (this.startSec >= this.endSec) {
         throw new Error(`The start offset must be below the play length (${this.endSec.toFixed(1)} seconds).`);
       }
@@ -181,7 +182,7 @@ export class DanceGame {
           seed: this.options.seed,
           endSec: this.endSec,
         });
-        player.cues = chart.filter((cue) => cue.timeSec >= this.startSec);
+        player.cues = cuesFrom(chart, this.startSec);
       }
 
       if (input.video) this.ui.stage.prepend(input.video);
@@ -240,7 +241,10 @@ export class DanceGame {
 
   private beginPlay(): void {
     try {
-      this.audio?.play(this.startSec, this.endSec, this.options.settings.length === 'short');
+      // Fade out only when the round stops inside the song. A round that reaches the end of
+      // the song ends with the song's own ending.
+      const stopsInsideSong = this.manifest !== undefined && this.endSec < this.manifest.durationSec - 0.5;
+      this.audio?.play(this.startSec, this.endSec, stopsInsideSong);
     } catch (error) {
       this.fail(error);
       return;
@@ -571,6 +575,7 @@ export class DanceGame {
         frame: this.frame,
         songTimeSec: this.songTime(),
         manifest: this.manifest,
+        startSec: this.startSec,
         endSec: this.endSec,
         feedback: this.feedback,
       },

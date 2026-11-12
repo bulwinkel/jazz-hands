@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TrackedHand, TrackingFrame } from '../tracking/types';
 import { synthetic } from './fixtures';
-import { playLengthSec, validateManifest } from './manifest';
+import { playEndSec, playStartSec, validateManifest } from './manifest';
 import { accuracy, award, freshScore, stars } from './scoring';
 import { mergeForSolo } from './solo';
 
@@ -20,14 +20,35 @@ describe('song manifest', () => {
     ['a tempo that is not a number', { bpm: NaN }],
     ['zero duration', { durationSec: 0 }],
     ['zero beats per bar', { beatsPerBar: 0 }],
+    ['a short-round start after the song', { shortStartSec: 500 }],
+    ['a negative short-round start', { shortStartSec: -1 }],
   ])('rejects %s', (_name, patch) => {
     expect(() => validateManifest({ ...synthetic(), ...patch })).toThrow('Song manifest:');
   });
 
   it('ends the Short length on the first bar start at or after 90 seconds', () => {
-    expect(playLengthSec(synthetic(128), 'short')).toBe(90);
-    expect(playLengthSec(synthetic(100), 'short')).toBe(91.2);
-    expect(playLengthSec(synthetic(128), 'full')).toBe(120);
+    expect(playEndSec(synthetic(128), 'short')).toBe(90);
+    expect(playEndSec(synthetic(100), 'short')).toBe(91.2);
+    expect(playEndSec(synthetic(128), 'full')).toBe(120);
+  });
+
+  it('starts the Short length where the song says, and the Full length at the song start', () => {
+    const song = { ...synthetic(120, 300), shortStartSec: 100 };
+    expect(playStartSec(song, 'short')).toBe(100);
+    expect(playStartSec(song, 'full')).toBe(0);
+    expect(playStartSec(synthetic(), 'short')).toBe(0);
+  });
+
+  it('runs a late Short length for 90 seconds, to a bar start', () => {
+    // 120 BPM: a bar is 2 s, so 190 s is a bar start.
+    const song = { ...synthetic(120, 300), shortStartSec: 100 };
+    expect(playEndSec(song, 'short')).toBe(190);
+    expect(playEndSec(song, 'full')).toBe(300);
+  });
+
+  it('runs a Short length to the end of the song when under 90 seconds are left', () => {
+    const song = { ...synthetic(120, 300), shortStartSec: 240 };
+    expect(playEndSec(song, 'short')).toBe(300);
   });
 });
 

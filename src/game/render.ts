@@ -20,6 +20,8 @@ export interface RenderView {
   frame?: TrackingFrame;
   songTimeSec: number;
   manifest?: Manifest;
+  /** The round plays the song from `startSec` to `endSec`. */
+  startSec: number;
   endSec: number;
   feedback: readonly Feedback[];
 }
@@ -109,7 +111,9 @@ export class GameRenderer {
       this.drawHands(player, view.frame, color);
     }
     this.drawFeedback(view);
-    if (view.phase === 'play') this.drawProgress(view.songTimeSec / view.endSec);
+    if (view.phase === 'play') {
+      this.drawProgress((view.songTimeSec - view.startSec) / (view.endSec - view.startSec));
+    }
   }
 
   /** Matches the canvas to its on-screen size and clears it. */

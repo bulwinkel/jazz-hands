@@ -21,6 +21,10 @@ export function validateManifest(value: unknown): Manifest {
   if (!isLocalPath) fail('audio must be a local absolute path.');
 
   if (!isPositive(m.durationSec) || !isPositive(m.bpm)) fail('durationSec and bpm must be positive.');
+  const shortStartValid =
+    m.shortStartSec === undefined ||
+    (Number.isFinite(m.shortStartSec) && m.shortStartSec >= 0 && m.shortStartSec < m.durationSec);
+  if (!shortStartValid) fail('shortStartSec must be a time inside the song.');
   if (!Number.isInteger(m.beatsPerBar) || m.beatsPerBar < 1) fail('beatsPerBar must be a positive integer.');
 
   const beatsValid =
@@ -56,10 +60,19 @@ export function medianBeatInterval(m: Manifest): number {
   return gaps.length % 2 ? gaps[middle] : (gaps[middle - 1] + gaps[middle]) / 2;
 }
 
-/** Where play ends. Short stops on a bar start, so the fade-out lands on the music. */
-export function playLengthSec(m: Manifest, length: SongLength): number {
+/** Where play starts. Full starts with the song. Short starts where the song says. */
+export function playStartSec(m: Manifest, length: SongLength): number {
+  return length === 'short' ? (m.shortStartSec ?? 0) : 0;
+}
+
+/**
+ * Where play ends. Short runs for about 90 seconds and stops on a bar start, so the fade-out
+ * lands on the music. When less than that is left, it runs to the end of the song.
+ */
+export function playEndSec(m: Manifest, length: SongLength): number {
   if (length === 'full') return m.durationSec;
-  const barStart = m.beats.find((time, beat) => isBarStart(m, beat) && time >= TIMING.shortSec);
+  const earliestEndSec = playStartSec(m, length) + TIMING.shortSec;
+  const barStart = m.beats.find((time, beat) => isBarStart(m, beat) && time >= earliestEndSec);
   return barStart ?? m.durationSec;
 }
 

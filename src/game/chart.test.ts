@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { doubleCells, generateChart, masterCells, middleCell, selectStride, slideTargets } from './chart';
+import { cuesFrom, doubleCells, generateChart, masterCells, middleCell, selectStride, slideTargets } from './chart';
 import { CHART, LEVELS } from './config';
 import { synthetic } from './fixtures';
-import { medianBeatInterval, playLengthSec, tailStartSec } from './manifest';
+import { medianBeatInterval, playEndSec, tailStartSec } from './manifest';
 import type { Cue, Level, Manifest } from './types';
 
 const ALL_LEVELS: Level[] = [1, 2, 3, 4];
@@ -89,7 +89,7 @@ describe('chart for every level', () => {
     const song = synthetic();
     song.firstDownbeat = 3;
     const twoBarsIn = song.beats[3 + 2 * 4];
-    for (const endSec of [song.durationSec, playLengthSec(song, 'short')]) {
+    for (const endSec of [song.durationSec, playEndSec(song, 'short')]) {
       const cues = chart(song, 2, 22, { endSec });
       expect(cues.length).toBeGreaterThan(10);
       for (const cue of cues) {
@@ -97,6 +97,22 @@ describe('chart for every level', () => {
         expect(cue.timeSec).toBeLessThan(tailStartSec(song, endSec));
       }
     }
+  });
+});
+
+describe('a round that starts inside the song', () => {
+  const cues = chart(synthetic(100, 300), 3, 9);
+
+  it('keeps every cue when it starts at the song start', () => {
+    expect(cuesFrom(cues, 0)).toBe(cues);
+  });
+
+  it('leaves out the cues of the first seconds, so players can find the beat', () => {
+    const late = cuesFrom(cues, 120);
+    expect(late.length).toBeGreaterThan(50);
+    expect(late[0].timeSec).toBeGreaterThanOrEqual(120 + CHART.leadSec);
+    // The rest of the song is unchanged: the same cues as in a round from the start.
+    expect(late).toEqual(cues.filter((cue) => cue.timeSec >= 120 + CHART.leadSec));
   });
 });
 

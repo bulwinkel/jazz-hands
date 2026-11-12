@@ -11,6 +11,11 @@ export interface Manifest {
   /** Path on this server. The game runs with no network. */
   audio: string;
   durationSec: number;
+  /**
+   * Where the Short round starts. Unset means the start of the song.
+   * A song with a quiet opening sets this to a later bar start, where it has more to play.
+   */
+  shortStartSec?: number;
   bpm: number;
   beatsPerBar: number;
   /** Index into `beats` of the first bar start. */

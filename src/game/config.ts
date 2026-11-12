@@ -164,9 +164,11 @@ export const TIMING = {
   inputLatencyMs: 100,
   /** Extra delay between sound and picture. Tuned with , and . */
   avOffsetMs: 0,
-  /** The Short length ends at the first bar start at or after this time. */
+  /** The Short length ends at the first bar start this long after its start. */
   shortSec: 90,
   fadeSec: 2,
+  /** A round that starts inside the song fades in, so the music does not jump in. */
+  fadeInSec: 0.3,
   /** Time to get from the laptop to the play spot before the reach fit. */
   walkBackSec: 8,
   fitSec: 6,
