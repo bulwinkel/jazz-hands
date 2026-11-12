@@ -129,6 +129,11 @@ export class MenuPreview {
   /** The song whose preview plays or is about to play, as an index into SONGS. */
   private song: number | null = null;
   private timer = 0;
+  /**
+   * Goes up with each new song and each stop. A manifest that arrives late can tell from it that
+   * it is stale, even when the same song was chosen again meanwhile.
+   */
+  private request = 0;
 
   get state(): PreviewState {
     return this.preview.state;
@@ -146,31 +151,35 @@ export class MenuPreview {
     }
     if (song === this.song) return;
     this.song = song;
+    const request = ++this.request;
     this.preview.stop();
     // Wait a moment: a player who steps through the songs hears only the one they stop on.
     window.clearTimeout(this.timer);
-    this.timer = window.setTimeout(() => void this.start(song), PREVIEW.waitSec * 1000);
+    this.timer = window.setTimeout(() => void this.start(song, request), PREVIEW.waitSec * 1000);
   }
 
   /** Stops the preview at once, with no fade. For the end of the visit. */
   dispose(): void {
+    this.request++;
     window.clearTimeout(this.timer);
     this.preview.halt();
   }
 
-  private async start(song: number): Promise<void> {
+  private async start(song: number, request: number): Promise<void> {
     let manifest: Manifest;
     try {
       manifest = await fetchManifest(SONGS[song].manifest);
     } catch {
       return; // No preview for a song whose data does not load. Starting the round reports the error.
     }
-    // The player may have picked another song, or left the menu, while this loaded.
-    if (this.song !== song) return;
+    // The player may have picked another song, or left the menu, while this loaded. A song
+    // picked again since then has a request of its own.
+    if (request !== this.request) return;
     this.preview.start(manifest.audio, previewStartSec(manifest));
   }
 
   private stop(): void {
+    this.request++;
     window.clearTimeout(this.timer);
     this.song = null;
     this.preview.stop();
