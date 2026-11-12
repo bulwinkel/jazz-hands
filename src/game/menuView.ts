@@ -51,8 +51,9 @@ export const MENU_HTML = `
   ${RECORDINGS_HTML}`;
 
 /**
- * Two switches in a top corner of the menu. They are outside the scaled content, a little in
- * from the side: the camera tracks a hand badly at the edge of its picture.
+ * Four switches in a top corner of the menu: previews, hand control, recording and the cue
+ * style. They are outside the scaled content, a little in from the side: the camera tracks a
+ * hand badly at the edge of its picture.
  */
 export const MENU_SWITCHES_HTML = `
   <div class="corner">
@@ -166,7 +167,7 @@ function playerCard(player: PlayerIndex, settings: Settings, onChange: () => voi
 export function buildMenu(panel: HTMLElement, settings: Settings, handlers: MenuHandlers): MenuControls {
   const { onStart, onChange } = handlers;
 
-  // The two switches in the corner. Each shows its state in its text.
+  // The switches in the corner. Each shows its state in its text.
   const handHint = find(panel, '#hand-hint');
   type SwitchKey = 'previews' | 'handControl' | 'record';
   const bindSwitch = (id: string, key: SwitchKey, label: string, icons: [string, string]): void => {

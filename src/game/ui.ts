@@ -242,7 +242,7 @@ export class GameUI {
 
   /**
    * Shows a ring at each hand (filled while the hand is a fist), a highlight on the item under
-   * a hand, and inside that item a bar for how far the fist hold has come.
+   * a hand, and on that item the cue style's mark for how far the fist hold has come.
    * `hands` are screen positions. Call it with no hands to clear everything.
    */
   showHands(hands: readonly MenuHand[], hoveredId: string | null, progress: number): void {
