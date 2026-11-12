@@ -1,4 +1,4 @@
-import type { GestureName } from '../tracking/types';
+import type { FaceExpression, GestureName } from '../tracking/types';
 
 export type Level = 1 | 2 | 3;
 export type PlayerIndex = 0 | 1;
@@ -38,6 +38,16 @@ export interface Cue {
   times: number[];
   /** Required hand shape. Single-cell taps only. */
   gesture?: GestureName;
+}
+
+/**
+ * One face to pull, for one player. Face cues are a list of their own, apart from the hand
+ * cues, because a face cue can fall on the same beat as a hand cue.
+ */
+export interface FaceCue {
+  timeSec: number;
+  beatIndex: number;
+  expression: FaceExpression;
 }
 
 /** All rectangles and points are fractions of the camera frame, in mirrored screen space. */

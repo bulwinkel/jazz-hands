@@ -9,6 +9,8 @@ export interface Settings {
   levels: [Level, Level];
   /** Whether each player gets hand-shape cues. */
   shapes: [boolean, boolean];
+  /** Whether each player gets face cues. */
+  faces: [boolean, boolean];
   length: SongLength;
   inputLatencyMs: number;
   avOffsetMs: number;
@@ -39,6 +41,7 @@ export function defaultSettings(): Settings {
     playerCount: 2,
     levels: [2, 1],
     shapes: [false, false],
+    faces: [false, false],
     length: 'short',
     inputLatencyMs: TIMING.inputLatencyMs,
     avOffsetMs: TIMING.avOffsetMs,
@@ -70,8 +73,10 @@ function readStored(stored: unknown): Settings {
   for (const player of [0, 1] as const) {
     const level = Array.isArray(saved.levels) ? saved.levels[player] : undefined;
     const shapes = Array.isArray(saved.shapes) ? saved.shapes[player] : undefined;
+    const faces = Array.isArray(saved.faces) ? saved.faces[player] : undefined;
     if (isLevel(level)) settings.levels[player] = level;
     if (typeof shapes === 'boolean') settings.shapes[player] = shapes;
+    if (typeof faces === 'boolean') settings.faces[player] = faces;
   }
   const songIndex = saved.songIndex;
   if (typeof songIndex === 'number' && Number.isInteger(songIndex) && songIndex >= 0 && songIndex < SONGS.length) {
@@ -84,7 +89,7 @@ function readStored(stored: unknown): Settings {
 
 /**
  * URL parameters, all optional:
- *   players=1|2   p0, p1=1..3   shapes0, shapes1=1|0   length=short|full
+ *   players=1|2   p0, p1=1..3   shapes0, shapes1=1|0   faces0, faces1=1|0   length=short|full
  *   tracker=hands-full|hands-split|pose   input=camera|mouse|bot
  *   start=<seconds>   autostart=1   seed=<integer>   botAccuracy=<0..1>
  */
@@ -100,6 +105,7 @@ export function parseSettings(stored: unknown, query: string): Options {
     const level = numberParam(`p${player}`);
     if (isLevel(level)) settings.levels[player] = level;
     if (params.has(`shapes${player}`)) settings.shapes[player] = params.get(`shapes${player}`) === '1';
+    if (params.has(`faces${player}`)) settings.faces[player] = params.get(`faces${player}`) === '1';
   }
   const length = params.get('length');
   if (isLength(length)) settings.length = length;

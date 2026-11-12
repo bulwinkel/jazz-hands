@@ -1,17 +1,26 @@
 import { createTracker, startCamera } from '../tracking';
-import type { GestureName, PlayerTracking, Tracker, TrackerMode, TrackingFrame } from '../tracking/types';
+import type {
+  FaceRegions,
+  GestureName,
+  PlayerTracking,
+  Tracker,
+  TrackerMode,
+  TrackingFrame,
+} from '../tracking/types';
 import { botPlayer } from './bot';
 import { containRect } from './geometry';
 import type { PlayerRun } from './player';
 import type { Options } from './settings';
 import type { Phase, PlayerCount, Point } from './types';
 
-/** What an input needs to know about the game. Only the test inputs use it. */
+/** What an input needs to know about the game. The camera uses the face regions only. */
 export interface InputView {
   phase: Phase;
   songTimeSec: number;
   playerCount: PlayerCount;
-  players: readonly Pick<PlayerRun, 'index' | 'cues' | 'grid'>[];
+  players: readonly Pick<PlayerRun, 'index' | 'cues' | 'faceCues' | 'grid'>[];
+  /** Where to look for each player's face in this frame. Null while the game needs no face. */
+  faceRegions: FaceRegions;
 }
 
 /** A source of tracking frames: the camera, or a stand-in for tests. */
@@ -34,13 +43,16 @@ export interface GameInput {
 export class CameraInput implements GameInput {
   video?: HTMLVideoElement;
   private tracker: Tracker;
+  /** Whether the trackers load the face models. */
+  private readonly faces: boolean;
   private running = false;
   private videoCallbackId = 0;
   private animationId = 0;
   private lastVideoTime = -1;
 
-  constructor(mode: TrackerMode) {
-    this.tracker = createTracker(mode);
+  constructor(mode: TrackerMode, faces: boolean) {
+    this.faces = faces;
+    this.tracker = createTracker(mode, { faces });
   }
 
   get mode(): string {
@@ -48,7 +60,8 @@ export class CameraInput implements GameInput {
   }
 
   get delegate(): string {
-    return this.tracker.delegate;
+    const { delegate, faceDelegate } = this.tracker;
+    return this.faces ? `${delegate} · faces ${faceDelegate}` : delegate;
   }
 
   async init(): Promise<void> {
@@ -65,7 +78,7 @@ export class CameraInput implements GameInput {
     }
   }
 
-  start(_view: () => InputView, onFrame: (frame: TrackingFrame) => void, onError: (error: unknown) => void): void {
+  start(view: () => InputView, onFrame: (frame: TrackingFrame) => void, onError: (error: unknown) => void): void {
     const video = this.video;
     if (!video) throw new Error('The camera is not ready.');
     this.running = true;
@@ -73,7 +86,7 @@ export class CameraInput implements GameInput {
     const track = (): void => {
       if (!this.running) return;
       try {
-        onFrame(this.tracker.process(video, performance.now()));
+        onFrame(this.tracker.process(video, performance.now(), view().faceRegions));
       } catch (error) {
         this.running = false;
         onError(error);
@@ -103,7 +116,7 @@ export class CameraInput implements GameInput {
 
   /** Swaps the tracker only after the new one has loaded, so tracking never stops on a failure. */
   async setMode(mode: TrackerMode): Promise<void> {
-    const replacement = createTracker(mode);
+    const replacement = createTracker(mode, { faces: this.faces });
     try {
       await replacement.init();
     } catch (error) {
@@ -131,7 +144,7 @@ const GESTURE_KEYS: Record<string, GestureName> = { '1': 'fist', '2': 'open', '3
 /**
  * A stand-in for the camera, for tests and for trying the game at a desk.
  * `mouse`: the pointer is a hand. Hold 1 to 4 for fist, open, point or peace.
- * `bot`: simulated hands play the chart.
+ * `bot`: simulated hands, and a simulated face, play the chart.
  */
 export class SimulatedInput implements GameInput {
   readonly mode: string;
@@ -182,14 +195,19 @@ export class SimulatedInput implements GameInput {
   private botPlayers(view: InputView): [PlayerTracking, PlayerTracking] {
     const players: [PlayerTracking, PlayerTracking] = [{ hands: [] }, { hands: [] }];
     for (const player of view.players) {
-      players[player.index] = botPlayer(
+      const tracked = botPlayer(
         view.phase,
         view.songTimeSec,
         player.cues,
         player.grid,
         this.options.botAccuracy,
         this.options.seed,
+        player.faceCues,
       );
+      // The camera tracker reports a face only where the game asked for one. The bot does
+      // the same, so a bot run also proves that the game asks at the right times.
+      const faceAskedFor = view.faceRegions[player.index] !== null;
+      players[player.index] = faceAskedFor ? tracked : { hands: tracked.hands };
     }
     return players;
   }
@@ -232,5 +250,9 @@ export class SimulatedInput implements GameInput {
 }
 
 export function createInput(options: Options, trackerMode: TrackerMode, surface: HTMLElement): GameInput {
-  return options.input === 'camera' ? new CameraInput(trackerMode) : new SimulatedInput(options, surface);
+  if (options.input !== 'camera') return new SimulatedInput(options, surface);
+  // Load the face models only when a player in this session has faces on.
+  const { faces, playerCount } = options.settings;
+  const anyFaces = faces.slice(0, playerCount).some((on) => on);
+  return new CameraInput(trackerMode, anyFaces);
 }

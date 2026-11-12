@@ -1,4 +1,4 @@
-import type { GestureName, TrackerMode } from '../tracking/types';
+import type { FaceExpression, GestureName, TrackerMode } from '../tracking/types';
 import type { Level, PlayerCount } from './types';
 
 /**
@@ -98,6 +98,22 @@ export const CHART = {
   gesturePool: ['fist', 'open', 'point', 'peace'] satisfies GestureName[],
 } as const;
 
+/** Face cues, for a player who switches faces on. They do not depend on the level. */
+export const FACES = {
+  /** One face cue on a bar start, every this many bars. */
+  everyBars: 2,
+  /** No face cue where the music is quieter than this. */
+  minIntensity: 0.35,
+  /** The expressions a cue can ask for. A cue never asks for the same one as the cue before it. */
+  pool: ['smile', 'openMouth', 'pucker'] satisfies FaceExpression[],
+  /** A face shows an expression when the tracker reads at least this strength, 0..1. */
+  thresholds: { smile: 0.5, openMouth: 0.4, pucker: 0.5 } satisfies Record<FaceExpression, number>,
+  /** The tracker looks for a face in a box this many cells wide, centred on the grid. */
+  regionCells: 2,
+  /** That box runs from the grid top down to this share of the grid height. */
+  regionHeight: 0.6,
+} as const;
+
 export const GRID = {
   /** A hand counts as inside a cell this far beyond its edge, as a share of the cell size. */
   cellMargin: 0.12,
@@ -145,6 +161,12 @@ export const BOT = {
 } as const;
 
 export const PLAYER_COLORS = ['#22d3ee', '#e879f9'] as const;
+
+export const FACE_EMOJI: Record<FaceExpression, string> = {
+  smile: '😀',
+  openMouth: '😮',
+  pucker: '😗',
+};
 
 export const GESTURE_EMOJI: Partial<Record<GestureName, string>> = {
   fist: '✊',

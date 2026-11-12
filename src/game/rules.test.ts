@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { TrackedHand, TrackingFrame } from '../tracking/types';
+import type { TrackedFace, TrackedHand, TrackingFrame } from '../tracking/types';
 import { synthetic } from './fixtures';
 import { playLengthSec, validateManifest } from './manifest';
 import { accuracy, award, freshScore, stars } from './scoring';
@@ -80,5 +80,27 @@ describe('one-player hand merge', () => {
   it('keeps the two largest hands', () => {
     const merged = mergeForSolo(frame([hand(0.1, 0.05), hand(0.2, 0.2)], [hand(0.8, 0.15), hand(0.9, 0.01)]));
     expect(merged.players[0].hands.map((h) => h.size)).toEqual([0.2, 0.15]);
+  });
+});
+
+describe('one-player face merge', () => {
+  const face: TrackedFace = { x: 0.6, y: 0.3, expressions: { smile: 0.9, openMouth: 0, pucker: 0 } };
+  const frame = (left?: TrackedFace, right?: TrackedFace): TrackingFrame => ({
+    timeMs: 5,
+    inferenceMs: 1,
+    players: [
+      { hands: [], face: left },
+      { hands: [], face: right },
+    ],
+  });
+
+  it('gives player 0 the face, whichever player it was found for', () => {
+    expect(mergeForSolo(frame(face)).players[0].face).toBe(face);
+    expect(mergeForSolo(frame(undefined, face)).players[0].face).toBe(face);
+    expect(mergeForSolo(frame(undefined, face)).players[1].face).toBeUndefined();
+  });
+
+  it('adds no face when none was found', () => {
+    expect('face' in mergeForSolo(frame()).players[0]).toBe(false);
   });
 });

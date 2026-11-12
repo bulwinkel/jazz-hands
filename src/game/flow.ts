@@ -1,8 +1,10 @@
-import type { TrackerMode, TrackingFrame } from '../tracking/types';
+import type { FaceExpression, FaceRegions, TrackedFace, TrackerMode, TrackingFrame } from '../tracking/types';
 import { SongAudio } from './audio';
 import { generateChart } from './chart';
-import { DEFAULT_TRACKER, HANDS_UP_CELL, LEVELS, SONGS, TIMING } from './config';
-import { cellRect, defaultGrid, fitGrid, insideCell } from './geometry';
+import { DEFAULT_TRACKER, FACE_EMOJI, HANDS_UP_CELL, LEVELS, SONGS, TIMING } from './config';
+import { generateFaceCues } from './faceChart';
+import { judgeFaceFrame, newFaceCueState, openFaceCue } from './faceJudgment';
+import { cellRect, defaultGrid, faceRegion, fitGrid, insideCell } from './geometry';
 import { createInput } from './input';
 import type { GameInput, InputView } from './input';
 import { frameSongTime, judgeFrame, newCueState } from './judgment';
@@ -16,7 +18,7 @@ import { award, freshScore } from './scoring';
 import { parseSettings, STORAGE_KEY } from './settings';
 import type { Options } from './settings';
 import { mergeForSolo } from './solo';
-import type { Manifest, Phase, PlayerIndex, Score } from './types';
+import type { Manifest, Phase, PlayerIndex, Rating, Score } from './types';
 import { GameUI } from './ui';
 
 /** Live state for automated checks, at `window.__dance`. Always two player entries. */
@@ -174,6 +176,10 @@ export class DanceGame {
           endSec: this.endSec,
         });
         player.cues = chart.filter((cue) => cue.timeSec >= this.startSec);
+        if (player.faces) {
+          const faceCues = generateFaceCues(manifest, this.options.seed, this.endSec);
+          player.faceCues = faceCues.filter((cue) => cue.timeSec >= this.startSec);
+        }
       }
 
       if (input.video) this.ui.stage.prepend(input.video);
@@ -223,6 +229,7 @@ export class DanceGame {
     for (const player of this.players) {
       player.score = freshScore();
       player.states = player.cues.map(newCueState);
+      player.faceStates = player.faceCues.map(newFaceCueState);
     }
     this.ui.hidePanel();
     this.setPhase('countdown');
@@ -263,6 +270,7 @@ export class DanceGame {
     const frame = this.options.settings.playerCount === 1 ? mergeForSolo(raw) : raw;
     const previous = this.frame;
     this.frame = frame;
+    this.rememberFaces(frame);
 
     if (this.phase === 'fit') {
       this.collectReach(frame);
@@ -273,6 +281,14 @@ export class DanceGame {
       this.judge(frameSongTime(this.songTime(), performance.now(), frame.timeMs, inputLatencyMs), frame);
     }
   };
+
+  /** Keeps where each face was last found. A face cue is drawn there, on the player's own face. */
+  private rememberFaces(frame: TrackingFrame): void {
+    for (const player of this.players) {
+      const face = frame.players[player.index].face;
+      if (face) player.faceSeenAt = { x: face.x, y: face.y };
+    }
+  }
 
   /** Reach fit: grows each player's grid around the hand positions seen so far. */
   private collectReach(frame: TrackingFrame): void {
@@ -314,6 +330,20 @@ export class DanceGame {
         player.states[i] = next;
         if (next.result) this.award(player, next);
       }
+      this.judgeFaceCues(player, timeSec, frame?.players[player.index].face);
+    }
+  }
+
+  /** The same as for hand cues: with no face, it only closes cues whose time has passed. */
+  private judgeFaceCues(player: PlayerRun, timeSec: number, face: TrackedFace | undefined): void {
+    const opensAheadSec = -LEVELS[player.level].goodMs[0] / 1000;
+    for (let i = 0; i < player.faceStates.length; i++) {
+      const state = player.faceStates[i];
+      if (state.cue.timeSec - opensAheadSec > timeSec) break; // This cue and all later ones are not open yet.
+      if (state.result) continue;
+      const next = judgeFaceFrame(state, player.level, face, timeSec);
+      player.faceStates[i] = next;
+      if (next.result) this.awardFace(player, next.result);
     }
   }
 
@@ -324,7 +354,13 @@ export class DanceGame {
     // A slide shows its result where it ends. A tap shows it on each of its cells.
     const cells = cue.kind === 'slide' ? cue.cells.slice(-1) : cue.cells;
     const atMs = performance.now();
-    for (const cell of cells) this.feedback.push({ player: player.index, cell, result, atMs });
+    for (const cell of cells) this.feedback.push({ player: player.index, target: cell, result, atMs });
+  }
+
+  /** A face cue scores exactly like a hand cue. Its result shows on the player's face. */
+  private awardFace(player: PlayerRun, result: Rating): void {
+    player.score = award(player.score, result);
+    this.feedback.push({ player: player.index, target: 'face', result, atMs: performance.now() });
   }
 
   // --- Controls ---
@@ -532,9 +568,29 @@ export class DanceGame {
       `FPS ${this.fps.toFixed(0)} · inference ${this.frame?.inferenceMs.toFixed(1) ?? '—'} ms`,
       `${this.input?.mode ?? this.trackerMode()} · ${this.input?.delegate ?? '—'}`,
       `Hands ${hands}`,
+      ...this.faceDebugLines(),
       `Input ${settings.inputLatencyMs} ms · AV ${settings.avOffsetMs} ms`,
       `Song ${this.songTime().toFixed(3)} s`,
     ].join('\n');
+  }
+
+  /**
+   * One line for each player with faces on: the strength of each expression in the latest
+   * frame. The tracker reads a face only while a face cue is open, so the line shows a dash
+   * between cues.
+   */
+  private faceDebugLines(): string[] {
+    const expressions = Object.keys(FACE_EMOJI) as FaceExpression[];
+    return this.players
+      .filter((player) => player.faces)
+      .map((player) => {
+        const face = this.frame?.players[player.index].face;
+        const strengths = expressions.map((expression) => {
+          const strength = face ? face.expressions[expression].toFixed(2) : '—';
+          return `${FACE_EMOJI[expression]} ${strength}`;
+        });
+        return `Face P${player.index + 1} · ${strengths.join(' · ')}`;
+      });
   }
 
   // --- Small helpers ---
@@ -558,7 +614,24 @@ export class DanceGame {
     songTimeSec: this.songTime(),
     playerCount: this.options.settings.playerCount,
     players: this.players,
+    faceRegions: this.faceRegions(),
   });
+
+  /**
+   * Where the tracker looks for each player's face in the next frame. It looks only while
+   * one of that player's face cues is open. At all other times the face models do no work,
+   * so hand tracking keeps its full speed.
+   */
+  private faceRegions(): FaceRegions {
+    const regions: FaceRegions = [null, null];
+    if (this.phase !== 'play') return regions;
+    const timeSec = this.songTime();
+    for (const player of this.players) {
+      const cueIsOpen = openFaceCue(player.faceStates, player.level, timeSec) !== undefined;
+      if (cueIsOpen) regions[player.index] = faceRegion(player.grid);
+    }
+    return regions;
+  }
 
   private saveSettings = (): void => {
     try {
@@ -574,8 +647,8 @@ export class DanceGame {
       songTime: this.songTime(),
       players: PLAYER_SLOTS.map((index) => {
         const player = this.players.find((p) => p.index === index);
-        if (!player) return { ...freshScore(), level: 0, chart: summariseChart([]) };
-        return { ...player.score, level: player.level, chart: summariseChart(player.cues) };
+        if (!player) return { ...freshScore(), level: 0, chart: summariseChart([], []) };
+        return { ...player.score, level: player.level, chart: summariseChart(player.cues, player.faceCues) };
       }),
     };
   }

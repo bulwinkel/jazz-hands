@@ -1,4 +1,4 @@
-import { GRID } from './config';
+import { FACES, GRID } from './config';
 import type { PlayerCount, PlayerIndex, Point, Rect } from './types';
 
 const clamp = (value: number, low: number, high: number): number => Math.max(low, Math.min(value, high));
@@ -48,6 +48,20 @@ export function insideCell(point: Point, cell: Rect, margin: number = GRID.cellM
     point.y >= cell.y - padY &&
     point.y <= cell.y + cell.height + padY
   );
+}
+
+/**
+ * Where the tracker looks for a player's face: the upper middle of their grid.
+ * The grid is fitted to the player's reach, so their head is inside this box. A face is
+ * too small to find in the whole frame, and large enough in this part of it.
+ */
+export function faceRegion(grid: Rect): Rect {
+  const width = (grid.width / 3) * FACES.regionCells;
+  const left = clamp(grid.x + (grid.width - width) / 2, 0, 1);
+  const right = clamp(grid.x + (grid.width + width) / 2, 0, 1);
+  const top = clamp(grid.y, 0, 1);
+  const bottom = clamp(grid.y + grid.height * FACES.regionHeight, 0, 1);
+  return { x: left, y: top, width: right - left, height: bottom - top };
 }
 
 /** Linear-interpolated percentile, with `p` from 0 to 1. */

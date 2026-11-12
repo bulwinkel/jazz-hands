@@ -56,7 +56,23 @@ function bindRadios(root: ParentNode, name: string, current: string, onPick: (va
   }
 }
 
-/** One player's choices: level and hand shapes. */
+/** Ties a checkbox to one player's entry in a pair of switches. */
+function bindSwitch(
+  root: ParentNode,
+  selector: string,
+  switches: [boolean, boolean],
+  player: PlayerIndex,
+  onChange: () => void,
+): void {
+  const input = find<HTMLInputElement>(root, selector);
+  input.checked = switches[player];
+  input.addEventListener('change', () => {
+    switches[player] = input.checked;
+    onChange();
+  });
+}
+
+/** One player's choices: level, hand shapes and faces. */
 function playerCard(player: PlayerIndex, settings: Settings, onChange: () => void): HTMLElement {
   const side = player === 0 ? 'Left' : 'Right';
   const title = settings.playerCount === 1 ? 'Your level' : `Player ${player + 1} · ${side}`;
@@ -73,18 +89,17 @@ function playerCard(player: PlayerIndex, settings: Settings, onChange: () => voi
   card.innerHTML = `
     <legend>${title}</legend>
     <div class="level-options">${levelOptions}</div>
-    <label class="shapes"><input type="checkbox"><span>Hand shapes ✊ ✋ ☝️ ✌️</span></label>`;
+    <div class="switches">
+      <label class="shapes"><input type="checkbox"><span>Hand shapes ✊ ✋ ☝️ ✌️</span></label>
+      <label class="faces"><input type="checkbox"><span>Faces 😀 😮 😗</span></label>
+    </div>`;
 
   bindRadios(card, `level${player}`, String(settings.levels[player]), (value) => {
     settings.levels[player] = Number(value) as Level;
     onChange();
   });
-  const shapes = find<HTMLInputElement>(card, '.shapes input');
-  shapes.checked = settings.shapes[player];
-  shapes.addEventListener('change', () => {
-    settings.shapes[player] = shapes.checked;
-    onChange();
-  });
+  bindSwitch(card, '.shapes input', settings.shapes, player, onChange);
+  bindSwitch(card, '.faces input', settings.faces, player, onChange);
   return card;
 }
 

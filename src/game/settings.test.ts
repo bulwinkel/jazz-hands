@@ -14,12 +14,33 @@ describe('kept settings', () => {
       playerCount: 1,
       levels: [3, 2],
       shapes: [true, false],
+      faces: [false, true],
       length: 'full',
       inputLatencyMs: 120,
       avOffsetMs: -30,
       songIndex: 0,
     };
     expect(parseSettings(kept, '').settings).toEqual(kept);
+  });
+
+  it('keep faces off for settings kept before faces existed', () => {
+    const beforeFaces = {
+      playerCount: 1,
+      levels: [3, 2],
+      shapes: [true, false],
+      length: 'full',
+      inputLatencyMs: 120,
+      avOffsetMs: -30,
+      songIndex: 0,
+    };
+    const { settings } = parseSettings(beforeFaces, '');
+    expect(settings.faces).toEqual([false, false]);
+    expect(settings).toMatchObject(beforeFaces);
+  });
+
+  it('ignore a faces value that is not a switch', () => {
+    expect(parseSettings({ faces: 'yes' }, '').settings.faces).toEqual([false, false]);
+    expect(parseSettings({ faces: [1, true] }, '').settings.faces).toEqual([false, true]);
   });
 
   it('survive settings kept by the first version of the game', () => {
@@ -51,6 +72,14 @@ describe('URL parameters', () => {
       length: 'full',
       inputLatencyMs: 120,
     });
+  });
+
+  it('switch faces on and off for each player', () => {
+    expect(parseSettings(null, '').settings.faces).toEqual([false, false]);
+    expect(parseSettings(null, '?faces0=1').settings.faces).toEqual([true, false]);
+    expect(parseSettings(null, '?faces1=1').settings.faces).toEqual([false, true]);
+    expect(parseSettings(null, '?faces0=1&faces1=1').settings.faces).toEqual([true, true]);
+    expect(parseSettings({ faces: [true, true] }, '?faces0=0').settings.faces).toEqual([false, true]);
   });
 
   it('set the one-off options', () => {

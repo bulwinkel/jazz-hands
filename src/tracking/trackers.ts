@@ -1,9 +1,18 @@
 import { FilesetResolver, GestureRecognizer, PoseLandmarker } from '@mediapipe/tasks-vision';
 import type { GestureRecognizerResult } from '@mediapipe/tasks-vision';
 import { TRACKING_THRESHOLDS } from './config';
+import { FaceTracker } from './faceTracker';
 import { assignHands, cropToFrame, FULL_FRAME, gestureName, handSize, palmCentre, posePlayers } from './geometry';
 import type { Crop } from './geometry';
-import type { TrackedHand, Tracker, TrackerDelegate, TrackerMode, TrackingFrame } from './types';
+import type {
+  FaceRegions,
+  TrackedHand,
+  Tracker,
+  TrackerDelegate,
+  TrackerMode,
+  TrackerOptions,
+  TrackingFrame,
+} from './types';
 
 let fileset: ReturnType<typeof FilesetResolver.forVisionTasks> | undefined;
 function runtime() {
@@ -28,10 +37,19 @@ export class MediaPipeTracker implements Tracker {
   private gestures: GestureRecognizer[] = [];
   private pose?: PoseLandmarker;
   private crops: HTMLCanvasElement[] = [];
+  /** Set only for a tracker created with faces. Without it, no face model is ever loaded. */
+  private faces?: FaceTracker;
   private disposed = false;
 
-  constructor(mode: TrackerMode) { this.mode = mode; }
+  constructor(mode: TrackerMode, options: TrackerOptions = {}) {
+    this.mode = mode;
+    if (options.faces) this.faces = new FaceTracker();
+  }
   get delegate(): TrackerDelegate { return this.activeDelegate; }
+
+  get faceDelegate(): TrackerDelegate {
+    return this.faces?.delegate ?? 'uninitialized';
+  }
 
   init(): Promise<void> {
     if (this.disposed) return Promise.reject(new Error('Tracker is disposed.'));
@@ -81,9 +99,11 @@ export class MediaPipeTracker implements Tracker {
     if (this.mode === 'hands-split') {
       this.crops = [document.createElement('canvas'), document.createElement('canvas')];
     }
+    // The face models load after the hand models, one at a time like them.
+    await this.faces?.init(wasm);
   }
 
-  process(video: HTMLVideoElement, nowMs: number): TrackingFrame {
+  process(video: HTMLVideoElement, nowMs: number, faceRegions?: FaceRegions): TrackingFrame {
     if (this.disposed || this.delegate === 'uninitialized') throw new Error('Tracker is not ready.');
     if (!video.videoWidth || !video.videoHeight) throw new Error('Camera has no video frame.');
     const start = performance.now();
@@ -113,6 +133,12 @@ export class MediaPipeTracker implements Tracker {
       }
       players = assignHands(hands); // Raw right half becomes mirrored player 0.
     }
+    if (this.faces && faceRegions) {
+      const faces = this.faces.detect(video, nowMs, faceRegions);
+      faces.forEach((face, slot) => {
+        if (face) players[slot].face = face;
+      });
+    }
     return { timeMs: nowMs, inferenceMs: performance.now() - start, players };
   }
 
@@ -126,6 +152,7 @@ export class MediaPipeTracker implements Tracker {
   dispose(): void {
     this.disposed = true;
     this.closeModels();
+    this.faces?.dispose();
     this.crops = [];
   }
 }

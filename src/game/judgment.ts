@@ -15,7 +15,7 @@ export interface CueState {
   result?: Rating;
 }
 
-const EPSILON_MS = 1e-6;
+export const EPSILON_MS = 1e-6;
 
 export function newCueState(cue: Cue): CueState {
   return { cue, marks: cue.cells.map(() => null) };
@@ -34,7 +34,7 @@ export function frameSongTime(
   return songTimeNowSec - (nowMs - frameTimeMs) / 1000 - inputLatencyMs / 1000;
 }
 
-function within(deltaMs: number, [early, late]: WindowMs): boolean {
+export function within(deltaMs: number, [early, late]: WindowMs): boolean {
   return deltaMs >= early - EPSILON_MS && deltaMs <= late + EPSILON_MS;
 }
 

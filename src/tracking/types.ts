@@ -18,7 +18,32 @@ export interface TrackedHand {
   landmarks?: Point[];
 }
 
-export interface PlayerTracking { hands: TrackedHand[] }
+export type FaceExpression = 'smile' | 'openMouth' | 'pucker';
+
+export interface TrackedFace {
+  /** Face centre in mirrored display space, normalised to the full frame. */
+  x: number;
+  y: number;
+  /** Strength of each expression, 0..1. */
+  expressions: Record<FaceExpression, number>;
+}
+
+export interface PlayerTracking {
+  hands: TrackedHand[];
+  /** Present only when a face region was requested for this player and a face was found in it. */
+  face?: TrackedFace;
+}
+
+/** A rectangle, as fractions of the camera frame. */
+export interface Region {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Where to look for each player's face, in mirrored display space. Null skips that player. */
+export type FaceRegions = [Region | null, Region | null];
 
 export interface TrackingFrame {
   /** performance.now() when the processed video frame was taken. */
@@ -31,11 +56,21 @@ export interface TrackingFrame {
 export type TrackerMode = 'hands-full' | 'hands-split' | 'pose';
 export type TrackerDelegate = 'GPU' | 'CPU' | 'uninitialized';
 
+export interface TrackerOptions {
+  /** Load the face model with the hand models, so the first face region causes no hitch. */
+  faces?: boolean;
+}
+
 export interface Tracker {
   readonly mode: TrackerMode;
   readonly delegate: TrackerDelegate;
+  /** What the face models run on. 'uninitialized' for a tracker created without faces. */
+  readonly faceDelegate: TrackerDelegate;
   init(): Promise<void>;
-  /** Run synchronous inference on the current video frame. Call once per frame. */
-  process(video: HTMLVideoElement, nowMs: number): TrackingFrame;
+  /**
+   * Run synchronous inference on the current video frame. Call once per frame.
+   * Face work happens only for the regions given, and only in a tracker created with faces.
+   */
+  process(video: HTMLVideoElement, nowMs: number, faceRegions?: FaceRegions): TrackingFrame;
   dispose(): void;
 }

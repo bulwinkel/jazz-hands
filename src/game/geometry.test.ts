@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { cellRect, containRect, defaultGrid, fitGrid, insideCell, percentile, playSpan } from './geometry';
+import {
+  cellRect,
+  containRect,
+  defaultGrid,
+  faceRegion,
+  fitGrid,
+  insideCell,
+  percentile,
+  playSpan,
+} from './geometry';
 import type { Point } from './types';
 
 const repeat = (count: number, point: (i: number) => Point): Point[] => Array.from({ length: count }, (_, i) => point(i));
@@ -89,5 +98,38 @@ describe('reach fit', () => {
 describe('containRect', () => {
   it('letterboxes a wide frame in a square box', () => {
     expect(containRect(1000, 1000, 2)).toEqual({ x: 0, y: 250, width: 1000, height: 500 });
+  });
+});
+
+describe('face region', () => {
+  it('is two cells wide, centred on the grid, from the grid top down to 60% of its height', () => {
+    const region = faceRegion({ x: 0.1, y: 0.2, width: 0.3, height: 0.5 });
+    expect(region.x).toBeCloseTo(0.15);
+    expect(region.width).toBeCloseTo(0.2);
+    expect(region.y).toBeCloseTo(0.2);
+    expect(region.height).toBeCloseTo(0.3);
+  });
+
+  it('stays inside the grid of every default layout', () => {
+    for (const grid of [defaultGrid(0, 2), defaultGrid(1, 2), defaultGrid(0, 1)]) {
+      const region = faceRegion(grid);
+      expect(region.x + region.width / 2).toBeCloseTo(grid.x + grid.width / 2);
+      expect(region.x).toBeGreaterThan(grid.x);
+      expect(region.y).toBe(grid.y);
+      expect(region.y + region.height).toBeLessThan(grid.y + grid.height);
+    }
+  });
+
+  it('is cut to the frame', () => {
+    const offLeftAndTop = faceRegion({ x: -0.2, y: -0.1, width: 0.6, height: 0.5 });
+    expect(offLeftAndTop.x).toBe(0);
+    expect(offLeftAndTop.y).toBe(0);
+    expect(offLeftAndTop.width).toBeCloseTo(0.3);
+    expect(offLeftAndTop.height).toBeCloseTo(0.2);
+
+    const offRightAndBottom = faceRegion({ x: 0.7, y: 0.6, width: 0.6, height: 1 });
+    expect(offRightAndBottom.x).toBeCloseTo(0.8);
+    expect(offRightAndBottom.x + offRightAndBottom.width).toBe(1);
+    expect(offRightAndBottom.y + offRightAndBottom.height).toBe(1);
   });
 });

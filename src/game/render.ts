@@ -1,6 +1,7 @@
 import type { GestureName, TrackingFrame } from '../tracking/types';
-import { GESTURE_EMOJI, HANDS_UP_CELL, LEVELS, PLAYER_COLORS, TIMING } from './config';
-import { cellRect, containRect } from './geometry';
+import { FACE_EMOJI, GESTURE_EMOJI, HANDS_UP_CELL, LEVELS, PLAYER_COLORS, TIMING } from './config';
+import { openFaceCue } from './faceJudgment';
+import { cellRect, containRect, faceRegion } from './geometry';
 import type { CueState } from './judgment';
 import type { PlayerRun } from './player';
 import type { Manifest, Phase, PlayerIndex, Point, Rating, Rect } from './types';
@@ -8,7 +9,8 @@ import type { Manifest, Phase, PlayerIndex, Point, Rating, Rect } from './types'
 /** A short flash that tells a player how a cue went. */
 export interface Feedback {
   player: PlayerIndex;
-  cell: number;
+  /** Where the flash shows: the grid cell of a hand cue, or the player's face for a face cue. */
+  target: number | 'face';
   result: Rating;
   /** `performance.now()` when the cue became final. */
   atMs: number;
@@ -31,6 +33,12 @@ const WHITE = '#ffffff';
 const BEAT_PULSE_SEC = 0.22;
 /** A cue's closing outline starts this many times larger than its cell. */
 const OUTLINE_START_SCALE = 2.2;
+/** A face cue's emoji, as a share of the shorter side of a grid cell. Large, to read from 2.5 m. */
+const FACE_EMOJI_SCALE = 0.7;
+/** The emoji is a little see-through, so a hand cue under it stays visible. */
+const FACE_EMOJI_ALPHA = 0.8;
+/** The ring around the emoji, as a share of the emoji size. It sits just outside the emoji. */
+const FACE_RING_SCALE = 0.6;
 
 const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
 const centreOf = (rect: Rect): Point => ({ x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 });
@@ -93,6 +101,7 @@ export class GameRenderer {
       const color = PLAYER_COLORS[player.index];
       if (view.phase !== 'results') this.drawGrid(player.grid, color, pulse);
       if (view.phase === 'play') this.drawCues(player, view.songTimeSec, color);
+      if (view.phase === 'play') this.drawFaceCue(player, view.songTimeSec, color);
       if (view.phase === 'ready' || view.phase === 'results') this.drawHandsUpTarget(player, color);
       if (view.phase !== 'results') this.drawHud(player, view.phase, color);
       this.drawHands(player, view.frame, color);
@@ -126,6 +135,11 @@ export class GameRenderer {
       width: rect.width * frame.width,
       height: rect.height * frame.height,
     };
+  }
+
+  private pointToScreen(point: Point): Point {
+    const frame = this.frameRect;
+    return { x: frame.x + point.x * frame.width, y: frame.y + point.y * frame.height };
   }
 
   // --- Grid and cues ---
@@ -256,6 +270,52 @@ export class GameRenderer {
     ctx.stroke();
   }
 
+  // --- Face cues ---
+
+  /**
+   * The face to pull: an emoji laid over the player's own face like a mask, with a ring
+   * that closes onto it and meets it on the beat, as the outline of a hand cue does.
+   */
+  private drawFaceCue(player: PlayerRun, nowSec: number, color: string): void {
+    const state = openFaceCue(player.faceStates, player.level, nowSec);
+    if (!state) return;
+
+    const centre = this.faceCueCentre(player);
+    const emojiSize = this.faceEmojiSize(player);
+    const radius = emojiSize * FACE_RING_SCALE;
+    const remaining = (state.cue.timeSec - nowSec) / LEVELS[player.level].approachSec;
+    const closingScale = 1 + (OUTLINE_START_SCALE - 1) * clamp01(remaining);
+    const ctx = this.ctx;
+
+    ctx.save();
+    ctx.globalAlpha = FACE_EMOJI_ALPHA;
+    this.text(FACE_EMOJI[state.cue.expression], centre.x, centre.y, emojiSize);
+    ctx.restore();
+
+    this.ring(centre, radius, color, 4);
+    ctx.save();
+    ctx.globalAlpha = 0.9;
+    this.ring(centre, radius * closingScale, color, 4);
+    ctx.restore();
+  }
+
+  /**
+   * Where a face cue and its result show, on the canvas. That is on the player's face once
+   * the tracker has found it. Before that, it is the top-centre of the box the tracker
+   * searches, which is just above where the head should be.
+   */
+  private faceCueCentre(player: PlayerRun): Point {
+    if (player.faceSeenAt) return this.pointToScreen(player.faceSeenAt);
+    const region = this.toScreen(faceRegion(player.grid));
+    const radius = this.faceEmojiSize(player) * FACE_RING_SCALE;
+    return { x: region.x + region.width / 2, y: region.y + radius };
+  }
+
+  private faceEmojiSize(player: PlayerRun): number {
+    const cell = this.toScreen(cellRect(player.grid, 0));
+    return Math.min(cell.width, cell.height) * FACE_EMOJI_SCALE;
+  }
+
   // --- Ready check, HUD, hands ---
 
   /** The cell to hold a hand in, with a ring that fills while the hand stays. */
@@ -319,13 +379,21 @@ export class GameRenderer {
       const ageSec = (nowMs - item.atMs) / 1000;
       if (!player || ageSec > TIMING.feedbackSec) continue;
 
-      const rect = this.toScreen(cellRect(player.grid, item.cell));
-      const centre = centreOf(rect);
       const color = RATING_COLORS[item.result];
+      const missFill = withAlpha(color, 0.33);
       const ctx = this.ctx;
       ctx.save();
       ctx.globalAlpha = 1 - ageSec / TIMING.feedbackSec;
-      if (item.result === 'miss') this.outline(rect, color, 5, withAlpha(color, 0.33));
+      let centre: Point;
+      if (item.target === 'face') {
+        centre = this.faceCueCentre(player);
+        const radius = this.faceEmojiSize(player) * FACE_RING_SCALE;
+        if (item.result === 'miss') this.ring(centre, radius, color, 5, missFill);
+      } else {
+        const rect = this.toScreen(cellRect(player.grid, item.target));
+        centre = centreOf(rect);
+        if (item.result === 'miss') this.outline(rect, color, 5, missFill);
+      }
       if (item.result === 'perfect') this.drawBurst(centre, ageSec, color);
       this.text(item.result.toUpperCase(), centre.x, centre.y - ageSec * 30, this.textSize * 0.85, color);
       ctx.restore();
@@ -367,6 +435,19 @@ export class GameRenderer {
     const ctx = this.ctx;
     ctx.beginPath();
     ctx.roundRect(rect.x, rect.y, rect.width, rect.height, Math.min(16, rect.width * 0.12));
+    if (fill) {
+      ctx.fillStyle = fill;
+      ctx.fill();
+    }
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lineWidth;
+    ctx.stroke();
+  }
+
+  private ring(centre: Point, radius: number, color: string, lineWidth: number, fill?: string): void {
+    const ctx = this.ctx;
+    ctx.beginPath();
+    ctx.arc(centre.x, centre.y, radius, 0, Math.PI * 2);
     if (fill) {
       ctx.fillStyle = fill;
       ctx.fill();

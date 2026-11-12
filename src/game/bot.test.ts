@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { botPlayer } from './bot';
+import { botFace, botPlayer } from './bot';
 import { generateChart } from './chart';
-import { HANDS_UP_CELL } from './config';
+import { BOT, HANDS_UP_CELL } from './config';
+import { generateFaceCues } from './faceChart';
+import { judgeFaceFrame, newFaceCueState } from './faceJudgment';
 import { synthetic } from './fixtures';
-import { cellCentre, defaultGrid } from './geometry';
+import { cellCentre, defaultGrid, faceRegion } from './geometry';
 import { judgeFrame, newCueState } from './judgment';
 import type { Cue, Level, Manifest } from './types';
 
@@ -72,6 +74,69 @@ describe('a bot with accuracy below 1', () => {
   it('skips the same cues on every run, and misses them', () => {
     const first = playThrough(synthetic(100, 90), 2, false, 0.5).results;
     const second = playThrough(synthetic(100, 90), 2, false, 0.5).results;
+    expect(first).toEqual(second);
+    expect(first).toContain('perfect');
+    expect(first).toContain('miss');
+  });
+});
+
+describe('the bot with faces on', () => {
+  /** Plays the whole song at 60 frames a second, hands and face, and returns every final rating. */
+  function playThroughWithFaces(song: Manifest, level: Level, accuracy = 1) {
+    const cues = chart(song, level, true);
+    const faceCues = generateFaceCues(song, SEED, song.durationSec);
+    let states = cues.map(newCueState);
+    let faceStates = faceCues.map(newFaceCueState);
+    for (let tick = 0; tick <= (song.durationSec + 1) * 60; tick++) {
+      const timeSec = tick / 60;
+      const { hands, face } = botPlayer('play', timeSec, cues, grid, accuracy, SEED, faceCues);
+      states = states.map((state) => judgeFrame(state, level, grid, hands, timeSec));
+      faceStates = faceStates.map((state) => judgeFaceFrame(state, level, face, timeSec));
+    }
+    return {
+      faceCues,
+      handResults: states.map((state) => state.result),
+      faceResults: faceStates.map((state) => state.result),
+    };
+  }
+
+  it.each([1, 2, 3] as const)('plays every hand cue and every face cue Perfect at level %i', (level) => {
+    for (const bpm of [100, 150]) {
+      const { faceCues, handResults, faceResults } = playThroughWithFaces(synthetic(bpm, 90), level);
+      expect(faceCues.length).toBeGreaterThan(5);
+      expect(handResults.length).toBeGreaterThan(10);
+      expect(handResults.every((result) => result === 'perfect')).toBe(true);
+      expect(faceResults.every((result) => result === 'perfect')).toBe(true);
+    }
+  });
+
+  it('pulls the face only around a face cue, in the middle of the face region', () => {
+    const [first] = generateFaceCues(synthetic(), SEED, 120);
+    const region = faceRegion(grid);
+
+    expect(botFace(first.timeSec - BOT.leadSec - 0.01, [first], grid, 1, SEED)).toBeUndefined();
+    expect(botFace(first.timeSec + BOT.holdSec + 0.01, [first], grid, 1, SEED)).toBeUndefined();
+
+    const face = botFace(first.timeSec, [first], grid, 1, SEED);
+    expect(face?.x).toBeCloseTo(region.x + region.width / 2);
+    expect(face?.y).toBeCloseTo(region.y + region.height / 2);
+    expect(face?.expressions[first.expression]).toBe(1);
+    const strengths = Object.values(face?.expressions ?? {});
+    expect(strengths.filter((strength) => strength === 0)).toHaveLength(2);
+  });
+
+  it('has no face outside play, and none without face cues', () => {
+    const faceCues = generateFaceCues(synthetic(), SEED, 120);
+    const dueSec = faceCues[0].timeSec;
+    expect(botPlayer('ready', dueSec, [], grid, 1, SEED, faceCues).face).toBeUndefined();
+    expect(botPlayer('results', dueSec, [], grid, 1, SEED, faceCues).face).toBeUndefined();
+    expect(botPlayer('play', dueSec, [], grid, 1, SEED).face).toBeUndefined();
+    expect(botPlayer('play', dueSec, [], grid, 1, SEED, faceCues).face).toBeDefined();
+  });
+
+  it('skips the same face cues on every run when its accuracy is below 1', () => {
+    const first = playThroughWithFaces(synthetic(100, 240), 2, 0.5).faceResults;
+    const second = playThroughWithFaces(synthetic(100, 240), 2, 0.5).faceResults;
     expect(first).toEqual(second);
     expect(first).toContain('perfect');
     expect(first).toContain('miss');
