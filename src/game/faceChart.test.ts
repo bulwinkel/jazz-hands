@@ -3,7 +3,7 @@ import { generateChart } from './chart';
 import { CHART, FACES } from './config';
 import { generateFaceCues } from './faceChart';
 import { synthetic } from './fixtures';
-import { isBarStart, playLengthSec, tailStartSec } from './manifest';
+import { isBarStart, playEndSec, tailStartSec } from './manifest';
 import { summariseChart } from './player';
 import type { FaceCue, Level, Manifest } from './types';
 
@@ -32,7 +32,7 @@ describe('face cues', () => {
     const song = synthetic();
     song.firstDownbeat = 3;
     const twoBarsIn = song.beats[3 + 2 * BEATS_PER_BAR];
-    for (const endSec of [song.durationSec, playLengthSec(song, 'short')]) {
+    for (const endSec of [song.durationSec, playEndSec(song, 'short')]) {
       const cues = faces(song, 22, endSec);
       expect(cues.length).toBeGreaterThan(5);
       for (const cue of cues) {
@@ -66,7 +66,7 @@ describe('face cues', () => {
 
   it('are the same in the Short length as at the start of the Full length', () => {
     const song = synthetic(100, 240);
-    const short = faces(song, 7, playLengthSec(song, 'short'));
+    const short = faces(song, 7, playEndSec(song, 'short'));
     const full = faces(song, 7);
     expect(short.length).toBeGreaterThan(5);
     expect(full.length).toBeGreaterThan(short.length);
@@ -91,11 +91,12 @@ describe('hand charts', () => {
     return hash;
   }
 
-  // Cue count and fingerprint of each level's chart, taken before face cues were added.
+  // Cue count and fingerprint of each level's chart, taken from the game without face cues.
   const BEFORE_FACES: [Level, number, number][] = [
-    [1, 94, 4260542565],
-    [2, 188, 3712398951],
-    [3, 156, 3690640677],
+    [1, 94, 1672571102],
+    [2, 188, 2944844745],
+    [3, 141, 2486315852],
+    [4, 193, 2104804640],
   ];
 
   it.each(BEFORE_FACES)('at level %i are what they were before face cues existed', (level, count, expected) => {

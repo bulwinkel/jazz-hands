@@ -1,6 +1,6 @@
 import type { FaceExpression, TrackedFace } from '../tracking/types';
 import { FACES, LEVELS } from './config';
-import { EPSILON_MS, within } from './judgment';
+import { isInsideWindow } from './judgment';
 import type { CellMark } from './judgment';
 import type { FaceCue, Level, Rating } from './types';
 
@@ -41,13 +41,14 @@ export function judgeFaceFrame(
   const deltaMs = (timeSec - cue.timeSec) * 1000;
 
   let mark = state.mark;
-  if (within(deltaMs, goodMs) && showsExpression(face, cue.expression)) {
+  if (isInsideWindow(deltaMs, goodMs) && showsExpression(face, cue.expression)) {
     // A Good mark is provisional: an expression held into the Perfect window upgrades it.
-    mark = within(deltaMs, perfectMs) ? 'perfect' : 'good';
+    mark = isInsideWindow(deltaMs, perfectMs) ? 'perfect' : 'good';
   }
 
   if (mark === 'perfect') return { cue, mark, result: 'perfect' };
-  const windowClosed = deltaMs > goodMs[1] + EPSILON_MS;
+  // After the due time, a frame outside the Good window is past its late edge.
+  const windowClosed = deltaMs > 0 && !isInsideWindow(deltaMs, goodMs);
   if (windowClosed) return { cue, mark, result: mark ?? 'miss' };
   return { cue, mark };
 }

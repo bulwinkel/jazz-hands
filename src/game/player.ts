@@ -1,3 +1,4 @@
+import type { CueObservation } from './diagnostics';
 import { defaultGrid } from './geometry';
 import type { FaceCueState } from './faceJudgment';
 import type { CueState } from './judgment';
@@ -20,6 +21,8 @@ export interface PlayerRun {
   cues: Cue[];
   /** Judging state of each cue, parallel to `cues`. */
   states: CueState[];
+  /** What the tracker showed around each cue, parallel to `cues`. For the run report. */
+  observations: CueObservation[];
   /** Empty when this player has faces off. */
   faceCues: FaceCue[];
   /** Judging state of each face cue, parallel to `faceCues`. */
@@ -44,6 +47,7 @@ export function createPlayers(settings: Settings): PlayerRun[] {
     reachSamples: [],
     cues: [],
     states: [],
+    observations: [],
     faceCues: [],
     faceStates: [],
     faceSeenAt: null,

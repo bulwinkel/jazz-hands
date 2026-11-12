@@ -7,7 +7,7 @@ import type { CueState } from './judgment';
 import type { Cue, Level, Rating } from './types';
 
 const grid = defaultGrid(0, 2);
-const ALL_LEVELS: Level[] = [1, 2, 3];
+const ALL_LEVELS: Level[] = [1, 2, 3, 4];
 
 function hand(cell: number, gesture: GestureName = 'open'): TrackedHand {
   return { ...cellCentre(grid, cell), gesture, size: 0.05, gestureScore: 1 };
@@ -150,6 +150,21 @@ describe('slides', () => {
     const state = newCueState(slide());
     step(state, 3, [hand(0)], 1);
     expect(step(state, 3, [hand(0)], closeSec)).toBe('miss');
+  });
+
+  it('needs the middle cell of a slow slide on its own beat', () => {
+    const slow: Cue = { kind: 'slide', speed: 'slow', timeSec: 1, beatIndex: 2, cells: [0, 1, 2], times: [1, 1.6, 2.2] };
+    const afterEnd = at(2.2, LEVELS[3].goodMs[1] + 1);
+
+    const followed = newCueState(slow);
+    step(followed, 3, [hand(0)], 1);
+    step(followed, 3, [hand(1)], 1.6);
+    expect(step(followed, 3, [hand(2)], 2.2)).toBe('perfect');
+
+    const jumped = newCueState(slow);
+    step(jumped, 3, [hand(0)], 1);
+    step(jumped, 3, [hand(2)], 2.2);
+    expect(step(jumped, 3, [], afterEnd)).toBe('miss');
   });
 
   it('does not count the end cell before its own window opens', () => {

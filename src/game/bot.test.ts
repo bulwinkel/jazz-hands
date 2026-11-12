@@ -36,21 +36,35 @@ describe('the bot plays every cue Perfect', () => {
     [2, true],
     [3, false],
     [3, true],
+    [4, false],
+    [4, true],
   ];
 
   it.each(cases)('at level %i with shapes %s', (level, shapes) => {
-    // 100 BPM is close to the real song. 150 BPM makes slide ends and the next cue overlap.
-    for (const bpm of [100, 150]) {
+    // 100 BPM is close to the real songs. 109 BPM is the fastest tempo with a cue on every beat,
+    // so it leaves the bot the least time between the end of a slide and the next cue.
+    // At 150 BPM cues sit on every second beat and slides span two beats.
+    for (const bpm of [100, 109, 150]) {
       const { cues, results } = playThrough(synthetic(bpm, 90), level, shapes);
       expect(cues.length).toBeGreaterThan(10);
       expect(results.every((result) => result === 'perfect')).toBe(true);
     }
   });
 
-  it('including slides and doubles at level 3', () => {
-    const { cues } = playThrough(synthetic(100, 90), 3, false);
+  it.each([100, 109, 150])('including slides and doubles at level 3, at %i BPM', (bpm) => {
+    const { cues } = playThrough(synthetic(bpm, 90), 3, false);
     expect(cues.some((cue) => cue.kind === 'slide')).toBe(true);
     expect(cues.some((cue) => cue.kind === 'tap' && cue.cells.length === 2)).toBe(true);
+  });
+});
+
+describe('the bot at level 4', () => {
+  it('plays fast slides, slow slides and off-beat taps Perfect', () => {
+    const { cues, results } = playThrough(synthetic(100, 180), 4, false);
+    expect(cues.some((cue) => cue.speed === 'fast')).toBe(true);
+    expect(cues.some((cue) => cue.speed === 'slow')).toBe(true);
+    expect(cues.some((cue) => !Number.isInteger(cue.beatIndex))).toBe(true);
+    expect(results.every((result) => result === 'perfect')).toBe(true);
   });
 });
 
@@ -100,8 +114,8 @@ describe('the bot with faces on', () => {
     };
   }
 
-  it.each([1, 2, 3] as const)('plays every hand cue and every face cue Perfect at level %i', (level) => {
-    for (const bpm of [100, 150]) {
+  it.each([1, 2, 3, 4] as const)('plays every hand cue and every face cue Perfect at level %i', (level) => {
+    for (const bpm of [100, 109, 150]) {
       const { faceCues, handResults, faceResults } = playThroughWithFaces(synthetic(bpm, 90), level);
       expect(faceCues.length).toBeGreaterThan(5);
       expect(handResults.length).toBeGreaterThan(10);

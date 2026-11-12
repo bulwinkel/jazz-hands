@@ -1,7 +1,9 @@
 import type { FaceExpression, FaceRegions, TrackedFace, TrackerMode, TrackingFrame } from '../tracking/types';
 import { SongAudio } from './audio';
-import { generateChart } from './chart';
+import { cuesFrom, generateChart } from './chart';
 import { DEFAULT_TRACKER, FACE_EMOJI, HANDS_UP_CELL, LEVELS, SONGS, TIMING } from './config';
+import { buildRunReport, newObservation, newTrackingStats, observeFrame } from './diagnostics';
+import type { RunReport, TrackingStats } from './diagnostics';
 import { generateFaceCues } from './faceChart';
 import { judgeFaceFrame, newFaceCueState, openFaceCue } from './faceJudgment';
 import { cellRect, defaultGrid, faceRegion, fitGrid, insideCell } from './geometry';
@@ -9,7 +11,7 @@ import { createInput } from './input';
 import type { GameInput, InputView } from './input';
 import { frameSongTime, judgeFrame, newCueState } from './judgment';
 import type { CueState } from './judgment';
-import { playLengthSec, validateManifest } from './manifest';
+import { playEndSec, playStartSec, validateManifest } from './manifest';
 import { createPlayers, summariseChart } from './player';
 import type { ChartSummary, PlayerRun } from './player';
 import { GameRenderer } from './render';
@@ -31,6 +33,8 @@ interface PublicState {
   phase: Phase;
   songTime: number;
   players: PublicPlayer[];
+  /** The diagnostics of the last finished run. */
+  report?: RunReport;
 }
 declare global {
   interface Window {
@@ -76,6 +80,10 @@ export class DanceGame {
   private startSec = 0;
   private endSec = 0;
   private paused = false;
+
+  /** Totals about tracking during the current run, and the report of the last finished run. */
+  private trackingStats: TrackingStats = newTrackingStats(0);
+  private report?: RunReport;
 
   /** Tracker picked with the M key. It lasts until the page reloads. */
   private pickedTracker?: TrackerMode;
@@ -161,8 +169,9 @@ export class DanceGame {
 
       const manifest = song.value;
       this.manifest = manifest;
-      this.endSec = playLengthSec(manifest, settings.length);
-      this.startSec = this.options.startSec;
+      this.endSec = playEndSec(manifest, settings.length);
+      // The URL can start the song anywhere, for tests. Otherwise the song sets its own start.
+      this.startSec = this.options.startSec > 0 ? this.options.startSec : playStartSec(manifest, settings.length);
       if (this.startSec >= this.endSec) {
         throw new Error(`The start offset must be below the play length (${this.endSec.toFixed(1)} seconds).`);
       }
@@ -175,10 +184,10 @@ export class DanceGame {
           seed: this.options.seed,
           endSec: this.endSec,
         });
-        player.cues = chart.filter((cue) => cue.timeSec >= this.startSec);
+        player.cues = cuesFrom(chart, this.startSec);
         if (player.faces) {
           const faceCues = generateFaceCues(manifest, this.options.seed, this.endSec);
-          player.faceCues = faceCues.filter((cue) => cue.timeSec >= this.startSec);
+          player.faceCues = cuesFrom(faceCues, this.startSec);
         }
       }
 
@@ -191,7 +200,7 @@ export class DanceGame {
         this.beginFit();
       }
     } catch (error) {
-      if (session === this.session) this.fail(error);
+      this.failIfCurrent(session, error);
     }
   }
 
@@ -222,13 +231,15 @@ export class DanceGame {
   /** Starts, or restarts, the song from its 3-2-1 countdown. Keeps the fitted grids. */
   private beginCountdown = (): void => {
     if (this.phase !== 'ready' && this.phase !== 'results' && this.phase !== 'play') return;
+    const session = this.session;
     this.audio?.stop();
-    void this.audio?.resume().catch((error: unknown) => this.fail(error));
+    void this.audio?.resume().catch((error: unknown) => this.failIfCurrent(session, error));
     this.paused = false;
     this.feedback = [];
     for (const player of this.players) {
       player.score = freshScore();
       player.states = player.cues.map(newCueState);
+      player.observations = player.cues.map(newObservation);
       player.faceStates = player.faceCues.map(newFaceCueState);
     }
     this.ui.hidePanel();
@@ -237,11 +248,15 @@ export class DanceGame {
 
   private beginPlay(): void {
     try {
-      this.audio?.play(this.startSec, this.endSec, this.options.settings.length === 'short');
+      // Fade out only when the round stops inside the song. A round that reaches the end of
+      // the song ends with the song's own ending.
+      const stopsInsideSong = this.manifest !== undefined && this.endSec < this.manifest.durationSec - 0.5;
+      this.audio?.play(this.startSec, this.endSec, stopsInsideSong);
     } catch (error) {
       this.fail(error);
       return;
     }
+    this.trackingStats = newTrackingStats(performance.now());
     this.setPhase('play');
     this.ui.pauseButton.textContent = 'Ⅱ Pause';
     this.ui.showMessage();
@@ -249,9 +264,58 @@ export class DanceGame {
 
   private finish(): void {
     this.judge(this.endSec + 1); // Closes every cue that is still open.
+    this.report = this.buildReport();
     this.audio?.stop();
     this.setPhase('results');
     this.ui.showResults(this.players, this.beginCountdown, this.showMenu);
+    if (import.meta.env.DEV) void this.saveReport(this.report);
+  }
+
+  private buildReport(): RunReport {
+    const { settings } = this.options;
+    return buildRunReport({
+      song: {
+        id: this.manifest?.id ?? '',
+        title: this.manifest?.title ?? '',
+        length: settings.length,
+        startSec: this.startSec,
+        endSec: this.endSec,
+      },
+      settings: {
+        playerCount: settings.playerCount,
+        input: this.options.input,
+        seed: this.options.seed,
+        inputLatencyMs: settings.inputLatencyMs,
+        avOffsetMs: settings.avOffsetMs,
+        audioOutputLatencyMs: Math.round((this.audio?.outputLatencySec ?? 0) * 1000),
+      },
+      trackerMode: this.input?.mode ?? this.trackerMode(),
+      trackerDelegate: this.input?.delegate ?? '',
+      players: this.players,
+      stats: this.trackingStats,
+      nowMs: performance.now(),
+    });
+  }
+
+  /**
+   * Dev server only: saves the run report to `test-results/` on disk and offers it for copying,
+   * so a run can be studied afterwards without reading numbers off the screen.
+   */
+  private async saveReport(report: RunReport): Promise<void> {
+    const json = JSON.stringify(report);
+    this.ui.showDiagnostics(json, 'Saving diagnostics…');
+    try {
+      const response = await fetch('/__run-diagnostics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: json,
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const saved: { path: string } = await response.json();
+      this.ui.showDiagnostics(json, `Diagnostics saved: ${saved.path}`);
+    } catch (error) {
+      this.ui.showDiagnostics(json, `Diagnostics not saved (${errorText(error)}). Copy them instead.`);
+    }
   }
 
   private fail(error: unknown): void {
@@ -262,6 +326,14 @@ export class DanceGame {
     this.ui.hidePanel();
     this.ui.resumeButton.hidden = true;
     this.ui.showMessage('The dance floor needs a hand', `${errorText(error)} Press Esc to return to the menu.`);
+  }
+
+  /**
+   * Reports an error from work that takes a moment (audio, models), unless the player has
+   * left that session meanwhile. A late failure must never replace the menu or a new game.
+   */
+  private failIfCurrent(session: number, error: unknown): void {
+    if (session === this.session) this.fail(error);
   }
 
   // --- Tracking frames ---
@@ -277,6 +349,7 @@ export class DanceGame {
     } else if (this.phase === 'ready' || this.phase === 'results') {
       this.trackHandsUp(frame, previous);
     } else if (this.phase === 'play' && !this.paused && this.audio?.context.state === 'running') {
+      this.countFrame(frame);
       const { inputLatencyMs } = this.options.settings;
       this.judge(frameSongTime(this.songTime(), performance.now(), frame.timeMs, inputLatencyMs), frame);
     }
@@ -317,6 +390,16 @@ export class DanceGame {
     if (this.players.every((player) => player.hold >= 1)) this.beginCountdown();
   }
 
+  private countFrame(frame: TrackingFrame): void {
+    const stats = this.trackingStats;
+    stats.frames++;
+    stats.inferenceMs.push(frame.inferenceMs);
+    for (const player of this.players) {
+      const handCount = Math.min(2, frame.players[player.index].hands.length);
+      stats.handCounts[player.index][handCount]++;
+    }
+  }
+
   /** Judges every open cue at `timeSec`. With no frame, it only closes cues whose time has passed. */
   private judge(timeSec: number, frame?: TrackingFrame): void {
     for (const player of this.players) {
@@ -325,6 +408,7 @@ export class DanceGame {
       for (let i = 0; i < player.states.length; i++) {
         const state = player.states[i];
         if (state.cue.timeSec - opensAheadSec > timeSec) break; // This cue and all later ones are not open yet.
+        if (frame) observeFrame(player.observations[i], state.cue, player.level, player.grid, hands, timeSec);
         if (state.result) continue;
         const next = judgeFrame(state, player.level, player.grid, hands, timeSec);
         player.states[i] = next;
@@ -366,37 +450,43 @@ export class DanceGame {
   // --- Controls ---
 
   private async togglePause(): Promise<void> {
-    if (this.phase !== 'play' || !this.audio || this.switchingTracker) return;
+    const audio = this.audio;
+    if (this.phase !== 'play' || !audio || this.switchingTracker) return;
+    const session = this.session;
+    const pausing = !this.paused;
     try {
-      if (this.paused) {
-        await this.audio.resume();
-        this.paused = false;
-        this.ui.showMessage();
-      } else {
-        await this.audio.pause();
-        this.paused = true;
-        this.ui.showMessage('Paused', 'Space to keep dancing · Esc for menu');
-      }
-      this.ui.pauseButton.textContent = this.paused ? '▶ Resume' : 'Ⅱ Pause';
+      await (pausing ? audio.pause() : audio.resume());
     } catch (error) {
-      this.fail(error);
+      this.failIfCurrent(session, error);
+      return;
     }
+    if (session !== this.session) return; // The player left for the menu while the audio switched.
+
+    this.paused = pausing;
+    if (pausing) this.ui.showMessage('Paused', 'Space to keep dancing · Esc for menu');
+    else this.ui.showMessage();
+    this.ui.pauseButton.textContent = pausing ? '▶ Resume' : 'Ⅱ Pause';
   }
 
   /** Runs when the player clicks the "Click to start" button after the browser blocked sound. */
   private async unlockAudio(): Promise<void> {
+    const audio = this.audio;
+    if (!audio) return;
+    const session = this.session;
     try {
-      await this.audio?.resume();
-      if (this.audio?.context.state !== 'running') return;
-      this.ui.resumeButton.hidden = true;
-      if (this.phase === 'loading') {
-        this.beginFit();
-      } else if (this.phase === 'play') {
-        this.paused = false;
-        this.ui.showMessage();
-      }
+      await audio.resume();
     } catch (error) {
-      this.fail(error);
+      this.failIfCurrent(session, error);
+      return;
+    }
+    if (session !== this.session || audio.context.state !== 'running') return;
+
+    this.ui.resumeButton.hidden = true;
+    if (this.phase === 'loading') {
+      this.beginFit();
+    } else if (this.phase === 'play') {
+      this.paused = false;
+      this.ui.showMessage();
     }
   }
 
@@ -411,29 +501,33 @@ export class DanceGame {
     if (!input || this.switchingTracker || this.phase === 'loading') return;
     this.switchingTracker = true;
     const session = this.session;
+    const audio = this.audio;
     const next = TRACKER_CYCLE[(TRACKER_CYCLE.indexOf(this.trackerMode()) + 1) % TRACKER_CYCLE.length];
     const wasPlaying = this.phase === 'play' && !this.paused;
+    // After every wait, stop if the player has left for the menu: the session is then stale.
     try {
       if (wasPlaying) {
-        await this.audio?.pause();
+        await audio?.pause();
+        if (session !== this.session) return;
         this.paused = true;
       }
       this.ui.showMessage('Changing hand tracker…');
       await input.setMode(next);
       if (session !== this.session) {
-        input.dispose();
+        input.dispose(); // Releases the tracker that loaded after the input was disposed.
         return;
       }
       this.pickedTracker = next;
       this.ui.showMessage();
       if (wasPlaying) {
-        await this.audio?.resume();
+        await audio?.resume();
+        if (session !== this.session) return;
         this.paused = false;
       }
     } catch (error) {
-      if (session === this.session) this.fail(error);
+      this.failIfCurrent(session, error);
     } finally {
-      this.switchingTracker = false;
+      if (session === this.session) this.switchingTracker = false;
     }
   }
 
@@ -517,6 +611,7 @@ export class DanceGame {
         frame: this.frame,
         songTimeSec: this.songTime(),
         manifest: this.manifest,
+        startSec: this.startSec,
         endSec: this.endSec,
         feedback: this.feedback,
       },
@@ -556,7 +651,9 @@ export class DanceGame {
     const timeSec = this.songTime();
     // Close judging windows even when the camera stops sending frames. Old hands are never reused.
     this.judge(timeSec - this.options.settings.inputLatencyMs / 1000 - 0.001);
-    if (timeSec >= this.endSec) this.finish();
+    // End with the sound itself. The song clock includes the picture offset and can run
+    // ahead of the sound, which would cut the ending short.
+    if (this.audio?.ended) this.finish();
   }
 
   private updateDebug(): void {
@@ -645,6 +742,7 @@ export class DanceGame {
     window.__dance = {
       phase: this.phase,
       songTime: this.songTime(),
+      report: this.report,
       players: PLAYER_SLOTS.map((index) => {
         const player = this.players.find((p) => p.index === index);
         if (!player) return { ...freshScore(), level: 0, chart: summariseChart([], []) };

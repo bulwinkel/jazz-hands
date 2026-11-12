@@ -24,7 +24,7 @@ h1>span{color:#fde047;margin-left:18px}
 .players{display:grid;grid-template-columns:1fr 1fr;gap:24px;max-width:1200px;margin:18px auto 22px}
 fieldset{border:2px solid color-mix(in srgb,var(--player,#fff) 35%,transparent);border-radius:22px;padding:18px;margin:0}
 legend{font-size:24px;font-weight:800;color:var(--player,#fff);padding:0 12px}
-.level-options{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.level-options{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .level-options label{cursor:pointer;position:relative}
 .level-options input{position:absolute;opacity:0;width:100%;height:100%;inset:0;margin:0}
 .level-options span{display:flex;flex-direction:column;justify-content:center;min-height:86px;border:2px solid #ffffff20;border-radius:14px;font-size:21px;font-weight:800;padding:10px 5px;pointer-events:none}
@@ -187,4 +187,28 @@ h1{font-size:48px;margin:10px 0}
   .shapes { margin-top: 8px; font-size: 17px; }
   .faces { margin-top: 4px; font-size: 17px; }
   .subtitle { margin-bottom: 10px; }
+}
+
+/* Level buttons keep one height when a level name wraps onto two lines. */
+.level-options label {
+  display: flex;
+}
+.level-options span {
+  flex: 1;
+}
+
+/* Dev server only: the diagnostics row under the result buttons. */
+.diagnostics {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 16px;
+  font-size: 15px;
+  color: #94a3b8;
+}
+.diagnostics button {
+  font-size: 15px;
+  padding: 6px 14px;
+  border-radius: 10px;
 }

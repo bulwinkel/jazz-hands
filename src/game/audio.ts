@@ -16,6 +16,8 @@ export class SongAudio {
   private startCtxTime = 0;
   /** Song position at which the current playback started. */
   private startOffsetSec = 0;
+  /** Context time at which the current playback runs out. */
+  private endCtxTime = 0;
 
   /** Delay between the context clock and the sound leaving the speakers. */
   get outputLatencySec(): number {
@@ -26,6 +28,11 @@ export class SongAudio {
   get songTime(): number {
     const playedSec = this.context.currentTime - this.startCtxTime;
     return this.startOffsetSec + playedSec - this.outputLatencySec - this.avOffsetMs / 1000;
+  }
+
+  /** True once the sound has played to its end. Unlike `songTime`, no offset moves this moment. */
+  get ended(): boolean {
+    return this.source !== undefined && this.context.currentTime >= this.endCtxTime;
   }
 
   async load(url: string): Promise<void> {
@@ -47,7 +54,10 @@ export class SongAudio {
     await this.context.resume();
   }
 
-  /** Plays from `offsetSec` to `endSec`. With `fadeOut`, the last seconds fade to silence. */
+  /**
+   * Plays from `offsetSec` to `endSec`. With `fadeOut`, the last seconds fade to silence.
+   * A start inside the song fades in.
+   */
   play(offsetSec: number, endSec: number, fadeOut: boolean): void {
     if (!this.buffer) throw new Error('The song is not loaded.');
     if (this.buffer.duration + 0.1 < endSec) throw new Error('The audio is shorter than the song manifest.');
@@ -63,12 +73,17 @@ export class SongAudio {
     this.startCtxTime = this.context.currentTime + 0.1;
     this.startOffsetSec = offsetSec;
     const durationSec = endSec - offsetSec;
-    const endCtxTime = this.startCtxTime + durationSec;
+    this.endCtxTime = this.startCtxTime + durationSec;
 
-    gain.gain.setValueAtTime(1, this.startCtxTime);
+    if (offsetSec > 0) {
+      gain.gain.setValueAtTime(0, this.startCtxTime);
+      gain.gain.linearRampToValueAtTime(1, this.startCtxTime + TIMING.fadeInSec);
+    } else {
+      gain.gain.setValueAtTime(1, this.startCtxTime);
+    }
     if (fadeOut) {
-      gain.gain.setValueAtTime(1, Math.max(this.startCtxTime, endCtxTime - TIMING.fadeSec));
-      gain.gain.linearRampToValueAtTime(0, endCtxTime);
+      gain.gain.setValueAtTime(1, Math.max(this.startCtxTime, this.endCtxTime - TIMING.fadeSec));
+      gain.gain.linearRampToValueAtTime(0, this.endCtxTime);
     }
     source.start(this.startCtxTime, offsetSec, durationSec);
     this.source = source;
