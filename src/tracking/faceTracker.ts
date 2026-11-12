@@ -1,10 +1,18 @@
 import { FaceLandmarker } from '@mediapipe/tasks-vision';
-import { FACE_THRESHOLDS } from './config';
+import { FACE_MAX_AGE_MS, FACE_THRESHOLDS } from './config';
 import { expressionsFromBlendshapes, faceCentre, pixelsToCrop, regionToRawPixels } from './faces';
 import type { FaceRegions, Region, TrackedFace, TrackerDelegate } from './types';
 
 type WasmFileset = Parameters<typeof FaceLandmarker.createFromOptions>[0];
 type PlayerSlot = 0 | 1;
+
+/** What one read of a player's face gave, and when. `face` is unset when no face was found. */
+interface FaceReading {
+  face: TrackedFace | undefined;
+  atMs: number;
+}
+
+const otherSlot = (slot: PlayerSlot): PlayerSlot => (slot === 0 ? 1 : 0);
 
 const MODEL_PATH = '/models/face_landmarker.task';
 const PLAYER_SLOT_COUNT = 2;
@@ -25,6 +33,10 @@ export class FaceTracker {
   private landmarkers: FaceLandmarker[] = [];
   /** The crop each landmarker reads, one per player slot. */
   private crops: HTMLCanvasElement[] = [];
+  /** The last read of each player slot. */
+  private readings: (FaceReading | undefined)[] = [];
+  /** With two faces to read: the player slot that is read in the next frame. */
+  private turn: PlayerSlot = 0;
   private activeDelegate: TrackerDelegate = 'uninitialized';
   private disposed = false;
 
@@ -64,16 +76,34 @@ export class FaceTracker {
     for (const landmarker of this.landmarkers) landmarker.detectForVideo(empty, performance.now());
   }
 
-  /** Looks for one face in each region given. The result has one entry per player slot. */
+  /**
+   * Gives the face in each region asked for. The result has one entry per player slot.
+   *
+   * One region is read in every frame. Two regions take turns, one read per frame. Two reads
+   * in one frame took tracking from about 27 ms to about 45 ms a frame in tests, and a camera
+   * frame lasts 33 ms. In the frame of the other player's turn, a player gets the face from
+   * their own last turn. A face changes little in one frame, and the timing windows are wide.
+   */
   detect(
     video: HTMLVideoElement,
     nowMs: number,
     regions: FaceRegions,
   ): [TrackedFace | undefined, TrackedFace | undefined] {
     if (this.delegate === 'uninitialized') throw new Error('Face tracker is not ready.');
+
+    let slotToSkip: PlayerSlot | undefined;
+    if (regions[0] && regions[1]) {
+      slotToSkip = otherSlot(this.turn);
+      this.turn = slotToSkip; // The player skipped now is read in the next frame.
+    }
+
     const faceOf = (slot: PlayerSlot): TrackedFace | undefined => {
       const region = regions[slot];
-      return region ? this.detectInRegion(video, nowMs, region, slot) : undefined;
+      if (!region) return undefined;
+      if (slot === slotToSkip) return this.recentFace(slot, nowMs);
+      const face = this.detectInRegion(video, nowMs, region, slot);
+      this.readings[slot] = { face, atMs: nowMs };
+      return face;
     };
     return [faceOf(0), faceOf(1)];
   }
@@ -82,6 +112,14 @@ export class FaceTracker {
     this.disposed = true;
     this.closeLandmarkers();
     this.crops = [];
+    this.readings = [];
+  }
+
+  /** The face from a player's last read, unless that read is too old to stand for this frame. */
+  private recentFace(slot: PlayerSlot, nowMs: number): TrackedFace | undefined {
+    const reading = this.readings[slot];
+    const isRecent = reading !== undefined && nowMs - reading.atMs <= FACE_MAX_AGE_MS;
+    return isRecent ? reading.face : undefined;
   }
 
   private async createLandmarkers(wasm: WasmFileset, delegate: 'GPU' | 'CPU'): Promise<void> {

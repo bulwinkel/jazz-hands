@@ -17,3 +17,10 @@ export const FACE_THRESHOLDS = Object.freeze({
   presence: 0.3,
   tracking: 0.3,
 });
+
+/**
+ * With two faces to read, the tracker reads one face per frame, in turns: reading both costs
+ * too much time in one frame. In the frame of the other player's turn, a player keeps the
+ * face from their own last turn, unless it is older than this.
+ */
+export const FACE_MAX_AGE_MS = 100;

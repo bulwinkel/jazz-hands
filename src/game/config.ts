@@ -140,8 +140,12 @@ export const CHART = {
 
 /** Face cues, for a player who switches faces on. They do not depend on the level. */
 export const FACES = {
-  /** One face cue on a bar start, every this many bars. */
-  everyBars: 2,
+  /**
+   * Face cues are at least this many seconds apart. A cue sits on a bar start, on every Nth
+   * bar, where N is the smallest count of bars that lasts this long. A count of bars alone
+   * would crowd a fast song: 2 bars are 5 s at 95 BPM and under 3 s at 180 BPM.
+   */
+  minGapSec: 5,
   /** No face cue where the music is quieter than this. */
   minIntensity: 0.35,
   /** The expressions a cue can ask for. A cue never asks for the same one as the cue before it. */
@@ -150,7 +154,12 @@ export const FACES = {
   thresholds: { smile: 0.5, openMouth: 0.4, pucker: 0.5 } satisfies Record<FaceExpression, number>,
   /** The tracker looks for a face in a box this many cells wide, centred on the grid. */
   regionCells: 2,
-  /** That box runs from the grid top down to this share of the grid height. */
+  /**
+   * The box starts this many cell heights above the grid top. A player who kept both hands
+   * low in the reach fit has a grid whose top is below their face.
+   */
+  regionAboveCells: 0.5,
+  /** The box ends this share of the grid height below the grid top. */
   regionHeight: 0.6,
 } as const;
 

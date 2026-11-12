@@ -1,11 +1,18 @@
-import type { FaceExpression, FaceRegions, TrackedFace, TrackerMode, TrackingFrame } from '../tracking/types';
+import type { FaceExpression, FaceRegions, TrackerMode, TrackingFrame } from '../tracking/types';
 import { SongAudio } from './audio';
 import { cuesFrom, generateChart } from './chart';
 import { DEFAULT_TRACKER, FACE_EMOJI, HANDS_UP_CELL, LEVELS, SONGS, TIMING } from './config';
-import { buildRunReport, newObservation, newTrackingStats, observeFrame } from './diagnostics';
+import {
+  buildRunReport,
+  newFaceObservation,
+  newObservation,
+  newTrackingStats,
+  observeFaceFrame,
+  observeFrame,
+} from './diagnostics';
 import type { RunReport, TrackingStats } from './diagnostics';
 import { generateFaceCues } from './faceChart';
-import { judgeFaceFrame, newFaceCueState, openFaceCue } from './faceJudgment';
+import { judgeFaceFrame, needsFace, newFaceCueState } from './faceJudgment';
 import { cellRect, defaultGrid, faceRegion, fitGrid, insideCell } from './geometry';
 import { createInput } from './input';
 import type { GameInput, InputView } from './input';
@@ -241,6 +248,7 @@ export class DanceGame {
       player.states = player.cues.map(newCueState);
       player.observations = player.cues.map(newObservation);
       player.faceStates = player.faceCues.map(newFaceCueState);
+      player.faceObservations = player.faceCues.map(newFaceObservation);
     }
     this.ui.hidePanel();
     this.setPhase('countdown');
@@ -291,6 +299,7 @@ export class DanceGame {
       },
       trackerMode: this.input?.mode ?? this.trackerMode(),
       trackerDelegate: this.input?.delegate ?? '',
+      trackerFaceDelegate: this.input?.faceDelegate ?? null,
       players: this.players,
       stats: this.trackingStats,
       nowMs: performance.now(),
@@ -414,16 +423,18 @@ export class DanceGame {
         player.states[i] = next;
         if (next.result) this.award(player, next);
       }
-      this.judgeFaceCues(player, timeSec, frame?.players[player.index].face);
+      this.judgeFaceCues(player, timeSec, frame);
     }
   }
 
-  /** The same as for hand cues: with no face, it only closes cues whose time has passed. */
-  private judgeFaceCues(player: PlayerRun, timeSec: number, face: TrackedFace | undefined): void {
+  /** The same as for hand cues: with no frame, it only closes cues whose time has passed. */
+  private judgeFaceCues(player: PlayerRun, timeSec: number, frame?: TrackingFrame): void {
+    const face = frame?.players[player.index].face;
     const opensAheadSec = -LEVELS[player.level].goodMs[0] / 1000;
     for (let i = 0; i < player.faceStates.length; i++) {
       const state = player.faceStates[i];
       if (state.cue.timeSec - opensAheadSec > timeSec) break; // This cue and all later ones are not open yet.
+      if (frame) observeFaceFrame(player.faceObservations[i], state.cue, player.level, face, timeSec);
       if (state.result) continue;
       const next = judgeFaceFrame(state, player.level, face, timeSec);
       player.faceStates[i] = next;
@@ -663,7 +674,7 @@ export class DanceGame {
     const hands = this.frame?.players.map((player) => player.hands.length).join(' / ') ?? '0 / 0';
     this.ui.debug.textContent = [
       `FPS ${this.fps.toFixed(0)} · inference ${this.frame?.inferenceMs.toFixed(1) ?? '—'} ms`,
-      `${this.input?.mode ?? this.trackerMode()} · ${this.input?.delegate ?? '—'}`,
+      this.trackerDebugLine(),
       `Hands ${hands}`,
       ...this.faceDebugLines(),
       `Input ${settings.inputLatencyMs} ms · AV ${settings.avOffsetMs} ms`,
@@ -671,9 +682,15 @@ export class DanceGame {
     ].join('\n');
   }
 
+  private trackerDebugLine(): string {
+    const input = this.input;
+    const line = `${input?.mode ?? this.trackerMode()} · ${input?.delegate ?? '—'}`;
+    return input?.faceDelegate ? `${line} · faces ${input.faceDelegate}` : line;
+  }
+
   /**
    * One line for each player with faces on: the strength of each expression in the latest
-   * frame. The tracker reads a face only while a face cue is open, so the line shows a dash
+   * frame. The tracker reads a face only around a face cue, so the line shows a dash
    * between cues.
    */
   private faceDebugLines(): string[] {
@@ -716,16 +733,17 @@ export class DanceGame {
 
   /**
    * Where the tracker looks for each player's face in the next frame. It looks only while
-   * one of that player's face cues is open. At all other times the face models do no work,
-   * so hand tracking keeps its full speed.
+   * the game needs that player's face for a face cue. At all other times the face models
+   * do no work, so hand tracking keeps its full speed.
    */
   private faceRegions(): FaceRegions {
     const regions: FaceRegions = [null, null];
     if (this.phase !== 'play') return regions;
     const timeSec = this.songTime();
+    const inputLatencySec = this.options.settings.inputLatencyMs / 1000;
     for (const player of this.players) {
-      const cueIsOpen = openFaceCue(player.faceStates, player.level, timeSec) !== undefined;
-      if (cueIsOpen) regions[player.index] = faceRegion(player.grid);
+      const faceNeeded = needsFace(player.faceCues, player.level, timeSec, inputLatencySec);
+      if (faceNeeded) regions[player.index] = faceRegion(player.grid);
     }
     return regions;
   }

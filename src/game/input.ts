@@ -26,9 +26,11 @@ export interface InputView {
 /** A source of tracking frames: the camera, or a stand-in for tests. */
 export interface GameInput {
   readonly video?: HTMLVideoElement;
-  /** Names for the debug overlay. */
+  /** Names for the debug overlay and the run report. */
   readonly mode: string;
   readonly delegate: string;
+  /** What the face models run on. Unset for an input that loads no face model. */
+  readonly faceDelegate?: string;
   init(): Promise<void>;
   start(
     view: () => InputView,
@@ -61,8 +63,11 @@ export class CameraInput implements GameInput {
   }
 
   get delegate(): string {
-    const { delegate, faceDelegate } = this.tracker;
-    return this.faces ? `${delegate} · faces ${faceDelegate}` : delegate;
+    return this.tracker.delegate;
+  }
+
+  get faceDelegate(): string | undefined {
+    return this.faces ? this.tracker.faceDelegate : undefined;
   }
 
   async init(): Promise<void> {

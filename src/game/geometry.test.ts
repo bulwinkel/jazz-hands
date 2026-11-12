@@ -102,21 +102,27 @@ describe('containRect', () => {
 });
 
 describe('face region', () => {
-  it('is two cells wide, centred on the grid, from the grid top down to 60% of its height', () => {
-    const region = faceRegion({ x: 0.1, y: 0.2, width: 0.3, height: 0.5 });
+  it('is two cells wide and centred on the grid', () => {
+    const region = faceRegion({ x: 0.1, y: 0.2, width: 0.3, height: 0.6 });
     expect(region.x).toBeCloseTo(0.15);
     expect(region.width).toBeCloseTo(0.2);
-    expect(region.y).toBeCloseTo(0.2);
-    expect(region.height).toBeCloseTo(0.3);
   });
 
-  it('stays inside the grid of every default layout', () => {
+  it('runs from half a cell above the grid top down to 60% of the grid height', () => {
+    // A cell of this grid is 0.2 high.
+    const region = faceRegion({ x: 0.1, y: 0.2, width: 0.3, height: 0.6 });
+    expect(region.y).toBeCloseTo(0.1);
+    expect(region.y + region.height).toBeCloseTo(0.56);
+  });
+
+  it('covers the upper middle of every default grid, up to the frame top', () => {
     for (const grid of [defaultGrid(0, 2), defaultGrid(1, 2), defaultGrid(0, 1)]) {
       const region = faceRegion(grid);
       expect(region.x + region.width / 2).toBeCloseTo(grid.x + grid.width / 2);
       expect(region.x).toBeGreaterThan(grid.x);
-      expect(region.y).toBe(grid.y);
-      expect(region.y + region.height).toBeLessThan(grid.y + grid.height);
+      // Half a cell above these grids is outside the frame.
+      expect(region.y).toBe(0);
+      expect(region.y + region.height).toBeCloseTo(grid.y + grid.height * 0.6);
     }
   });
 
@@ -130,6 +136,7 @@ describe('face region', () => {
     const offRightAndBottom = faceRegion({ x: 0.7, y: 0.6, width: 0.6, height: 1 });
     expect(offRightAndBottom.x).toBeCloseTo(0.8);
     expect(offRightAndBottom.x + offRightAndBottom.width).toBe(1);
+    expect(offRightAndBottom.y).toBeCloseTo(0.6 - 1 / 6);
     expect(offRightAndBottom.y + offRightAndBottom.height).toBe(1);
   });
 });

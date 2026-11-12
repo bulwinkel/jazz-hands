@@ -1,7 +1,7 @@
 import type { FaceExpression } from '../tracking/types';
 import { seededRandom } from './chart';
 import { FACES } from './config';
-import { leadInEndSec, tailStartSec } from './manifest';
+import { leadInEndSec, medianBeatInterval, tailStartSec } from './manifest';
 import type { FaceCue, Manifest } from './types';
 
 /**
@@ -9,6 +9,12 @@ import type { FaceCue, Manifest } from './types';
  * The hand charts are then the same with faces on or off.
  */
 const FACE_SEED_STREAM = 0xface;
+const EPSILON = 1e-8;
+
+/** The smallest count of bars that lasts at least the minimum gap between two face cues. */
+export function barsBetweenFaceCues(barSec: number): number {
+  return Math.max(1, Math.ceil(FACES.minGapSec / barSec - EPSILON));
+}
 
 /**
  * The face cues of a song: one on a bar start every few bars, where the music is strong enough.
@@ -19,7 +25,8 @@ export function generateFaceCues(manifest: Manifest, seed: number, endSec: numbe
   const random = seededRandom(seed ^ FACE_SEED_STREAM);
   const firstCueSec = leadInEndSec(manifest);
   const tailSec = tailStartSec(manifest, endSec);
-  const beatsBetweenCues = FACES.everyBars * manifest.beatsPerBar;
+  const barSec = medianBeatInterval(manifest) * manifest.beatsPerBar;
+  const beatsBetweenCues = barsBetweenFaceCues(barSec) * manifest.beatsPerBar;
 
   const cues: FaceCue[] = [];
   let previous: FaceExpression | undefined;

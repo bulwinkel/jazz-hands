@@ -30,7 +30,11 @@ export interface TrackedFace {
 
 export interface PlayerTracking {
   hands: TrackedHand[];
-  /** Present only when a face region was requested for this player and a face was found in it. */
+  /**
+   * Present only when a face region was requested for this player and a face was found in it.
+   * With two regions requested, the tracker reads one face per frame, in turns. This is then
+   * the face from the player's last turn, one frame old, in every second frame.
+   */
   face?: TrackedFace;
 }
 

@@ -17,7 +17,7 @@ export function newFaceCueState(cue: FaceCue): FaceCueState {
 }
 
 /** No face found counts as a face that does not show the expression. */
-function showsExpression(face: TrackedFace | undefined, expression: FaceExpression): boolean {
+export function showsExpression(face: TrackedFace | undefined, expression: FaceExpression): boolean {
   return face !== undefined && face.expressions[expression] >= FACES.thresholds[expression];
 }
 
@@ -53,11 +53,7 @@ export function judgeFaceFrame(
   return { cue, mark };
 }
 
-/**
- * The face cue a player sees now: the first one that is on screen and not yet final.
- * The game reads a player's face only while this gives a cue, so hand tracking keeps its
- * full speed for the rest of the song.
- */
+/** The face cue a player sees now: the first one that is on screen and not yet final. */
 export function openFaceCue(
   states: readonly FaceCueState[],
   level: Level,
@@ -65,4 +61,29 @@ export function openFaceCue(
 ): FaceCueState | undefined {
   const { approachSec } = LEVELS[level];
   return states.find((state) => !state.result && timeSec >= state.cue.timeSec - approachSec);
+}
+
+/**
+ * True while the game needs a player's face from the tracker: from the moment a face cue
+ * comes on screen until its Good window has closed. At all other times the tracker reads
+ * no face, so hand tracking keeps its full speed for the rest of the song.
+ *
+ * The tracker reads on after a hit, to the end of the window. The run report then shows how
+ * strong the expression became, and not only the first frame that passed the threshold.
+ *
+ * `songTimeSec` is the song time now. A frame taken now is judged `inputLatencySec` earlier.
+ */
+export function needsFace(
+  faceCues: readonly FaceCue[],
+  level: Level,
+  songTimeSec: number,
+  inputLatencySec: number,
+): boolean {
+  const { approachSec, goodMs } = LEVELS[level];
+  const frameTimeSec = songTimeSec - inputLatencySec;
+  return faceCues.some((cue) => {
+    const isOnScreen = songTimeSec >= cue.timeSec - approachSec;
+    const windowHasClosed = frameTimeSec > cue.timeSec + goodMs[1] / 1000;
+    return isOnScreen && !windowHasClosed;
+  });
 }

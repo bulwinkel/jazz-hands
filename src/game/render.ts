@@ -1,7 +1,7 @@
 import type { GestureName, TrackingFrame } from '../tracking/types';
 import { FACE_EMOJI, GESTURE_EMOJI, HANDS_UP_CELL, LEVELS, PLAYER_COLORS, TIMING } from './config';
 import { openFaceCue } from './faceJudgment';
-import { cellRect, containRect, faceRegion } from './geometry';
+import { cellRect, containRect } from './geometry';
 import type { CueState } from './judgment';
 import type { PlayerRun } from './player';
 import type { Manifest, Phase, PlayerIndex, Point, Rating, Rect, SlideSpeed } from './types';
@@ -326,14 +326,14 @@ export class GameRenderer {
 
   /**
    * Where a face cue and its result show, on the canvas. That is on the player's face once
-   * the tracker has found it. Before that, it is the top-centre of the box the tracker
-   * searches, which is just above where the head should be.
+   * the tracker has found it. Before that, it is the top-centre of the grid: near the head,
+   * and clear of the score row above the grid.
    */
   private faceCueCentre(player: PlayerRun): Point {
     if (player.faceSeenAt) return this.pointToScreen(player.faceSeenAt);
-    const region = this.toScreen(faceRegion(player.grid));
+    const grid = this.toScreen(player.grid);
     const radius = this.faceEmojiSize(player) * FACE_RING_SCALE;
-    return { x: region.x + region.width / 2, y: region.y + radius };
+    return { x: grid.x + grid.width / 2, y: grid.y + radius };
   }
 
   private faceEmojiSize(player: PlayerRun): number {

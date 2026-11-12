@@ -62,6 +62,10 @@ async function loadedTracker(mode: TrackerMode, faces: ReturnType<typeof faceMod
 }
 
 const RIGHT_PLAYER_ONLY: FaceRegions = [null, { x: 0.6, y: 0.1, width: 0.3, height: 0.5 }];
+const BOTH_PLAYERS: FaceRegions = [
+  { x: 0.1, y: 0.1, width: 0.3, height: 0.5 },
+  { x: 0.6, y: 0.1, width: 0.3, height: 0.5 },
+];
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -262,5 +266,82 @@ describe('a tracker created with faces', () => {
 
     await expect(initialized).rejects.toThrow('Tracker is disposed.');
     expect(lateModel.close).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('two faces asked for at once', () => {
+  /** The frame times at which a face model ran. */
+  const runTimes = (model: ReturnType<typeof faceModel>): number[] =>
+    model.detectForVideo.mock.calls.map(([, timestamp]) => timestamp);
+
+  it('reads one face per frame, in turns', async () => {
+    const faces = loadAllModels();
+    const tracker = await loadedTracker('hands-full', faces);
+
+    for (const nowMs of [100, 133, 166, 200]) tracker.process(video, nowMs, BOTH_PLAYERS);
+
+    expect(runTimes(faces[0])).toEqual([100, 166]);
+    expect(runTimes(faces[1])).toEqual([133, 200]);
+    expect(mocks.draw).toHaveBeenCalledTimes(4); // One crop per frame, not two.
+  });
+
+  it('gives the other player the face from their last turn', async () => {
+    const faces = loadAllModels();
+    const tracker = await loadedTracker('hands-full', faces);
+
+    const first = tracker.process(video, 100, BOTH_PLAYERS);
+    const second = tracker.process(video, 133, BOTH_PLAYERS);
+    const third = tracker.process(video, 166, BOTH_PLAYERS);
+
+    // Player 1 has had no turn yet in the first frame.
+    expect(first.players[0].face).toBeDefined();
+    expect(first.players[1].face).toBeUndefined();
+    expect(second.players[1].face).toBeDefined();
+    expect(second.players[0].face).toBe(first.players[0].face);
+    expect(third.players[0].face).not.toBe(first.players[0].face);
+    expect(third.players[1].face).toBe(second.players[1].face);
+  });
+
+  it('keeps a face from the last turn for 100 ms, and no longer', async () => {
+    const faces = loadAllModels();
+    const tracker = await loadedTracker('hands-full', faces);
+
+    tracker.process(video, 1000, BOTH_PLAYERS); // Reads player 0.
+    const justInTime = tracker.process(video, 1100, BOTH_PLAYERS); // Reads player 1.
+    expect(justInTime.players[0].face).toBeDefined();
+
+    tracker.process(video, 2000, BOTH_PLAYERS); // Reads player 0.
+    const tooLate = tracker.process(video, 2101, BOTH_PLAYERS); // Reads player 1.
+    expect(tooLate.players[0].face).toBeUndefined();
+    expect(tooLate.players[1].face).toBeDefined();
+  });
+
+  it('gives no face when the last turn found none', async () => {
+    const faces = loadAllModels();
+    faces[0].detectForVideo.mockReturnValue(NO_FACE);
+    const tracker = await loadedTracker('hands-full', faces);
+
+    tracker.process(video, 100, BOTH_PLAYERS);
+    expect(tracker.process(video, 133, BOTH_PLAYERS).players[0].face).toBeUndefined();
+  });
+
+  it('reads a single asked-for face in every frame', async () => {
+    const faces = loadAllModels();
+    const tracker = await loadedTracker('hands-full', faces);
+
+    for (const nowMs of [100, 133, 166]) tracker.process(video, nowMs, RIGHT_PLAYER_ONLY);
+
+    expect(runTimes(faces[0])).toEqual([]);
+    expect(runTimes(faces[1])).toEqual([100, 133, 166]);
+  });
+
+  it('never gives a face to a player it was not asked for', async () => {
+    const faces = loadAllModels();
+    const tracker = await loadedTracker('hands-full', faces);
+
+    tracker.process(video, 100, BOTH_PLAYERS); // Reads player 0.
+    const onlyRight = tracker.process(video, 133, RIGHT_PLAYER_ONLY);
+    expect(onlyRight.players[0].face).toBeUndefined();
+    expect(onlyRight.players[1].face).toBeDefined();
   });
 });

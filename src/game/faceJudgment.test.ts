@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { FaceExpression, TrackedFace } from '../tracking/types';
 import { FACES, LEVELS } from './config';
-import { judgeFaceFrame, newFaceCueState, openFaceCue } from './faceJudgment';
+import { judgeFaceFrame, needsFace, newFaceCueState, openFaceCue } from './faceJudgment';
 import type { FaceCueState } from './faceJudgment';
 import type { FaceCue, Level, Rating } from './types';
 
@@ -150,5 +150,36 @@ describe('the open face cue', () => {
 
   it('is nothing for a player with no face cues', () => {
     expect(openFaceCue([], level, 10)).toBeUndefined();
+  });
+});
+
+describe('when the game needs a face from the tracker', () => {
+  const level: Level = 2;
+  const { approachSec, goodMs } = LEVELS[level];
+  const INPUT_LATENCY_SEC = 0.1;
+  const cues = [cue('smile', 10), cue('pucker', 20)];
+  const needsFaceAt = (songTimeSec: number): boolean => needsFace(cues, level, songTimeSec, INPUT_LATENCY_SEC);
+
+  it('starts when a face cue comes on screen', () => {
+    expect(needsFaceAt(10 - approachSec - 0.01)).toBe(false);
+    expect(needsFaceAt(10 - approachSec)).toBe(true);
+  });
+
+  it('lasts to the end of the Good window, for a frame that is judged later by the input delay', () => {
+    const windowEndSec = at(10, goodMs[1]);
+    expect(needsFaceAt(windowEndSec)).toBe(true);
+    expect(needsFaceAt(windowEndSec + INPUT_LATENCY_SEC - 0.001)).toBe(true);
+    expect(needsFaceAt(windowEndSec + INPUT_LATENCY_SEC + 0.001)).toBe(false);
+  });
+
+  it('does not stop at a hit: the cue has no say in it', () => {
+    // The run report needs the whole window, also after the cue is final.
+    expect(needsFaceAt(10.2)).toBe(true);
+  });
+
+  it('is off between two cues, and for a player with no face cues', () => {
+    expect(needsFaceAt(15)).toBe(false);
+    expect(needsFaceAt(20)).toBe(true);
+    expect(needsFace([], level, 10, INPUT_LATENCY_SEC)).toBe(false);
   });
 });

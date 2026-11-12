@@ -1,10 +1,11 @@
-import type { GestureName, TrackedHand } from '../tracking/types';
-import { LEVELS } from './config';
+import type { FaceExpression, GestureName, TrackedFace, TrackedHand } from '../tracking/types';
+import { FACES, LEVELS } from './config';
+import { showsExpression } from './faceJudgment';
 import { cellRect, insideCell } from './geometry';
 import { isInsideWindow } from './judgment';
 import type { CueState } from './judgment';
 import type { PlayerRun } from './player';
-import type { Cue, Level, Rect } from './types';
+import type { Cue, FaceCue, Level, Rating, Rect } from './types';
 
 /**
  * Diagnostics answer questions the score cannot: did the tracker really read the hand shape,
@@ -80,6 +81,58 @@ export function observeFrame(
   if (anyWindowOpen) observation.frames++;
 }
 
+/** What the tracker showed of a player's face while one face cue could be hit. */
+export interface FaceObservation {
+  /** Tracking frames judged inside the cue's Good window. */
+  frames: number;
+  /** Of those, frames in which the tracker found the player's face. */
+  framesWithFace: number;
+  /** Of those, frames in which the asked-for expression was at or above its threshold. */
+  framesShowing: number;
+  /** The highest strength of the asked-for expression, 0..1. Null when no face was found. */
+  peak: number | null;
+  /** The highest strength of each other expression. A high one means the tracker read another face. */
+  otherPeaks: Partial<Record<FaceExpression, number>>;
+  /** When the asked-for expression first showed, in ms from the due time. Negative is early. */
+  firstShownMs: number | null;
+}
+
+export function newFaceObservation(): FaceObservation {
+  return { frames: 0, framesWithFace: 0, framesShowing: 0, peak: null, otherPeaks: {}, firstShownMs: null };
+}
+
+/**
+ * Adds one tracking frame to a face cue's observation, in place. Like `observeFrame`, it
+ * keeps counting after the cue is final, to the end of the Good window.
+ */
+export function observeFaceFrame(
+  observation: FaceObservation,
+  cue: FaceCue,
+  level: Level,
+  face: TrackedFace | undefined,
+  timeSec: number,
+): void {
+  const deltaMs = (timeSec - cue.timeSec) * 1000;
+  if (!isInsideWindow(deltaMs, LEVELS[level].goodMs)) return;
+  observation.frames++;
+  if (!face) return;
+
+  observation.framesWithFace++;
+  for (const [name, value] of Object.entries(face.expressions)) {
+    const expression = name as FaceExpression;
+    const strength = round3(value);
+    if (expression === cue.expression) {
+      observation.peak = Math.max(observation.peak ?? 0, strength);
+    } else {
+      observation.otherPeaks[expression] = Math.max(observation.otherPeaks[expression] ?? 0, strength);
+    }
+  }
+  if (showsExpression(face, cue.expression)) {
+    observation.framesShowing++;
+    observation.firstShownMs ??= Math.round(deltaMs);
+  }
+}
+
 /** Running totals about tracking during play. */
 export interface TrackingStats {
   frames: number;
@@ -94,6 +147,7 @@ export function newTrackingStats(nowMs: number): TrackingStats {
 }
 
 const round1 = (value: number): number => Math.round(value * 10) / 10;
+const round3 = (value: number): number => Math.round(value * 1000) / 1000;
 const round4 = (value: number): number => Math.round(value * 10000) / 10000;
 const share = (count: number, total: number): number => (total ? Math.round((count / total) * 1000) / 1000 : 0);
 
@@ -107,16 +161,42 @@ function percentile(values: readonly number[], p: number): number | null {
   return round1(sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))]);
 }
 
+/** The middle value. With an even count, the mean of the two middle values. */
+function median(values: readonly number[]): number | null {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return round3(sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2);
+}
+
+const isHit = (result: Rating | undefined): boolean => result === 'perfect' || result === 'good';
+
 /** A hand that was already in the cell when its window opened tells nothing about arrival time. */
 const HELD_EARLY_MARGIN_MS = 40;
 
 /** How each asked-for shape was read: for `fist`, the frames read as fist, as open, and so on. */
 type ShapeReadings = Partial<Record<GestureName, Partial<Record<GestureName, number>>>>;
 
+/**
+ * How strongly the tracker read one expression, over the cues that asked for it.
+ * Each cue gives one number: the highest strength inside its Good window.
+ */
+export interface ExpressionReport {
+  asked: number;
+  hit: number;
+  /** The strength the expression needs to count. Compare it with the two numbers below. */
+  threshold: number;
+  /** The median of the cues' highest strengths. Null when no face was found in any of the cues. */
+  medianPeak: number | null;
+  /** The highest strength in any of the cues. */
+  highestPeak: number | null;
+}
+
 export interface PlayerReport {
   index: number;
   level: Level;
   shapes: boolean;
+  faces: boolean;
   grid: Rect;
   score: PlayerRun['score'];
   /** Share of play frames in which the tracker saw 0, 1 and 2 of this player's hands. */
@@ -133,6 +213,13 @@ export interface PlayerReport {
     readings: ShapeReadings;
   };
   cues: Array<Cue & { result?: string; marks: CueState['marks']; observation: CueObservation }>;
+  faceCues: {
+    asked: number;
+    hit: number;
+    /** One entry for each expression the cues asked for. Read these to set `FACES.thresholds`. */
+    expressions: Partial<Record<FaceExpression, ExpressionReport>>;
+    cues: Array<FaceCue & { result?: string; observation: FaceObservation }>;
+  };
 }
 
 export interface RunReport {
@@ -150,11 +237,41 @@ export interface RunReport {
   tracking: {
     mode: string;
     delegate: string;
+    /** What the face models run on. Null when no face model was loaded. */
+    faceDelegate: string | null;
     frames: number;
     framesPerSec: number;
     inferenceMs: { mean: number | null; p95: number | null };
   };
   players: PlayerReport[];
+}
+
+function faceCuesReport(player: PlayerRun): PlayerReport['faceCues'] {
+  const { faceCues, faceStates, faceObservations } = player;
+  const expressions: Partial<Record<FaceExpression, ExpressionReport>> = {};
+
+  for (const expression of new Set(faceCues.map((cue) => cue.expression))) {
+    const asked = faceCues.flatMap((cue, i) => (cue.expression === expression ? [i] : []));
+    const peaks = asked.flatMap((i) => faceObservations[i].peak ?? []);
+    expressions[expression] = {
+      asked: asked.length,
+      hit: asked.filter((i) => isHit(faceStates[i]?.result)).length,
+      threshold: FACES.thresholds[expression],
+      medianPeak: median(peaks),
+      highestPeak: peaks.length ? Math.max(...peaks) : null,
+    };
+  }
+
+  return {
+    asked: faceCues.length,
+    hit: faceStates.filter((state) => isHit(state.result)).length,
+    expressions,
+    cues: faceCues.map((cue, i) => ({
+      ...cue,
+      result: faceStates[i]?.result,
+      observation: faceObservations[i],
+    })),
+  };
 }
 
 function playerReport(player: PlayerRun, stats: TrackingStats): PlayerReport {
@@ -196,6 +313,7 @@ function playerReport(player: PlayerRun, stats: TrackingStats): PlayerReport {
     index: player.index,
     level: player.level,
     shapes: player.shapes,
+    faces: player.faces,
     grid: {
       x: round4(player.grid.x),
       y: round4(player.grid.y),
@@ -218,6 +336,7 @@ function playerReport(player: PlayerRun, stats: TrackingStats): PlayerReport {
       marks: player.states[i]?.marks ?? [],
       observation: observations[i],
     })),
+    faceCues: faceCuesReport(player),
   };
 }
 
@@ -226,6 +345,8 @@ export interface RunContext {
   settings: RunReport['settings'];
   trackerMode: string;
   trackerDelegate: string;
+  /** Null when no face model was loaded. */
+  trackerFaceDelegate: string | null;
   players: readonly PlayerRun[];
   stats: TrackingStats;
   nowMs: number;
@@ -243,6 +364,7 @@ export function buildRunReport(context: RunContext): RunReport {
     tracking: {
       mode: context.trackerMode,
       delegate: context.trackerDelegate,
+      faceDelegate: context.trackerFaceDelegate,
       frames: stats.frames,
       framesPerSec: playSec > 0 ? round1(stats.frames / playSec) : 0,
       inferenceMs: { mean: mean(stats.inferenceMs), p95: percentile(stats.inferenceMs, 0.95) },
