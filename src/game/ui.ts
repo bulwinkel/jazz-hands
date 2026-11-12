@@ -5,7 +5,7 @@ import { accuracy, stars } from './scoring';
 import type { Settings } from './settings';
 import type { Level, PlayerCount, PlayerIndex, SongLength } from './types';
 
-const ALL_LEVELS: Level[] = [1, 2, 3, 4];
+const ALL_LEVELS: Level[] = [1, 2, 3, 4, 5];
 
 const SHELL_HTML = `
   <main id="stage" aria-label="Dance game">
@@ -83,12 +83,19 @@ function playerCard(player: PlayerIndex, settings: Settings, onChange: () => voi
     <div class="level-options">${levelOptions}</div>
     <label class="shapes" data-hand="shapes-${player}"><input type="checkbox"><span>Hand shapes ✊ ✋ ☝️ ✌️</span></label>`;
 
+  const shapes = find<HTMLInputElement>(card, '.shapes input');
+  /** A level with a shape on every cue has no use for the switch: it shows as on, and locked. */
+  const showShapes = (): void => {
+    const always = LEVELS[settings.levels[player]].shapeOnEveryCue;
+    shapes.checked = always || settings.shapes[player];
+    shapes.disabled = always;
+  };
+  showShapes();
   bindRadios(card, `level${player}`, String(settings.levels[player]), (value) => {
     settings.levels[player] = Number(value) as Level;
+    showShapes();
     onChange();
   });
-  const shapes = find<HTMLInputElement>(card, '.shapes input');
-  shapes.checked = settings.shapes[player];
   shapes.addEventListener('change', () => {
     settings.shapes[player] = shapes.checked;
     onChange();

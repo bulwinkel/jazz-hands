@@ -7,7 +7,7 @@ import type { CueState } from './judgment';
 import type { Cue, Level, Rating } from './types';
 
 const grid = defaultGrid(0, 2);
-const ALL_LEVELS: Level[] = [1, 2, 3, 4];
+const ALL_LEVELS: Level[] = [1, 2, 3, 4, 5];
 
 function hand(cell: number, gesture: GestureName = 'open'): TrackedHand {
   return { ...cellCentre(grid, cell), gesture, size: 0.05, gestureScore: 1 };
@@ -114,6 +114,27 @@ describe('hand shapes', () => {
     step(state, 2, [hand(4, 'open')], 1);
     expect(step(state, 2, [], 2)).toBe('miss');
     expect(step(newCueState(tap([4], 'fist')), 2, [hand(4, 'fist')], 1)).toBe('perfect');
+  });
+
+  it('needs the shape from both hands of a double', () => {
+    const bothFists = newCueState(tap([0, 2], 'fist'));
+    expect(step(bothFists, 5, [hand(0, 'fist'), hand(2, 'fist')], 1)).toBe('perfect');
+
+    const oneOpen = newCueState(tap([0, 2], 'fist'));
+    step(oneOpen, 5, [hand(0, 'fist'), hand(2, 'open')], 1);
+    expect(step(oneOpen, 5, [], 2)).toBe('miss');
+  });
+
+  it('needs the shape at every cell of a slide', () => {
+    const shaped: Cue = { ...slide(), gesture: 'peace' };
+    const held = newCueState(shaped);
+    step(held, 5, [hand(0, 'peace')], 1);
+    expect(step(held, 5, [hand(2, 'peace')], 1.6)).toBe('perfect');
+
+    const dropped = newCueState(shaped);
+    step(dropped, 5, [hand(0, 'peace')], 1);
+    step(dropped, 5, [hand(2, 'open')], 1.6);
+    expect(step(dropped, 5, [], 3)).toBe('miss');
   });
 
   it('judges position only when the tracker cannot read shapes', () => {

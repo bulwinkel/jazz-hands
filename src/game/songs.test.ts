@@ -29,7 +29,7 @@ describe.each(SONGS)('song "$title"', (song) => {
     expect(seconds).toBeLessThan(95);
   });
 
-  it.each([1, 2, 3, 4] as Level[])('gives level %i a chart at both lengths', (level) => {
+  it.each([1, 2, 3, 4, 5] as Level[])('gives level %i a chart at both lengths', (level) => {
     for (const length of ['short', 'full'] as const) {
       const startSec = playStartSec(manifest, length);
       const endSec = playEndSec(manifest, length);

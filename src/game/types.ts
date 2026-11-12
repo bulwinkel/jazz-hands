@@ -1,6 +1,6 @@
 import type { GestureName } from '../tracking/types';
 
-export type Level = 1 | 2 | 3 | 4;
+export type Level = 1 | 2 | 3 | 4 | 5;
 export type PlayerIndex = 0 | 1;
 export type PlayerCount = 1 | 2;
 export type SongLength = 'short' | 'full';
@@ -54,7 +54,7 @@ export interface Cue {
   cells: number[];
   /** Due time of each cell, parallel to `cells`. */
   times: number[];
-  /** Required hand shape. Single-cell taps only. */
+  /** Required hand shape, for every cell of the cue. */
   gesture?: GestureName;
 }
 

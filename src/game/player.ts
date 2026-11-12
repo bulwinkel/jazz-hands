@@ -1,4 +1,5 @@
 import type { CueObservation } from './diagnostics';
+import { LEVELS } from './config';
 import { defaultGrid } from './geometry';
 import type { CueState } from './judgment';
 import { freshScore } from './scoring';
@@ -32,7 +33,7 @@ export function createPlayers(settings: Settings): PlayerRun[] {
   return indices.map((index) => ({
     index,
     level: settings.levels[index],
-    shapes: settings.shapes[index],
+    shapes: settings.shapes[index] || LEVELS[settings.levels[index]].shapeOnEveryCue,
     grid: defaultGrid(index, settings.playerCount),
     reachSamples: [],
     cues: [],
