@@ -87,6 +87,8 @@ export class DanceGame {
   private audio?: SongAudio;
   /** The camera, or a test input. */
   private readonly inputs: InputHost;
+  /** Whether hand control was on at the last look from the menu. See `syncMenuInput`. */
+  private menuHandControl = false;
   /** True when a hand chose Start: the players are then already at their spots. */
   private startedByHand = false;
   /** Which item a hand is on and how far its fist hold has come, in the menu and on the results screen. */
@@ -174,6 +176,8 @@ export class DanceGame {
     this.ui.showMenu(this.options.settings, (byHand) => void this.start(byHand), this.onMenuChange);
     this.showRecordings();
     this.followPreview();
+    // A menu that opens is a new chance for the camera, as if hand control had just been turned on.
+    this.menuHandControl = false;
     this.syncMenuInput();
   };
 
@@ -189,15 +193,23 @@ export class DanceGame {
    * In the menu, the camera runs only while hands can point at the menu. With hand control
    * off it is released: the camera light goes out, the picture behind the menu goes, and no
    * tracking runs. The round opens the camera again when it starts.
+   *
+   * A camera that could not open (a dismissed prompt, no camera) is tried again only when the
+   * menu opens or hand control is turned on. Each try asks for the camera and loads the models,
+   * which must not happen on every choice in the menu.
    */
   private syncMenuInput(): void {
     if (this.phase !== 'menu') return;
-    if (!this.options.settings.handControl) {
+    const { handControl } = this.options.settings;
+    const turnedOn = handControl && !this.menuHandControl;
+    this.menuHandControl = handControl;
+    if (!handControl) {
       void this.inputs.want(null);
       this.frame = undefined;
       this.clearHandPointer();
       return;
     }
+    if (!turnedOn && !this.inputs.input) return;
     // If tracking cannot start, the menu still works with the mouse and the keyboard.
     this.inputs.want({ mode: MENU_TRACKER, faces: false }).catch(() => {});
   }

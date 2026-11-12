@@ -4,8 +4,14 @@ import { createInput } from './input';
 import type { GameInput, InputView } from './input';
 import type { Options } from './settings';
 
-/** What the game wants from the input: none, or one with this tracker, with or without the face models. */
-export type InputWish = { mode: TrackerMode; faces: boolean } | null;
+/** An input with this tracker, with or without the face models. */
+export interface InputNeeds {
+  mode: TrackerMode;
+  faces: boolean;
+}
+
+/** What the game wants from the input: none, or one with these needs. */
+export type InputWish = InputNeeds | null;
 
 /** The trackers the M key steps through. */
 const TRACKER_CYCLE: readonly TrackerMode[] = ['hands-full', 'hands-split', 'pose'];
@@ -34,18 +40,23 @@ export class InputHost {
   /** The element the camera picture goes into. */
   private readonly surface: HTMLElement;
   private readonly hooks: InputHooks;
+  private readonly create: typeof createInput;
   private current?: GameInput;
   private lastError?: unknown;
   private wish: InputWish = null;
   /** Set while an input opens, so two wishes share one opening. */
   private opening?: Promise<void>;
+  /** Goes up each time the input closes, so an opening that ends later can tell that nobody wants it. */
+  private closings = 0;
   /** Tracker picked with the M key. It lasts until the page reloads. */
   private pickedTracker?: TrackerMode;
 
-  constructor(options: Options, surface: HTMLElement, hooks: InputHooks) {
+  /** `create` makes the input. Tests give a stand-in. */
+  constructor(options: Options, surface: HTMLElement, hooks: InputHooks, create = createInput) {
     this.options = options;
     this.surface = surface;
     this.hooks = hooks;
+    this.create = create;
   }
 
   /** The open input. Unset while none is open. */
@@ -91,25 +102,32 @@ export class InputHost {
     void this.want(null);
   }
 
-  private open(wish: { mode: TrackerMode; faces: boolean }): Promise<void> {
-    this.opening ??= this.connect(wish).finally(() => {
-      this.opening = undefined;
-    });
+  private open(needs: InputNeeds): Promise<void> {
+    if (!this.opening) {
+      const opening = this.connect(needs).finally(() => {
+        if (this.opening === opening) this.opening = undefined;
+      });
+      this.opening = opening;
+    }
     return this.opening;
   }
 
-  /** Opens an input with the tracker of `wish`, and starts tracking. */
-  private async connect(wish: { mode: TrackerMode; faces: boolean }): Promise<void> {
-    const input = createInput(this.options, wish.mode, this.surface);
+  /**
+   * Opens an input with the tracker and the face models of `needs`, so it loads its models
+   * once, and starts tracking.
+   */
+  private async connect(needs: InputNeeds): Promise<void> {
+    const closings = this.closings;
+    const input = this.create(this.options, needs.mode, needs.faces, this.surface);
     try {
       await input.init();
     } catch (error) {
       input.dispose();
-      this.lastError = error;
+      if (closings === this.closings) this.lastError = error;
       return;
     }
-    // The game may have stopped wanting an input while it opened.
-    if (!this.wish) {
+    // The input closed while this one opened: nobody wants it now. A newer wish has an opening of its own.
+    if (closings !== this.closings) {
       input.dispose();
       return;
     }
@@ -119,8 +137,10 @@ export class InputHost {
     input.start(this.hooks.view, this.hooks.onFrame, (error) => this.onTrackingFailure(input, error));
   }
 
-  /** Releases the camera and its trackers. */
+  /** Releases the camera and its trackers, and leaves an opening in progress to close itself. */
   private close(): void {
+    this.closings++;
+    this.opening = undefined;
     this.current?.dispose();
     this.current = undefined;
   }

@@ -54,8 +54,9 @@ export class CameraInput implements GameInput {
   private animationId = 0;
   private lastVideoTime = -1;
 
-  constructor(mode: TrackerMode) {
-    this.tracker = createTracker(mode);
+  /** With `faces`, the first tracker loads the face models with the hand models. */
+  constructor(mode: TrackerMode, faces: boolean) {
+    this.tracker = createTracker(mode, { faces });
     this.loaded.set(mode, this.tracker);
   }
 
@@ -288,6 +289,12 @@ export class SimulatedInput implements GameInput {
   };
 }
 
-export function createInput(options: Options, trackerMode: TrackerMode, surface: HTMLElement): GameInput {
-  return options.input === 'camera' ? new CameraInput(trackerMode) : new SimulatedInput(options, surface);
+/** The input the options ask for. A camera starts with `trackerMode`, with or without the face models. */
+export function createInput(
+  options: Options,
+  trackerMode: TrackerMode,
+  faces: boolean,
+  surface: HTMLElement,
+): GameInput {
+  return options.input === 'camera' ? new CameraInput(trackerMode, faces) : new SimulatedInput(options, surface);
 }
