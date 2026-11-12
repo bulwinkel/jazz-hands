@@ -31,11 +31,21 @@ const SHELL_HTML = `
   <button id="resume" hidden>Click to start</button>
   <button id="pause" hidden aria-label="Pause game">Ⅱ Pause</button>
   <div id="rec" hidden aria-label="Recording">● REC</div>
+  <div id="player" hidden>
+    <video playsinline controls></video>
+    <div class="player-bar">
+      <button type="button" id="player-game" data-hand="player-game">🎮 Game view</button>
+      <button type="button" id="player-camera" data-hand="player-camera">🎥 Camera only</button>
+      <a id="player-download" data-hand="player-download"></a>
+      <button type="button" id="player-close" data-hand="player-close">✕ Close · Esc</button>
+    </div>
+  </div>
   <button id="refit" hidden data-hand="refit" data-hand-hold="${HAND_MENU.slowHoldSec}">↺ Recalibrate · C</button>
   <pre id="debug" hidden></pre>`;
 
 /** The list of recorded rounds, with a download link for each video. Menu and results both have it. */
-const RECORDINGS_HTML = '<div class="recordings" hidden><p role="status"></p><ul></ul></div>';
+const RECORDINGS_HTML =
+  '<div class="recordings" hidden><div class="preview-slot"></div><p role="status"></p><ul></ul></div>';
 const VIDEO_NAMES: Record<VideoKind, string> = { game: 'Game view', camera: 'Camera only' };
 
 const MENU_HTML = `
@@ -212,6 +222,14 @@ export class GameUI {
   private readonly messageTitle: HTMLElement;
   private readonly messageDetail: HTMLElement;
   private readonly fitObserver = new ResizeObserver(() => this.fitPanel());
+
+  /** The video player: it fills the window and plays a recorded round with its sound. */
+  private readonly player: HTMLElement;
+  private readonly playerVideo: HTMLVideoElement;
+  /** What the player shows now. Unset while it is closed. */
+  private playing?: { round: RoundVideos; kind: VideoKind; ownsFullscreen: boolean };
+  /** Hears when the video player opens and when it closes. */
+  onPlayerChange?: (isOpen: boolean) => void;
   /** Steps the open menu's carousel to the next or the previous song. Unset while the menu is closed. */
   private stepCarousel?: (direction: 1 | -1) => void;
 
@@ -230,6 +248,12 @@ export class GameUI {
     this.pauseButton = find(root, '#pause');
     this.resumeButton = find(root, '#resume');
     this.refitButton = find(root, '#refit');
+
+    this.player = find(root, '#player');
+    this.playerVideo = find(this.player, 'video');
+    find(this.player, '#player-game').addEventListener('click', () => this.showInPlayer('game'));
+    find(this.player, '#player-camera').addEventListener('click', () => this.showInPlayer('camera'));
+    find(this.player, '#player-close').addEventListener('click', () => this.closePlayer());
   }
 
   /** Shows a large message over the game. With no title, hides it. */
@@ -257,20 +281,30 @@ export class GameUI {
   }
 
   /**
-   * Shows the recorded rounds on the open panel, newest first, with a link that downloads
-   * each video. `status` is a line above them, for a recording that is not finished yet.
+   * Shows the recorded rounds on the open panel, newest first. Each has a button that plays
+   * it in the video player and a link that downloads each video. `status` is a line above
+   * them, for a recording that is not finished yet. `preview` is the round to show as a
+   * small silent video above the list: the round whose results are on screen.
    * Does nothing on a panel with no place for them.
    */
-  showRecordings(rounds: readonly RoundVideos[], status: string): void {
+  showRecordings(rounds: readonly RoundVideos[], status: string, preview?: RoundVideos): void {
     const block = this.panel.querySelector<HTMLElement>('.recordings');
     if (!block) return;
     block.hidden = rounds.length === 0 && !status;
     find(block, 'p').textContent = status;
-    const rows = rounds.map((round) => {
+    this.showPreview(find(block, '.preview-slot'), preview);
+
+    const rows = rounds.map((round, i) => {
       const row = document.createElement('li');
       const label = document.createElement('span');
       label.textContent = round.label;
-      row.append(label);
+      const watch = document.createElement('button');
+      watch.type = 'button';
+      watch.dataset.hand = `watch-${i}`;
+      watch.textContent = '▶ Watch';
+      // A choice made by hand is a click made by the page, which the browser marks as not trusted.
+      watch.addEventListener('click', (event) => this.openPlayer(round, !event.isTrusted));
+      row.append(label, watch);
       for (const video of round.videos) {
         const link = document.createElement('a');
         link.href = video.url;
@@ -281,6 +315,107 @@ export class GameUI {
       return row;
     });
     find(block, 'ul').replaceChildren(...rows);
+  }
+
+  /** The small silent video of a round. A click, or a fist, plays the round in the video player. */
+  private showPreview(slot: HTMLElement, round: RoundVideos | undefined): void {
+    const video = round?.videos.find((candidate) => candidate.kind === 'game') ?? round?.videos[0];
+    if (!round || !video) {
+      slot.replaceChildren();
+      return;
+    }
+    // Keep a preview that already plays this video: a new element would start it again.
+    if (slot.querySelector('video')?.src === video.url) return;
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'preview';
+    button.dataset.hand = 'watch-preview';
+    button.setAttribute('aria-label', 'Watch the round');
+    const picture = document.createElement('video');
+    picture.muted = true;
+    picture.loop = true;
+    picture.autoplay = true;
+    picture.playsInline = true;
+    picture.src = video.url;
+    const label = document.createElement('span');
+    label.textContent = '▶ Watch the round';
+    button.append(picture, label);
+    button.addEventListener('click', (event) => this.openPlayer(round, !event.isTrusted));
+    slot.replaceChildren(button);
+  }
+
+  // --- The video player ---
+
+  get playerOpen(): boolean {
+    return this.playing !== undefined;
+  }
+
+  /**
+   * Plays a recorded round with its sound, in a player that fills the window.
+   * A real click also switches the browser to full screen. A choice by hand cannot: a browser
+   * goes to full screen only on a click or a key press.
+   */
+  openPlayer(round: RoundVideos, byHand: boolean): void {
+    const first = round.videos.find((video) => video.kind === 'game') ?? round.videos[0];
+    if (!first) return;
+    const ownsFullscreen = !byHand && !document.fullscreenElement;
+    // The whole page goes to full screen, not the player alone, so the hand rings still show.
+    if (ownsFullscreen) void document.documentElement.requestFullscreen().catch(() => {});
+    this.playing = { round, kind: first.kind, ownsFullscreen };
+    this.player.hidden = false;
+    this.playFrom(0);
+    this.onPlayerChange?.(true);
+  }
+
+  closePlayer(): void {
+    const playing = this.playing;
+    if (!playing) return;
+    this.playing = undefined;
+    this.playerVideo.pause();
+    this.playerVideo.removeAttribute('src');
+    this.playerVideo.load();
+    this.player.hidden = true;
+    if (playing.ownsFullscreen && document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    this.onPlayerChange?.(false);
+  }
+
+  /** Space in the player: pause, or play on. */
+  togglePlayerPause(): void {
+    if (!this.playing) return;
+    if (this.playerVideo.paused) void this.playerVideo.play().catch(() => {});
+    else this.playerVideo.pause();
+  }
+
+  /** Switches the player between the game view and the camera view, at the same moment of the round. */
+  private showInPlayer(kind: VideoKind): void {
+    const playing = this.playing;
+    if (!playing || playing.kind === kind || !playing.round.videos.some((video) => video.kind === kind)) return;
+    playing.kind = kind;
+    this.playFrom(this.playerVideo.currentTime);
+  }
+
+  /** Loads the chosen video of the round into the player and plays it from `fromSec`. */
+  private playFrom(fromSec: number): void {
+    const playing = this.playing;
+    const video = playing?.round.videos.find((candidate) => candidate.kind === playing.kind);
+    if (!playing || !video) return;
+
+    this.playerVideo.src = video.url;
+    this.playerVideo.muted = false;
+    // Before the video has loaded, this sets where it will start.
+    this.playerVideo.currentTime = fromSec;
+    void this.playerVideo.play().catch(() => {});
+
+    for (const kind of ['game', 'camera'] as const) {
+      const button = find<HTMLButtonElement>(this.player, `#player-${kind}`);
+      button.hidden = !playing.round.videos.some((candidate) => candidate.kind === kind);
+      button.setAttribute('aria-pressed', String(kind === playing.kind));
+    }
+    const download = find<HTMLAnchorElement>(this.player, '#player-download');
+    download.href = video.url;
+    download.download = video.fileName;
+    download.textContent = `⬇ Download · ${sizeText(video.sizeBytes)}`;
   }
 
   /** In the menu: chooses the next song (1) or the previous one (-1). After the last comes the first. */
@@ -429,7 +564,11 @@ export class GameUI {
    */
   handTargets(): HandTarget[] {
     const onPanel = this.panel.hidden ? [] : [...this.panel.querySelectorAll<HTMLElement>('[data-hand]')];
-    const elements = this.refitButton.hidden ? onPanel : [...onPanel, this.refitButton];
+    let elements = this.refitButton.hidden ? onPanel : [...onPanel, this.refitButton];
+    // The open video player covers everything else, so only its own buttons count.
+    if (this.playing) {
+      elements = [...this.player.querySelectorAll<HTMLElement>('[data-hand]')].filter((element) => !element.hidden);
+    }
     return elements.map((element) => {
       const { left, top, width, height } = element.getBoundingClientRect();
       return {

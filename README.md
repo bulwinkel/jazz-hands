@@ -16,8 +16,15 @@ Turn on **Recording** in the top right corner of the menu. Each round then gives
 Both carry the song. A video runs from the countdown to 4 seconds after the results show.
 A pause is left out. A round that stops part-way (restart, recalibrate, menu) gives no video.
 
-The download links show on the results screen and on the menu. The game keeps the videos of
-the last 3 rounds, in memory only: a reload of the page drops them.
+When the videos are ready, the results screen shows the round as a small silent preview.
+A click on it, or a fist held on it, plays the round with its sound in a player that fills
+the window. The player has buttons to switch between the game view and the camera view, to
+download the video on show, and to close. A real click also switches the browser to full
+screen. Space pauses and Esc closes.
+
+The results screen and the menu also list the recorded rounds, each with a Watch button and
+its download links. The game keeps the videos of the last 3 rounds, in memory only: a reload
+of the page drops them.
 
 The files are MP4 (H.264 and AAC). The run report of a recorded round has
 `settings.recording: true`, to compare its tracking speed with other rounds.

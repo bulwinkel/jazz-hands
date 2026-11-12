@@ -145,6 +145,10 @@ export class DanceGame {
   private recordingsInProgress = 0;
   /** The videos of the last rounds, newest first. */
   private recordedRounds: RoundVideos[] = [];
+  /** Counts the rounds of this visit, so a finished recording knows whether its results still show. */
+  private roundNumber = 0;
+  /** The videos of the round whose results are on screen, once they are ready. */
+  private resultVideos?: RoundVideos;
 
   private readonly preview = new SongPreview();
   /** The song whose preview plays or is about to play, as an index into SONGS. */
@@ -165,6 +169,7 @@ export class DanceGame {
     this.ui.resumeButton.addEventListener('click', () => void this.unlockAudio());
     // A choice made by hand is a click made by the page, which the browser marks as not trusted.
     this.ui.refitButton.addEventListener('click', (event) => this.refit(!event.isTrusted));
+    this.ui.onPlayerChange = this.onPlayerChange;
     window.addEventListener('keydown', this.onKey);
     window.addEventListener('pagehide', () => this.dispose(), { once: true });
 
@@ -182,6 +187,7 @@ export class DanceGame {
       player.holdStartMs = null;
       player.hold = 0;
     }
+    this.ui.closePlayer();
     this.ui.pauseButton.hidden = phase !== 'play';
     // The recalibrate button shows in the ready check: there the players see whether the grids
     // fit. It keeps away from the hands-up cells, which are in other places with two players.
@@ -412,6 +418,7 @@ export class DanceGame {
     const songId = this.manifest?.id ?? 'song';
     const title = this.manifest?.title ?? '';
     const endedAt = new Date();
+    const roundNumber = this.roundNumber;
     this.recordingsInProgress++;
     this.showRecordings();
     const videos = await recorder.stop();
@@ -432,9 +439,24 @@ export class DanceGame {
       for (const old of this.recordedRounds.splice(RECORDING.keepRounds)) {
         for (const video of old.videos) URL.revokeObjectURL(video.url);
       }
+      // While the results of this round still show, its video plays there as a preview.
+      if (this.phase === 'results' && roundNumber === this.roundNumber) this.resultVideos = this.recordedRounds[0];
     }
     this.showRecordings();
   }
+
+  /**
+   * The video player opened or closed. While it is open, a raised hand must not start a new
+   * round, and the menu's song preview must not play over the video.
+   */
+  private onPlayerChange = (isOpen: boolean): void => {
+    for (const player of this.players) {
+      player.holdStartMs = null;
+      player.hold = 0;
+    }
+    if (isOpen) this.stopPreview();
+    else this.previewChosenSong();
+  };
 
   /** Shows the recorded rounds on the menu or the results, whichever is open. */
   private showRecordings(): void {
@@ -443,7 +465,8 @@ export class DanceGame {
       : this.recordingsInProgress > 0
         ? 'Finishing the video…'
         : '';
-    this.ui.showRecordings(this.recordedRounds, status);
+    const preview = this.phase === 'results' ? this.resultVideos : undefined;
+    this.ui.showRecordings(this.recordedRounds, status, preview);
   }
 
   private resultLines(): ResultLine[] {
@@ -543,6 +566,7 @@ export class DanceGame {
       player.faceObservations = player.faceCues.map(newFaceObservation);
     }
     this.ui.hidePanel();
+    this.roundNumber++;
     this.setPhase('countdown');
     this.startRecording();
   };
@@ -564,6 +588,7 @@ export class DanceGame {
   }
 
   private finish(): void {
+    this.resultVideos = undefined;
     this.judge(this.endSec + 1); // Closes every cue that is still open.
     this.report = this.buildReport();
     this.audio?.stop();
@@ -660,7 +685,7 @@ export class DanceGame {
 
     if (this.phase === 'fit') {
       this.collectReach(frame);
-    } else if (this.phase === 'ready' || this.phase === 'results') {
+    } else if (this.phase === 'ready' || (this.phase === 'results' && !this.ui.playerOpen)) {
       this.trackHandsUp(frame, previous);
     } else if (this.phase === 'play' && !this.paused && this.audio?.context.state === 'running') {
       this.countFrame(frame);
@@ -875,6 +900,16 @@ export class DanceGame {
     if (event.repeat) return;
     const key = event.key.toLowerCase();
     const { settings } = this.options;
+
+    // The open video player takes the keys: Esc closes it, Space pauses it, and no key
+    // starts or leaves a round behind it.
+    if (this.ui.playerOpen) {
+      if (key === 'escape') this.ui.closePlayer();
+      else if (key === ' ') this.ui.togglePlayerPause();
+      else return;
+      event.preventDefault();
+      return;
+    }
 
     switch (key) {
       case 'escape':
