@@ -19,8 +19,20 @@ describe('kept settings', () => {
       inputLatencyMs: 120,
       avOffsetMs: -30,
       songIndex: 0,
+      previews: false,
+      handControl: false,
     };
     expect(parseSettings(kept, '').settings).toEqual(kept);
+  });
+
+  it('keep previews and hand control on for settings kept before those switches existed', () => {
+    const { settings } = parseSettings({ playerCount: 1, songIndex: 0 }, '');
+    expect(settings).toMatchObject({ previews: true, handControl: true });
+  });
+
+  it('ignore a previews or hand control value that is not a switch', () => {
+    const { settings } = parseSettings({ previews: 0, handControl: 'no' }, '');
+    expect(settings).toMatchObject({ previews: true, handControl: true });
   });
 
   it('keep faces off for settings kept before faces existed', () => {
@@ -86,6 +98,13 @@ describe('URL parameters', () => {
     expect(parseSettings(null, '?faces1=1').settings.faces).toEqual([false, true]);
     expect(parseSettings(null, '?faces0=1&faces1=1').settings.faces).toEqual([true, true]);
     expect(parseSettings({ faces: [true, true] }, '?faces0=0').settings.faces).toEqual([false, true]);
+  });
+
+  it('switch song previews and hand control on and off', () => {
+    expect(parseSettings(null, '?previews=0').settings).toMatchObject({ previews: false, handControl: true });
+    expect(parseSettings(null, '?hands=0').settings).toMatchObject({ previews: true, handControl: false });
+    const kept = { previews: false, handControl: false };
+    expect(parseSettings(kept, '?previews=1&hands=1').settings).toMatchObject({ previews: true, handControl: true });
   });
 
   it('set the one-off options', () => {

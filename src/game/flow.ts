@@ -184,14 +184,7 @@ export class DanceGame {
     this.switchingTracker = false;
     this.ui.resumeButton.hidden = true;
     this.setPhase('menu');
-    this.ui.showMenu(
-      this.options.settings,
-      (byHand) => void this.start(byHand),
-      () => {
-        this.saveSettings();
-        this.previewChosenSong();
-      },
-    );
+    this.ui.showMenu(this.options.settings, (byHand) => void this.start(byHand), this.onMenuChange);
     this.previewChosenSong();
     // The menu tracks hands, so players can point at its items. If tracking cannot start,
     // the menu still works with the mouse and the keyboard.
@@ -199,6 +192,19 @@ export class DanceGame {
       .then(() => this.input?.setMode(MENU_TRACKER))
       .catch(() => {});
   };
+
+  /** A choice in the menu changed. */
+  private onMenuChange = (): void => {
+    this.saveSettings();
+    this.previewChosenSong();
+    if (!this.options.settings.handControl) this.clearHandPointer();
+  };
+
+  /** Takes the hand rings and the highlight off the panel, and forgets a hold in progress. */
+  private clearHandPointer(): void {
+    this.handMenu = newHandMenuState();
+    this.ui.showHands([], null, 0);
+  }
 
   /**
    * Opens the camera (or a test input) and starts tracking. The input then stays open for the
@@ -311,12 +317,18 @@ export class DanceGame {
   // --- Song preview in the menu ---
 
   /**
-   * Plays a part of the chosen song while the menu is open. Call it when the menu opens and
-   * after every change in the menu: it acts only when the chosen song is a new one.
+   * Plays a part of the chosen song while the menu is open, unless the player turned previews
+   * off. Call it when the menu opens and after every change in the menu: it acts only when
+   * the chosen song is a new one, or when previews went on or off.
    */
   private previewChosenSong = (): void => {
-    const { songIndex } = this.options.settings;
-    if (this.phase !== 'menu' || songIndex === this.previewedSong) return;
+    const { songIndex, previews } = this.options.settings;
+    if (this.phase !== 'menu') return;
+    if (!previews) {
+      this.stopPreview();
+      return;
+    }
+    if (songIndex === this.previewedSong) return;
     this.previewedSong = songIndex;
     this.preview.stop();
     // Wait a moment: a player who steps through the songs hears only the one they stop on.
@@ -468,7 +480,8 @@ export class DanceGame {
     this.frame = frame;
     this.rememberFaces(frame);
 
-    if (this.phase === 'menu' || this.phase === 'results') this.pointAtPanel(frame);
+    const onPanel = this.phase === 'menu' || this.phase === 'results';
+    if (onPanel && this.options.settings.handControl) this.pointAtPanel(frame);
 
     if (this.phase === 'fit') {
       this.collectReach(frame);

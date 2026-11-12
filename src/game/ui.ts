@@ -44,10 +44,20 @@ const MENU_HTML = `
   </fieldset>
   <button class="primary" id="start" data-hand="start" data-hand-hold="${HAND_MENU.slowHoldSec}">Let’s dance →</button>
   <p class="keys">
-    Point with an open hand ✋, then make a fist ✊ to choose · Space or Enter to start · F fullscreen<br>
+    <span id="hand-hint">Point with an open hand ✋, then make a fist ✊ to choose · </span>Space or Enter to start · F fullscreen<br>
     <span id="stand-hint"></span>
     <span id="sound-hint" hidden><br>Click or press a key once, so the browser lets the music play.</span>
   </p>`;
+
+/**
+ * Two switches in a top corner of the menu. They are outside the scaled content, a little in
+ * from the side: the camera tracks a hand badly at the edge of its picture.
+ */
+const MENU_SWITCHES_HTML = `
+  <div class="corner">
+    <button type="button" id="previews-switch" data-hand="previews"></button>
+    <button type="button" id="hands-switch" data-hand="hand-control"></button>
+  </div>`;
 
 const STAND_HINT: Record<PlayerCount, string> = {
   1: 'Stand in the middle of the picture.',
@@ -218,7 +228,27 @@ export class GameUI {
    * `onStart` hears whether a pointing hand pressed Start, and not a mouse or a key.
    */
   showMenu(settings: Settings, onStart: (byHand: boolean) => void, onChange: () => void): void {
-    this.openPanel('menu', MENU_HTML);
+    this.openPanel('menu', MENU_HTML, MENU_SWITCHES_HTML);
+
+    // The two switches in the corner. Each shows its state in its text.
+    const handHint = find(this.panel, '#hand-hint');
+    const bindSwitch = (id: string, key: 'previews' | 'handControl', label: string, icons: [string, string]): void => {
+      const button = find<HTMLButtonElement>(this.panel, id);
+      const show = (): void => {
+        const isOn = settings[key];
+        button.textContent = `${isOn ? icons[0] : icons[1]} ${label} ${isOn ? 'on' : 'off'}`;
+        button.setAttribute('aria-pressed', String(isOn));
+        handHint.hidden = !settings.handControl;
+      };
+      show();
+      button.addEventListener('click', () => {
+        settings[key] = !settings[key];
+        show();
+        onChange();
+      });
+    };
+    bindSwitch('#previews-switch', 'previews', 'Previews', ['🔊', '🔇']);
+    bindSwitch('#hands-switch', 'handControl', 'Hand control', ['✋', '🚫']);
 
     // The songs are a carousel of covers: the chosen song in the middle, its neighbours beside
     // it, the rest out of sight. It takes the same room for six songs as for sixty.
@@ -392,10 +422,11 @@ export class GameUI {
     }
   }
 
-  private openPanel(className: string, html: string): void {
+  /** Opens the panel with `html` as its content. `outsideHtml` sits beside the content, in the panel's own corners. */
+  private openPanel(className: string, html: string, outsideHtml = ''): void {
     this.stepCarousel = undefined;
     this.panel.className = className;
-    this.panel.innerHTML = `<div class="fit">${html}</div>`;
+    this.panel.innerHTML = `<div class="fit">${html}</div>${outsideHtml}`;
     this.panel.hidden = false;
     this.message.hidden = true;
 
@@ -419,5 +450,7 @@ export class GameUI {
     // offsetWidth and offsetHeight are the design size: a transform does not change them.
     const scale = Math.min(1, roomWidth / content.offsetWidth, roomHeight / content.offsetHeight);
     content.style.transform = scale < 1 ? `scale(${scale})` : '';
+    // What sits outside the content shrinks with it (see `.corner` in the stylesheet).
+    this.panel.style.setProperty('--fit', String(scale));
   };
 }

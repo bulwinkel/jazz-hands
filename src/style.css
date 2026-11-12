@@ -350,3 +350,38 @@ body[data-phase="countdown"] #message h1{font-size:clamp(140px,20vw,300px);line-
 @media (prefers-reduced-motion: reduce) {
   .song-strip .song-card { transition: none; }
 }
+
+/* The start buttons are yellow themselves, so the yellow highlight does not show on them.
+   Their highlight is white, and their hold bar is dark. */
+.primary.hand-hover {
+  outline: 6px solid #fff;
+  box-shadow: 0 0 34px #ffffffb3;
+}
+.primary.hand-hover::after {
+  background: #18162766;
+}
+
+/* Two switches in a top corner of the menu: song previews and choosing by hand. They sit a
+   little in from the side and from the top, because the camera tracks a hand badly at the
+   edge of its picture. They shrink with the menu content (`--fit` is set in ui.ts). */
+.corner {
+  position: absolute;
+  top: 4%;
+  right: 17%;
+  display: grid;
+  gap: 10px;
+  transform: scale(var(--fit, 1));
+  transform-origin: top right;
+}
+.corner button {
+  min-width: 236px;
+  padding: 12px 18px;
+  border-radius: 14px;
+  background: #0b1024cc;
+  font-size: 20px;
+  text-align: left;
+}
+.corner button[aria-pressed="false"] {
+  border-style: dashed;
+  color: #94a3b8;
+}
