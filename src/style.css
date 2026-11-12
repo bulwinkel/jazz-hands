@@ -21,10 +21,10 @@ h1>span{color:#fde047;margin-left:18px}
 .subtitle{font-size:24px;color:#cbd5e1;margin:0 0 18px}
 .song{display:inline-flex;align-items:center;gap:15px;padding:12px 25px;border:1px solid #ffffff26;border-radius:40px;color:#fde68a;font-weight:700;font-size:21px}
 
-.players{display:grid;grid-template-columns:1fr 1fr;gap:24px;max-width:1200px;margin:28px auto 22px}
+.players{display:grid;grid-template-columns:1fr 1fr;gap:24px;max-width:1200px;margin:18px auto 22px}
 fieldset{border:2px solid color-mix(in srgb,var(--player,#fff) 35%,transparent);border-radius:22px;padding:18px;margin:0}
 legend{font-size:24px;font-weight:800;color:var(--player,#fff);padding:0 12px}
-.level-options{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.level-options{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .level-options label{cursor:pointer;position:relative}
 .level-options input{position:absolute;opacity:0;width:100%;height:100%;inset:0;margin:0}
 .level-options span{display:flex;flex-direction:column;justify-content:center;min-height:86px;border:2px solid #ffffff20;border-radius:14px;font-size:21px;font-weight:800;padding:10px 5px;pointer-events:none}
@@ -105,3 +105,73 @@ h1{font-size:48px;margin:10px 0}
 
 .replay-hold{height:14px;background:#ffffff20;border-radius:20px;margin-top:18px;overflow:hidden}
 .replay-hold span{display:block;width:0;height:100%;background:var(--player);border-radius:inherit}
+
+/* Player count: two large buttons that behave as radio inputs. */
+.count {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  border: none;
+  padding: 0;
+  margin: 22px 0 0;
+}
+.count legend {
+  font-size: 18px;
+  color: #cbd5e1;
+  margin: 0 auto 10px;
+}
+.count label {
+  position: relative;
+  cursor: pointer;
+}
+.count input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  margin: 0;
+}
+.count span {
+  display: block;
+  min-width: 170px;
+  padding: 12px 22px;
+  border: 2px solid #ffffff20;
+  border-radius: 14px;
+  font-size: 22px;
+  font-weight: 800;
+  pointer-events: none;
+}
+.count input:checked + span {
+  border-color: #fde047;
+  background: #fde0471f;
+  color: #fde047;
+}
+
+/* One player: a single card, centred. */
+.players.solo {
+  grid-template-columns: minmax(0, 620px);
+  justify-content: center;
+}
+
+/* Hand shapes switch on each player card. */
+.shapes {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 14px;
+  font-size: 20px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.shapes input {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--player);
+}
+
+@media (max-height: 820px) {
+  .count { margin-top: 12px; }
+  .count span { padding: 8px 18px; font-size: 19px; }
+  .shapes { margin-top: 8px; font-size: 17px; }
+  .subtitle { margin-bottom: 10px; }
+}

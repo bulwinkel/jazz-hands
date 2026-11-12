@@ -1,24 +1,79 @@
-import { expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { botPlayer } from './bot';
 import { generateChart } from './chart';
-import { defaultGrid } from './geometry';
-import { cueState, judgeFrame } from './judgment';
+import { HANDS_UP_CELL } from './config';
 import { synthetic } from './fixtures';
-import type { Level } from './types';
-for (const level of [1, 2, 3] as Level[]) it(`bot gets 100% Perfect at level ${level}`, () => {
-  const m = synthetic(60, 80); const cues = generateChart(m, level, 99); const states = cues.map(cueState); const grid = defaultGrid(0);
-  expect(cues.length).toBeGreaterThan(10);
-  for (let tick = 0; tick < 81 * 60; tick++) {
-    const time = tick / 60; const hands = botPlayer('play', time, cues, grid, true, 1, 99).hands;
-    states.forEach((s, i) => { states[i] = judgeFrame(s, level, grid, hands, time - 0.1); });
+import { cellCentre, defaultGrid } from './geometry';
+import { judgeFrame, newCueState } from './judgment';
+import type { Cue, Level, Manifest } from './types';
+
+const SEED = 99;
+const grid = defaultGrid(0, 1);
+
+function chart(song: Manifest, level: Level, shapes: boolean): Cue[] {
+  return generateChart(song, { level, shapes, seed: SEED, endSec: song.durationSec });
+}
+
+/** Plays the whole song at 60 frames a second and returns the final rating of every cue. */
+function playThrough(song: Manifest, level: Level, shapes: boolean, accuracy = 1) {
+  const cues = chart(song, level, shapes);
+  let states = cues.map(newCueState);
+  for (let tick = 0; tick <= (song.durationSec + 1) * 60; tick++) {
+    const timeSec = tick / 60;
+    const { hands } = botPlayer('play', timeSec, cues, grid, accuracy, SEED);
+    states = states.map((state) => judgeFrame(state, level, grid, hands, timeSec));
   }
-  expect(states.every(s => s.result === 'perfect')).toBe(true);
+  return { cues, results: states.map((state) => state.result) };
+}
+
+describe('the bot plays every cue Perfect', () => {
+  const cases: [Level, boolean][] = [
+    [1, false],
+    [1, true],
+    [2, false],
+    [2, true],
+    [3, false],
+    [3, true],
+  ];
+
+  it.each(cases)('at level %i with shapes %s', (level, shapes) => {
+    // 100 BPM is close to the real song. 150 BPM makes slide ends and the next cue overlap.
+    for (const bpm of [100, 150]) {
+      const { cues, results } = playThrough(synthetic(bpm, 90), level, shapes);
+      expect(cues.length).toBeGreaterThan(10);
+      expect(results.every((result) => result === 'perfect')).toBe(true);
+    }
+  });
+
+  it('including slides and doubles at level 3', () => {
+    const { cues } = playThrough(synthetic(100, 90), 3, false);
+    expect(cues.some((cue) => cue.kind === 'slide')).toBe(true);
+    expect(cues.some((cue) => cue.kind === 'tap' && cue.cells.length === 2)).toBe(true);
+  });
 });
-it('skips deterministically and leaves Fit empty', () => {
-  const m = synthetic(); const cues = generateChart(m, 2, 3); const grid = defaultGrid(1);
-  expect(botPlayer('fit', 1, cues, grid, true, 1, 3).hands).toHaveLength(0);
-  expect(botPlayer('ready', 1, cues, grid, true, 1, 3).hands).toHaveLength(1);
-  const hits = cues.map(c => botPlayer('play', c.timeSec, cues, grid, true, 0.5, 3).hands.length > 0);
-  expect(hits).toEqual(cues.map(c => botPlayer('play', c.timeSec, cues, grid, true, 0.5, 3).hands.length > 0));
-  expect(hits.some(Boolean) && hits.some(v => !v)).toBe(true);
+
+describe('the bot outside play', () => {
+  const cues = chart(synthetic(), 2, false);
+
+  it('keeps its hands down during the reach fit', () => {
+    expect(botPlayer('fit', 1, cues, grid, 1, SEED).hands).toHaveLength(0);
+  });
+
+  it('raises a hand in the hands-up cell to start and to replay', () => {
+    for (const phase of ['ready', 'results'] as const) {
+      const { hands } = botPlayer(phase, 1, cues, grid, 1, SEED);
+      expect(hands).toHaveLength(1);
+      expect(hands[0]).toMatchObject(cellCentre(grid, HANDS_UP_CELL));
+    }
+  });
+});
+
+describe('a bot with accuracy below 1', () => {
+  it('skips the same cues on every run, and misses them', () => {
+    const first = playThrough(synthetic(100, 90), 2, false, 0.5).results;
+    const second = playThrough(synthetic(100, 90), 2, false, 0.5).results;
+    expect(first).toEqual(second);
+    expect(first).toContain('perfect');
+    expect(first).toContain('miss');
+  });
 });

@@ -1,35 +1,119 @@
 import type { TrackerMode } from '../tracking/types';
-import { DEFAULT_TRACKER_MODE, GAME_CONFIG as C, SONGS } from './config';
-import type { PlayerLevel } from './types';
+import { DEFAULT_SEED, SONGS, TIMING } from './config';
+import type { Level, PlayerCount, SongLength } from './types';
+
+/** Choices kept between visits. */
 export interface Settings {
-  levels: [PlayerLevel, PlayerLevel]; length: 'short' | 'full'; tracker: TrackerMode;
-  inputLatencyMs: number; avOffsetMs: number; songIndex: number;
+  playerCount: PlayerCount;
+  /** Level of each player. The second entry is unused with one player. */
+  levels: [Level, Level];
+  /** Whether each player gets hand-shape cues. */
+  shapes: [boolean, boolean];
+  length: SongLength;
+  inputLatencyMs: number;
+  avOffsetMs: number;
+  songIndex: number;
 }
-export interface Options { settings: Settings; input: 'camera' | 'mouse' | 'bot'; start: number; autostart: boolean; seed: number; botAccuracy: number }
+
+export type InputSource = 'camera' | 'mouse' | 'bot';
+
+/** What a page load starts from: the kept settings plus one-off URL parameters. */
+export interface Options {
+  settings: Settings;
+  input: InputSource;
+  /** Tracker named in the URL. Unset means the default for the player count. */
+  tracker?: TrackerMode;
+  /** Start the song this far in and drop earlier cues. */
+  startSec: number;
+  /** Skip the menu. */
+  autostart: boolean;
+  seed: number;
+  /** Share of cues the test bot plays. */
+  botAccuracy: number;
+}
+
 export const STORAGE_KEY = 'dance-game-v1';
-export function defaultSettings(): Settings { return { levels: [2, 1], length: 'short', tracker: DEFAULT_TRACKER_MODE, inputLatencyMs: C.inputLatencyMs, avOffsetMs: C.avOffsetMs, songIndex: 0 }; }
-function level(v: unknown): v is PlayerLevel { return Number.isInteger(v) && Number(v) >= 0 && Number(v) <= 3; }
-function mode(v: unknown): v is TrackerMode { return v === 'hands-full' || v === 'hands-split' || v === 'pose'; }
-function finite(v: unknown, fallback: number, min: number, max: number): number { return typeof v === 'number' && Number.isFinite(v) ? Math.max(min, Math.min(max, v)) : fallback; }
-export function parseSettings(stored: unknown, query: string): Options {
-  const s = defaultSettings();
-  if (stored && typeof stored === 'object') {
-    const v = stored as Partial<Settings>;
-    if (Array.isArray(v.levels) && v.levels.length === 2 && v.levels.every(level)) s.levels = [...v.levels];
-    if (v.length === 'short' || v.length === 'full') s.length = v.length;
-    if (mode(v.tracker)) s.tracker = v.tracker;
-    if (Number.isInteger(v.songIndex) && v.songIndex! >= 0 && v.songIndex! < SONGS.length) s.songIndex = v.songIndex!;
-    s.inputLatencyMs = finite(v.inputLatencyMs, s.inputLatencyMs, -1000, 2000);
-    s.avOffsetMs = finite(v.avOffsetMs, s.avOffsetMs, -2000, 2000);
+
+export function defaultSettings(): Settings {
+  return {
+    playerCount: 2,
+    levels: [2, 1],
+    shapes: [false, false],
+    length: 'short',
+    inputLatencyMs: TIMING.inputLatencyMs,
+    avOffsetMs: TIMING.avOffsetMs,
+    songIndex: 0,
+  };
+}
+
+const isLevel = (value: unknown): value is Level => value === 1 || value === 2 || value === 3;
+const isPlayerCount = (value: unknown): value is PlayerCount => value === 1 || value === 2;
+const isLength = (value: unknown): value is SongLength => value === 'short' || value === 'full';
+const isTrackerMode = (value: unknown): value is TrackerMode =>
+  value === 'hands-full' || value === 'hands-split' || value === 'pose';
+
+function finiteOr(value: unknown, fallback: number, min: number, max: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
+}
+
+/**
+ * Reads kept settings field by field. A missing or invalid field keeps its default,
+ * so settings saved by an older version of the game never break a newer one.
+ */
+function readStored(stored: unknown): Settings {
+  const settings = defaultSettings();
+  if (!stored || typeof stored !== 'object') return settings;
+  const saved = stored as Record<string, unknown>;
+
+  if (isPlayerCount(saved.playerCount)) settings.playerCount = saved.playerCount;
+  if (isLength(saved.length)) settings.length = saved.length;
+  for (const player of [0, 1] as const) {
+    const level = Array.isArray(saved.levels) ? saved.levels[player] : undefined;
+    const shapes = Array.isArray(saved.shapes) ? saved.shapes[player] : undefined;
+    if (isLevel(level)) settings.levels[player] = level;
+    if (typeof shapes === 'boolean') settings.shapes[player] = shapes;
   }
-  const p = new URLSearchParams(query);
-  ([0, 1] as const).forEach(i => { const n = Number(p.get(`p${i}`)); if (p.has(`p${i}`) && level(n)) s.levels[i] = n; });
-  if (s.levels.every(l => l === 0)) s.levels[0] = 2;
-  if (p.get('length') === 'short' || p.get('length') === 'full') s.length = p.get('length') as Settings['length'];
-  if (mode(p.get('tracker'))) s.tracker = p.get('tracker') as TrackerMode;
-  const source = p.get('input');
-  const start = p.has('start') ? finite(Number(p.get('start')), 0, 0, 86400) : 0;
-  const seed = p.has('seed') && Number.isInteger(Number(p.get('seed'))) ? Number(p.get('seed')) : C.seed;
-  return { settings: s, input: source === 'mouse' || source === 'bot' ? source : 'camera', start,
-    autostart: p.get('autostart') === '1', seed, botAccuracy: p.has('botAccuracy') ? finite(Number(p.get('botAccuracy')), 1, 0, 1) : 1 };
+  const songIndex = saved.songIndex;
+  if (typeof songIndex === 'number' && Number.isInteger(songIndex) && songIndex >= 0 && songIndex < SONGS.length) {
+    settings.songIndex = songIndex;
+  }
+  settings.inputLatencyMs = finiteOr(saved.inputLatencyMs, settings.inputLatencyMs, -1000, 2000);
+  settings.avOffsetMs = finiteOr(saved.avOffsetMs, settings.avOffsetMs, -2000, 2000);
+  return settings;
+}
+
+/**
+ * URL parameters, all optional:
+ *   players=1|2   p0, p1=1..3   shapes0, shapes1=1|0   length=short|full
+ *   tracker=hands-full|hands-split|pose   input=camera|mouse|bot
+ *   start=<seconds>   autostart=1   seed=<integer>   botAccuracy=<0..1>
+ */
+export function parseSettings(stored: unknown, query: string): Options {
+  const settings = readStored(stored);
+  const params = new URLSearchParams(query);
+  const numberParam = (name: string): number | undefined =>
+    params.has(name) ? Number(params.get(name)) : undefined;
+
+  const players = numberParam('players');
+  if (isPlayerCount(players)) settings.playerCount = players;
+  for (const player of [0, 1] as const) {
+    const level = numberParam(`p${player}`);
+    if (isLevel(level)) settings.levels[player] = level;
+    if (params.has(`shapes${player}`)) settings.shapes[player] = params.get(`shapes${player}`) === '1';
+  }
+  const length = params.get('length');
+  if (isLength(length)) settings.length = length;
+
+  const tracker = params.get('tracker');
+  const input = params.get('input');
+  const seed = numberParam('seed');
+  return {
+    settings,
+    input: input === 'mouse' || input === 'bot' ? input : 'camera',
+    tracker: isTrackerMode(tracker) ? tracker : undefined,
+    startSec: finiteOr(numberParam('start'), 0, 0, 86400),
+    autostart: params.get('autostart') === '1',
+    seed: seed !== undefined && Number.isInteger(seed) ? seed : DEFAULT_SEED,
+    botAccuracy: finiteOr(numberParam('botAccuracy'), 1, 0, 1),
+  };
 }

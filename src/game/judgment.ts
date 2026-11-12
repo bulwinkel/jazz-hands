@@ -1,25 +1,85 @@
-import type { TrackedHand } from '../tracking/types';
-import { GAME_CONFIG as C } from './config';
+import type { GestureName, TrackedHand } from '../tracking/types';
+import { LEVELS } from './config';
+import type { WindowMs } from './config';
 import { cellRect, insideCell } from './geometry';
 import type { Cue, Level, Rating, Rect } from './types';
-export interface CueState { cue: Cue; cells: ('perfect' | 'good' | null)[]; result?: Rating }
-export function cueState(cue: Cue): CueState { return { cue, cells: cue.cells.map(() => null) }; }
-export function frameSongTime(songTimeNow: number, nowMs: number, frameTimeMs: number, inputLatencyMs: number): number {
-  return songTimeNow - (nowMs - frameTimeMs) / 1000 - inputLatencyMs / 1000;
+
+/** How well one cell of a cue has been hit so far. */
+export type CellMark = 'perfect' | 'good' | null;
+
+export interface CueState {
+  cue: Cue;
+  /** Best mark so far for each cell, parallel to `cue.cells`. */
+  marks: CellMark[];
+  /** Set once the cue is final. A final cue never changes. */
+  result?: Rating;
 }
-/** Keep Good provisional so early-and-hold play can upgrade to Perfect. */
-export function judgeFrame(state: CueState, level: Level, grid: Rect, hands: TrackedHand[], time: number): CueState {
+
+const EPSILON_MS = 1e-6;
+
+export function newCueState(cue: Cue): CueState {
+  return { cue, marks: cue.cells.map(() => null) };
+}
+
+/**
+ * The song time a tracking frame shows. The frame is older than "now" by its processing
+ * time plus the camera delay, so a hand that was on the beat is judged on the beat.
+ */
+export function frameSongTime(
+  songTimeNowSec: number,
+  nowMs: number,
+  frameTimeMs: number,
+  inputLatencyMs: number,
+): number {
+  return songTimeNowSec - (nowMs - frameTimeMs) / 1000 - inputLatencyMs / 1000;
+}
+
+function within(deltaMs: number, [early, late]: WindowMs): boolean {
+  return deltaMs >= early - EPSILON_MS && deltaMs <= late + EPSILON_MS;
+}
+
+function handSatisfies(hand: TrackedHand, cell: Rect, gesture: GestureName | undefined): boolean {
+  if (!insideCell(hand, cell)) return false;
+  // 'unknown' means the tracker cannot read hand shapes. Judge such a hand on position alone.
+  return gesture === undefined || hand.gesture === gesture || hand.gesture === 'unknown';
+}
+
+/**
+ * Applies one tracking frame to one cue and returns the new state. Never mutates `state`.
+ *
+ * Each cell is judged against its own due time. A cell is Perfect when a hand is in it during
+ * any frame inside the Perfect window, so arriving early and holding still is correct play.
+ * The cue is Perfect as soon as every cell is. Otherwise it becomes final when the Good window
+ * of its last cell closes: Miss if a cell was never hit, else Good.
+ */
+export function judgeFrame(
+  state: CueState,
+  level: Level,
+  grid: Rect,
+  hands: readonly TrackedHand[],
+  timeSec: number,
+): CueState {
   if (state.result) return state;
-  const next: CueState = { ...state, cells: [...state.cells] };
-  const delta = (time - state.cue.timeSec) * 1000; const w = C.windows[level]; const e = 1e-6;
-  if (delta >= w.good[0] - e && delta <= w.good[1] + e) {
-    for (let i = 0; i < next.cells.length; i++) {
-      if (next.cells[i] === 'perfect') continue;
-      if (!hands.some(h => insideCell(h, cellRect(grid, state.cue.cells[i])) && (!state.cue.gesture || h.gesture === 'unknown' || h.gesture === state.cue.gesture))) continue;
-      next.cells[i] = delta >= w.perfect[0] - e && delta <= w.perfect[1] + e ? 'perfect' : next.cells[i] ?? 'good';
-    }
+  const { perfectMs, goodMs } = LEVELS[level];
+  const { cue } = state;
+
+  const marks = state.marks.map((mark, k): CellMark => {
+    if (mark === 'perfect') return mark;
+    const deltaMs = (timeSec - cue.times[k]) * 1000;
+    if (!within(deltaMs, goodMs)) return mark;
+    const rect = cellRect(grid, cue.cells[k]);
+    if (!hands.some((hand) => handSatisfies(hand, rect, cue.gesture))) return mark;
+    // A Good mark is provisional: a hand that stays into the Perfect window upgrades it.
+    return within(deltaMs, perfectMs) ? 'perfect' : 'good';
+  });
+
+  const next: CueState = { cue, marks };
+  if (marks.every((mark) => mark === 'perfect')) {
+    next.result = 'perfect';
+    return next;
   }
-  if (next.cells.every(c => c === 'perfect')) next.result = 'perfect';
-  else if (delta > w.good[1] + e) next.result = next.cells.some(c => c === null) ? 'miss' : 'good';
+  const lastDueSec = Math.max(...cue.times);
+  const windowClosed = (timeSec - lastDueSec) * 1000 > goodMs[1] + EPSILON_MS;
+  if (windowClosed) next.result = marks.includes(null) ? 'miss' : 'good';
   return next;
 }

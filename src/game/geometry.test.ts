@@ -1,25 +1,93 @@
 import { describe, expect, it } from 'vitest';
-import { cellRect, containRect, defaultGrid, fitGrid, insideCell, percentile } from './geometry';
-describe('geometry', () => {
-  it('includes the exact expanded margin, and excludes points beyond it', () => {
-    const r = { x: 0.2, y: 0.3, width: 0.1, height: 0.2 };
-    expect(insideCell({ x: 0.188, y: 0.276 }, r)).toBe(true); expect(insideCell({ x: 0.312, y: 0.524 }, r)).toBe(true);
-    expect(insideCell({ x: 0.1879, y: 0.3 }, r)).toBe(false);
-    expect(cellRect(defaultGrid(0), 8).x).toBeCloseTo(0.32);
+import { cellRect, containRect, defaultGrid, fitGrid, insideCell, percentile, playSpan } from './geometry';
+import type { Point } from './types';
+
+const repeat = (count: number, point: (i: number) => Point): Point[] => Array.from({ length: count }, (_, i) => point(i));
+
+describe('cells', () => {
+  it('counts a hand as inside up to the margin around the cell', () => {
+    const cell = { x: 0.2, y: 0.3, width: 0.1, height: 0.2 };
+    expect(insideCell({ x: 0.188, y: 0.276 }, cell)).toBe(true);
+    expect(insideCell({ x: 0.312, y: 0.524 }, cell)).toBe(true);
+    expect(insideCell({ x: 0.1879, y: 0.3 }, cell)).toBe(false);
   });
-  it('fits percentiles, rejects outliers and uses the default with fewer than 20 samples', () => {
+
+  it('lays cells out row by row from the top-left', () => {
+    const grid = { x: 0.1, y: 0.2, width: 0.3, height: 0.6 };
+    expect(cellRect(grid, 0)).toEqual({ x: 0.1, y: 0.2, width: 0.3 / 3, height: 0.6 / 3 });
+    expect(cellRect(grid, 8).x).toBeCloseTo(0.3);
+    expect(cellRect(grid, 8).y).toBeCloseTo(0.6);
+  });
+});
+
+describe('default grid', () => {
+  it('sits in the middle of each half with two players', () => {
+    expect(defaultGrid(0, 2).x).toBeCloseTo(0.04);
+    expect(defaultGrid(1, 2).x).toBeCloseTo(0.54);
+    expect(defaultGrid(0, 2).width).toBe(0.42);
+  });
+
+  it('sits in the middle of the frame with one player', () => {
+    const grid = defaultGrid(0, 1);
+    expect(grid.x + grid.width / 2).toBeCloseTo(0.5);
+    expect(grid.width).toBe(0.56);
+  });
+});
+
+describe('reach fit', () => {
+  it('interpolates percentiles', () => {
     expect(percentile([0, 1, 2, 3, 4], 0.02)).toBeCloseTo(0.08);
-    expect(fitGrid(Array.from({ length: 19 }, () => ({ x: 0, y: 0 })), 1)).toEqual(defaultGrid(1));
-    const points = Array.from({ length: 101 }, (_, i) => ({ x: 0.05 + i * 0.004, y: 0.1 + i * 0.008 }));
-    const fit = fitGrid(points, 0); expect(fit.x).toBeCloseTo(0.058); expect(fit.y).toBeCloseTo(0.116); expect(fit.width).toBeCloseTo(0.384); expect(fit.height).toBeCloseTo(0.768);
   });
-  it('grows minimum reach around its centre and clamps to each half', () => {
-    const r = fitGrid(Array.from({ length: 30 }, () => ({ x: 0.25, y: 0.5 })), 0);
-    expect(r).toEqual({ x: 0.16, y: 0.35, width: 0.18, height: 0.3 });
-    for (const p of [0, 1]) {
-      const box = fitGrid(Array.from({ length: 100 }, (_, i) => ({ x: i % 2 ? -1 : 2, y: i % 2 ? -3 : 4 })), p);
-      expect(box.x).toBeCloseTo(p * 0.5 + 0.01); expect(box.width).toBe(0.48); expect(box.y).toBeCloseTo(0.01); expect(box.height).toBe(0.98);
-    }
+
+  it('keeps the default grid with fewer than 20 hand positions', () => {
+    expect(fitGrid(repeat(19, () => ({ x: 0, y: 0 })), 1, 2)).toEqual(defaultGrid(1, 2));
+    expect(fitGrid([], 0, 1)).toEqual(defaultGrid(0, 1));
   });
-  it('maps the full frame with letterboxing', () => { expect(containRect(1000, 1000, 2)).toEqual({ x: 0, y: 250, width: 1000, height: 500 }); });
+
+  it('boxes the hand positions, without the outermost 2% on each side', () => {
+    const points = repeat(101, (i) => ({ x: 0.05 + i * 0.004, y: 0.1 + i * 0.008 }));
+    const grid = fitGrid(points, 0, 2);
+    expect(grid.x).toBeCloseTo(0.058);
+    expect(grid.y).toBeCloseTo(0.116);
+    expect(grid.width).toBeCloseTo(0.384);
+    expect(grid.height).toBeCloseTo(0.768);
+  });
+
+  it('grows a tiny reach to the minimum size around its centre', () => {
+    const grid = fitGrid(repeat(30, () => ({ x: 0.25, y: 0.5 })), 0, 2);
+    expect(grid.x).toBeCloseTo(0.16);
+    expect(grid.y).toBeCloseTo(0.35);
+    expect(grid.width).toBe(0.18);
+    expect(grid.height).toBe(0.3);
+  });
+
+  const hugeReach = repeat(100, (i) => (i % 2 ? { x: -1, y: -3 } : { x: 2, y: 4 }));
+
+  it.each([0, 1] as const)('cuts a huge reach to the half of player %i with two players', (player) => {
+    const grid = fitGrid(hugeReach, player, 2);
+    expect(grid.x).toBeCloseTo(player * 0.5 + 0.01);
+    expect(grid.width).toBeCloseTo(0.48);
+    expect(grid.y).toBeCloseTo(0.01);
+    expect(grid.height).toBeCloseTo(0.98);
+  });
+
+  it('cuts a huge reach to the whole frame with one player', () => {
+    const grid = fitGrid(hugeReach, 0, 1);
+    expect(grid.x).toBeCloseTo(0.01);
+    expect(grid.width).toBeCloseTo(0.98);
+  });
+
+  it('lets one player reach across the centre line', () => {
+    const points = repeat(101, (i) => ({ x: 0.2 + i * 0.006, y: 0.2 + i * 0.006 }));
+    const grid = fitGrid(points, 0, 1);
+    expect(grid.x).toBeLessThan(0.5);
+    expect(grid.x + grid.width).toBeGreaterThan(0.5);
+    expect(playSpan(0, 1)).toEqual({ left: 0.01, right: 0.99 });
+  });
+});
+
+describe('containRect', () => {
+  it('letterboxes a wide frame in a square box', () => {
+    expect(containRect(1000, 1000, 2)).toEqual({ x: 0, y: 250, width: 1000, height: 500 });
+  });
 });

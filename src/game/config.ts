@@ -1,31 +1,157 @@
 import type { GestureName, TrackerMode } from '../tracking/types';
+import type { Level, PlayerCount } from './types';
 
-export const DEFAULT_TRACKER_MODE: TrackerMode = 'hands-split';
-export const SONGS = [{ manifest: '/songs/blessed-on-the-hillside.json', title: 'Blessed on the Hillside' }] as const;
-export const GAME_CONFIG = {
-  seed: 20261112,
+/**
+ * Two players each own half the frame, and split tracking gives each half twice the resolution.
+ * One player stands in the centre, across the line where split tracking cuts the frame,
+ * so one player gets the full-frame tracker.
+ */
+export const DEFAULT_TRACKER: Record<PlayerCount, TrackerMode> = {
+  1: 'hands-full',
+  2: 'hands-split',
+};
+
+/** Add a song with one line here. */
+export const SONGS = [
+  { manifest: '/songs/blessed-on-the-hillside.json', title: 'Blessed on the Hillside' },
+] as const;
+
+/** The chart is the same every run unless the URL gives another seed. */
+export const DEFAULT_SEED = 20261112;
+
+/** Milliseconds around a cue's due time, as [early, late]. Early is negative. */
+export type WindowMs = readonly [number, number];
+
+export interface LevelRules {
+  name: string;
+  /** Cues come at the fast interval where the music reaches this intensity. */
+  fastFromIntensity: number;
+  /** Cues thin out to every second stride below this intensity. */
+  sparseBelowIntensity: number;
+  /** Share of busy cue beats that need two hands at once. */
+  doubleChance: number;
+  doublesOnBarStartsOnly: boolean;
+  /** Share of busy cue beats that start a slide. */
+  slideChance: number;
+  /** How long a cue is on screen before it is due. */
+  approachSec: number;
+  perfectMs: WindowMs;
+  goodMs: WindowMs;
+}
+
+export const LEVELS: Record<Level, LevelRules> = {
+  1: {
+    name: 'Slow',
+    fastFromIntensity: Infinity,
+    sparseBelowIntensity: 0.35,
+    doubleChance: 0,
+    doublesOnBarStartsOnly: false,
+    slideChance: 0,
+    approachSec: 1.4,
+    perfectMs: [-150, 200],
+    goodMs: [-350, 450],
+  },
+  2: {
+    name: 'Every beat',
+    fastFromIntensity: 0.5,
+    sparseBelowIntensity: 0,
+    doubleChance: 0.3,
+    doublesOnBarStartsOnly: true,
+    slideChance: 0,
+    approachSec: 1,
+    perfectMs: [-120, 160],
+    goodMs: [-280, 350],
+  },
+  3: {
+    name: 'Two hands + slides',
+    fastFromIntensity: 0.35,
+    sparseBelowIntensity: 0,
+    doubleChance: 0.45,
+    doublesOnBarStartsOnly: false,
+    slideChance: 0.22,
+    approachSec: 1,
+    perfectMs: [-120, 160],
+    goodMs: [-280, 350],
+  },
+};
+
+export const CHART = {
+  /** A beat's cell differs from the cells of this many beats before it. */
   recentCells: 4,
+  /** Choice weight per cell. The top row is favoured. The centre is rare: it covers the face. */
   cellWeights: [1.2, 1.2, 1.2, 1, 0.4, 1, 0.7, 0.7, 0.7],
-  leadBars: 2, leadSec: 4, tailBars: 1,
-  strides: [1, 2, 4, 8], slowInterval: 1.1, fastInterval: 0.55,
-  lowIntensity: 0.35, highIntensity: 0.5,
-  doubleChance: 0.3, gestureChance: 0.35, gestureGapSec: 1,
-  gesturePool: ['fist', 'open', 'point', 'peace'] as GestureName[],
-  windows: { 1: { perfect: [-150, 200], good: [-350, 450] },
-    2: { perfect: [-120, 160], good: [-280, 350] },
-    3: { perfect: [-120, 160], good: [-280, 350] } },
-  cellMargin: 0.12,
-  defaultGridWidth: 0.42, defaultGridTop: 0.1, defaultGridHeight: 0.8,
-  walkBackSec: 8, fitSec: 6, fitMinSamples: 20, fitPercentiles: [0.02, 0.98],
-  minGridWidth: 0.18, minGridHeight: 0.3, halfMargin: 0.01,
-  inputLatencyMs: 100, avOffsetMs: 0,
-  shortSec: 90, fadeSec: 2,
-  approach: { 1: 1.4, 2: 1, 3: 1 },
-  readyHoldSec: 1, replayHoldSec: 1.5, countdownSec: 3,
-  botLeadSec: 0.3, botHoldSec: 0.2,
-  feedbackSec: 0.6,
+  /** No cues before this many bars, and this many seconds, have passed. */
+  leadBars: 2,
+  leadSec: 4,
+  /** No cues in this many bars before the end. */
+  tailBars: 1,
+  /** Cues sit on every 1st, 2nd, 4th or 8th beat: the smallest that keeps the minimum interval. */
+  strides: [1, 2, 4, 8],
+  slowIntervalSec: 1.1,
+  fastIntervalSec: 0.55,
+  /** Doubles and slides appear only where the music is at least this intense. */
+  busyIntensity: 0.5,
+  /** Share of single taps that ask for a hand shape, when a player switches shapes on. */
+  gestureChance: 0.35,
+  /** A hand needs this long after the previous cue to change shape. */
+  gestureGapSec: 0.55,
+  gesturePool: ['fist', 'open', 'point', 'peace'] satisfies GestureName[],
 } as const;
+
+export const GRID = {
+  /** A hand counts as inside a cell this far beyond its edge, as a share of the cell size. */
+  cellMargin: 0.12,
+  /** Grid before the reach fit, as shares of the frame. */
+  duoWidth: 0.42,
+  soloWidth: 0.56,
+  defaultTop: 0.1,
+  defaultHeight: 0.8,
+  /** The reach fit ignores the outermost 2% of hand positions on each side. */
+  fitPercentiles: [0.02, 0.98],
+  /** With fewer hand positions than this, the fit keeps the default grid. */
+  fitMinSamples: 20,
+  minWidth: 0.18,
+  minHeight: 0.3,
+  /** Gap between a grid and the edge of its player's area. */
+  edgeMargin: 0.01,
+} as const;
+
+/** The cell a player holds a hand in to start and to replay: top-middle. */
+export const HANDS_UP_CELL = 1;
+
+export const TIMING = {
+  /** Camera and tracking delay, taken off every tracking frame's time. Tuned with [ and ]. */
+  inputLatencyMs: 100,
+  /** Extra delay between sound and picture. Tuned with , and . */
+  avOffsetMs: 0,
+  /** The Short length ends at the first bar start at or after this time. */
+  shortSec: 90,
+  fadeSec: 2,
+  /** Time to get from the laptop to the play spot before the reach fit. */
+  walkBackSec: 8,
+  fitSec: 6,
+  readyHoldSec: 1,
+  replayHoldSec: 1.5,
+  countdownSec: 3,
+  feedbackSec: 0.6,
+  /** A tracking frame older than this is stale: hands are hidden and holds reset. */
+  staleFrameMs: 500,
+} as const;
+
+/** The test bot holds each cue cell from `leadSec` before its due time until `holdSec` after. */
+export const BOT = {
+  leadSec: 0.3,
+  holdSec: 0.2,
+} as const;
+
 export const PLAYER_COLORS = ['#22d3ee', '#e879f9'] as const;
+
 export const GESTURE_EMOJI: Partial<Record<GestureName, string>> = {
-  fist: '✊', open: '✋', point: '☝️', peace: '✌️', thumbsUp: '👍', thumbsDown: '👎', rock: '🤘',
+  fist: '✊',
+  open: '✋',
+  point: '☝️',
+  peace: '✌️',
+  thumbsUp: '👍',
+  thumbsDown: '👎',
+  rock: '🤘',
 };

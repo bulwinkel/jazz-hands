@@ -1,41 +1,96 @@
-import { GAME_CONFIG as C } from './config';
-/** This context is the only clock used for song playback and judgment. */
+import { TIMING } from './config';
+
+/**
+ * Plays the song. Its audio context is the only clock in the game:
+ * the cue animation and the judging both read `songTime`.
+ */
 export class SongAudio {
   readonly context = new AudioContext();
+  /** Extra delay between sound and picture, set by the player. */
+  avOffsetMs = 0;
+
   private buffer?: AudioBuffer;
   private source?: AudioBufferSourceNode;
   private gain?: GainNode;
+  /** Context time at which the current playback started. */
   private startCtxTime = 0;
-  private offset = 0;
-  avOffsetMs = 0;
-  get outputLatency(): number { return this.context.outputLatency || this.context.baseLatency || 0; }
-  get songTime(): number { return this.context.currentTime - this.startCtxTime + this.offset - this.outputLatency - this.avOffsetMs / 1000; }
+  /** Song position at which the current playback started. */
+  private startOffsetSec = 0;
+
+  /** Delay between the context clock and the sound leaving the speakers. */
+  get outputLatencySec(): number {
+    return this.context.outputLatency || this.context.baseLatency || 0;
+  }
+
+  /** The song position the player hears right now, in seconds. */
+  get songTime(): number {
+    const playedSec = this.context.currentTime - this.startCtxTime;
+    return this.startOffsetSec + playedSec - this.outputLatencySec - this.avOffsetMs / 1000;
+  }
+
   async load(url: string): Promise<void> {
     const response = await fetch(url);
     if (!response.ok) throw new Error(`Audio load failed (${response.status}).`);
-    try { this.buffer = await this.context.decodeAudioData(await response.arrayBuffer()); }
-    catch { throw new Error('Audio decode failed. Check the local MP3 file.'); }
-  }
-  async resume(): Promise<void> { await this.context.resume(); }
-  async pause(): Promise<void> { await this.context.suspend(); }
-  play(offset: number, end: number, short: boolean): void {
-    if (!this.buffer) throw new Error('The song is not loaded.');
-    if (this.buffer.duration + 0.1 < end) throw new Error('The audio is shorter than the song manifest.');
-    this.stop(); this.offset = offset; this.startCtxTime = this.context.currentTime + 0.1;
-    const source = this.context.createBufferSource(); const gain = this.context.createGain();
-    source.buffer = this.buffer; source.connect(gain); gain.connect(this.context.destination);
-    const duration = end - offset;
-    gain.gain.setValueAtTime(1, this.startCtxTime);
-    if (short) {
-      gain.gain.setValueAtTime(1, this.startCtxTime + Math.max(0, duration - C.fadeSec));
-      gain.gain.linearRampToValueAtTime(0, this.startCtxTime + duration);
+    try {
+      this.buffer = await this.context.decodeAudioData(await response.arrayBuffer());
+    } catch {
+      throw new Error('Audio decode failed. Check the local MP3 file.');
     }
-    source.start(this.startCtxTime, offset, duration);
-    this.source = source; this.gain = gain;
   }
+
+  /** Suspending the context freezes the clock, so pause and resume keep cues and sound together. */
+  async pause(): Promise<void> {
+    await this.context.suspend();
+  }
+
+  async resume(): Promise<void> {
+    await this.context.resume();
+  }
+
+  /** Plays from `offsetSec` to `endSec`. With `fadeOut`, the last seconds fade to silence. */
+  play(offsetSec: number, endSec: number, fadeOut: boolean): void {
+    if (!this.buffer) throw new Error('The song is not loaded.');
+    if (this.buffer.duration + 0.1 < endSec) throw new Error('The audio is shorter than the song manifest.');
+    this.stop();
+
+    const source = this.context.createBufferSource();
+    const gain = this.context.createGain();
+    source.buffer = this.buffer;
+    source.connect(gain);
+    gain.connect(this.context.destination);
+
+    // Start slightly in the future so the first samples are never cut.
+    this.startCtxTime = this.context.currentTime + 0.1;
+    this.startOffsetSec = offsetSec;
+    const durationSec = endSec - offsetSec;
+    const endCtxTime = this.startCtxTime + durationSec;
+
+    gain.gain.setValueAtTime(1, this.startCtxTime);
+    if (fadeOut) {
+      gain.gain.setValueAtTime(1, Math.max(this.startCtxTime, endCtxTime - TIMING.fadeSec));
+      gain.gain.linearRampToValueAtTime(0, endCtxTime);
+    }
+    source.start(this.startCtxTime, offsetSec, durationSec);
+    this.source = source;
+    this.gain = gain;
+  }
+
   stop(): void {
-    if (this.source) { try { this.source.stop(); } catch { /* Already stopped. */ } this.source.disconnect(); }
-    this.gain?.disconnect(); this.source = undefined; this.gain = undefined;
+    if (this.source) {
+      try {
+        this.source.stop();
+      } catch {
+        // The source had already stopped.
+      }
+      this.source.disconnect();
+    }
+    this.gain?.disconnect();
+    this.source = undefined;
+    this.gain = undefined;
   }
-  close(): void { this.stop(); void this.context.close(); }
+
+  close(): void {
+    this.stop();
+    void this.context.close();
+  }
 }
