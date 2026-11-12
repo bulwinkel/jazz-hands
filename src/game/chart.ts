@@ -101,8 +101,12 @@ function pickSlideSpeed(shares: Record<SlideSpeed, number>, roll: number, slowPo
   return 'normal';
 }
 
-/** How many cue intervals after its start a slide ends on a cue beat. A fast slide ends between two. */
-const SLIDE_END_STRIDES: Record<SlideSpeed, number> = { fast: 0, normal: 1, slow: 2 };
+/**
+ * How many cue intervals a slide takes up, counted from its start: no other cue starts in them.
+ * A fast slide ends after half an interval, but the rest of that interval stays free. In a real
+ * round, 6 of 8 taps that came 0.3 s after a fast slide were missed.
+ */
+const SLIDE_INTERVALS: Record<SlideSpeed, number> = { fast: 1, normal: 1, slow: 2 };
 
 /**
  * The cues of a round that starts partway into the song. Players need a moment to find the
@@ -216,8 +220,8 @@ export function generateChart(manifest: Manifest, options: ChartOptions): Cue[] 
       }
     }
     cues.push(cue);
-    const stridesToEnd = cue.kind === 'slide' && cue.speed ? SLIDE_END_STRIDES[cue.speed] : 0;
-    previousEndBeat = beat + stridesToEnd * stride;
+    const intervalsTaken = cue.kind === 'slide' && cue.speed ? SLIDE_INTERVALS[cue.speed] : 0;
+    previousEndBeat = beat + intervalsTaken * stride;
     previousEndSec = cue.times[cue.times.length - 1];
     // A slide is one hand's move from its first cell to its last. A tap uses one hand per cell.
     if (cue.kind === 'slide') useHand(previousEndSec);
