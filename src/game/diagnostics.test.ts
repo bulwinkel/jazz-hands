@@ -265,7 +265,7 @@ describe('face cues in the run report', () => {
       if (timeSec < 2) return face('smile', 0.9);
       if (timeSec < 4) return face('smile', 0.6);
       if (timeSec < 6) return face('smile', 0.3);
-      return face('pucker', 0.4);
+      return face('pucker', 0.2);
     };
     const { expressions } = report([playFaceCues(cues, shown)]).players[0].faceCues;
     expect(expressions.smile).toEqual({
@@ -279,8 +279,8 @@ describe('face cues in the run report', () => {
       asked: 1,
       hit: 0,
       threshold: FACES.thresholds.pucker,
-      medianPeak: 0.4,
-      highestPeak: 0.4,
+      medianPeak: 0.2,
+      highestPeak: 0.2,
     });
     expect(expressions.openMouth).toBeUndefined(); // No cue asked for it.
   });

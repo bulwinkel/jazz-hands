@@ -197,8 +197,13 @@ export const FACES = {
   minIntensity: 0.35,
   /** The expressions a cue can ask for. A cue never asks for the same one as the cue before it. */
   pool: ['smile', 'openMouth', 'pucker'] satisfies FaceExpression[],
-  /** A face shows an expression when the tracker reads at least this strength, 0..1. */
-  thresholds: { smile: 0.5, openMouth: 0.4, pucker: 0.5 } satisfies Record<FaceExpression, number>,
+  /**
+   * A face shows an expression when the tracker reads at least this strength, 0..1.
+   * Set from four real rounds (160 face cues, two players): a made expression peaked at about
+   * 0.7 for a smile and 0.95 for a pucker, and an adult's open mouth at only 0.2 to 0.45.
+   * Faces that were not made read under 0.1. The values sit between the two groups.
+   */
+  thresholds: { smile: 0.4, openMouth: 0.25, pucker: 0.35 } satisfies Record<FaceExpression, number>,
   /** The tracker looks for a face in a box this many cells wide, centred on the grid. */
   regionCells: 2,
   /**
@@ -260,10 +265,15 @@ export const BOT = {
 
 export const PLAYER_COLORS = ['#22d3ee', '#e879f9'] as const;
 
+/**
+ * The pictures must be easy to tell apart from across a room. In real rounds, players often
+ * puckered for the plain open-mouth face and the other way round: both showed a small round
+ * mouth. So the smile shows teeth, the open mouth is wide, and the pucker carries a heart.
+ */
 export const FACE_EMOJI: Record<FaceExpression, string> = {
-  smile: '😀',
-  openMouth: '😮',
-  pucker: '😗',
+  smile: '😁',
+  openMouth: '😲',
+  pucker: '😘',
 };
 
 export const GESTURE_EMOJI: Partial<Record<GestureName, string>> = {

@@ -83,7 +83,7 @@ function playerCard(player: PlayerIndex, settings: Settings, onChange: () => voi
     <div class="level-options">${levelOptions}</div>
     <div class="switches">
       <label class="shapes" data-hand="shapes-${player}"><input type="checkbox"><span>Hand shapes ✊ ✋ ☝️ ✌️</span></label>
-      <label class="faces" data-hand="faces-${player}"><input type="checkbox"><span>Faces 😀 😮 😗</span></label>
+      <label class="faces" data-hand="faces-${player}"><input type="checkbox"><span>Faces 😁 😲 😘</span></label>
     </div>`;
 
   const shapes = find<HTMLInputElement>(card, '.shapes input');
