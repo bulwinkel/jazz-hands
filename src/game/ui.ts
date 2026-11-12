@@ -1,3 +1,4 @@
+import { carouselOffset, stepRing } from './carousel';
 import { HAND_MENU, LEVELS, PLAYER_COLORS, SONGS } from './config';
 import type { HandTarget, MenuHand } from './handMenu';
 import type { PlayerRun } from './player';
@@ -6,6 +7,8 @@ import type { Settings } from './settings';
 import type { Level, PlayerCount, PlayerIndex, SongLength } from './types';
 
 const ALL_LEVELS: Level[] = [1, 2, 3, 4, 5];
+/** The song carousel shows this many cards on each side of the chosen song. */
+const CAROUSEL_REACH = 2;
 
 const SHELL_HTML = `
   <main id="stage" aria-label="Dance game">
@@ -22,8 +25,11 @@ const MENU_HTML = `
   <div class="eyebrow">MOVE TOGETHER · PLAY TOGETHER</div>
   <h1>Kitchen Disco<span>✦</span></h1>
   <p class="subtitle">Reach for the beat. Make a little magic.</p>
-  <fieldset class="songs choices">
-    <legend>♫ Song</legend>
+  <fieldset class="songs">
+    <legend>♫ <span id="song-title"></span><small id="song-count"></small></legend>
+    <button type="button" class="song-step" data-hand="song-previous" data-hand-repeat aria-label="Previous song">‹</button>
+    <div class="song-strip"></div>
+    <button type="button" class="song-step" data-hand="song-next" data-hand-repeat aria-label="Next song">›</button>
   </fieldset>
   <fieldset class="count choices">
     <legend>Players</legend>
@@ -62,6 +68,23 @@ function bindRadios(root: ParentNode, name: string, current: string, onPick: (va
       if (input.checked) onPick(input.value);
     });
   }
+}
+
+/**
+ * One song in the carousel: its cover picture. A song with no picture yet gets a plain cover
+ * in its own colour, with its title on it.
+ */
+function songCard(index: number): string {
+  const song = SONGS[index];
+  // Steps of the golden angle give neighbours in the list clearly different colours.
+  const hue = Math.round(index * 137.5) % 360;
+  const cover = song.cover
+    ? `<span class="cover"><img src="${song.cover}" alt=""></span>`
+    : `<span class="cover plain"><span>${song.title}</span></span>`;
+  return `
+    <label class="song-card" style="--hue: ${hue}">
+      <input type="radio" name="song" value="${index}" aria-label="${song.title}">${cover}
+    </label>`;
 }
 
 /** One player's choices: level, hand shapes and faces. */
@@ -155,6 +178,8 @@ export class GameUI {
   private readonly messageTitle: HTMLElement;
   private readonly messageDetail: HTMLElement;
   private readonly fitObserver = new ResizeObserver(() => this.fitPanel());
+  /** Steps the open menu's carousel to the next or the previous song. Unset while the menu is closed. */
+  private stepCarousel?: (direction: 1 | -1) => void;
 
   constructor(root: HTMLElement) {
     root.innerHTML = SHELL_HTML;
@@ -180,6 +205,12 @@ export class GameUI {
 
   hidePanel(): void {
     this.panel.hidden = true;
+    this.stepCarousel = undefined;
+  }
+
+  /** In the menu: chooses the next song (1) or the previous one (-1). After the last comes the first. */
+  stepSong(direction: 1 | -1): void {
+    this.stepCarousel?.(direction);
   }
 
   /**
@@ -189,18 +220,38 @@ export class GameUI {
   showMenu(settings: Settings, onStart: (byHand: boolean) => void, onChange: () => void): void {
     this.openPanel('menu', MENU_HTML);
 
-    // One large button per song: a list that opens on a click cannot be pointed at by hand.
-    const songOptions = SONGS.map(
-      (song, index) => `
-        <label data-hand="song-${index}">
-          <input type="radio" name="song" value="${index}"><span>${song.title}</span>
-        </label>`,
-    ).join('');
-    find(this.panel, '.songs').insertAdjacentHTML('beforeend', songOptions);
-    bindRadios(this.panel, 'song', String(settings.songIndex), (value) => {
-      settings.songIndex = Number(value);
+    // The songs are a carousel of covers: the chosen song in the middle, its neighbours beside
+    // it, the rest out of sight. It takes the same room for six songs as for sixty.
+    const strip = find(this.panel, '.song-strip');
+    strip.innerHTML = SONGS.map((_, index) => songCard(index)).join('');
+    const songCards = [...strip.querySelectorAll<HTMLElement>('.song-card')];
+    const showSongs = (): void => {
+      songCards.forEach((card, index) => {
+        const offset = carouselOffset(index, settings.songIndex, SONGS.length);
+        const onShow = Math.abs(offset) <= CAROUSEL_REACH;
+        // Every card out of sight waits just past the last card on show, on its own side.
+        card.dataset.offset = String(onShow ? offset : Math.sign(offset) * (CAROUSEL_REACH + 1));
+        // Only a card on show can be pointed at.
+        if (onShow) card.dataset.hand = `song-${index}`;
+        else delete card.dataset.hand;
+        find<HTMLInputElement>(card, 'input').checked = offset === 0;
+      });
+      find(this.panel, '#song-title').textContent = SONGS[settings.songIndex].title;
+      find(this.panel, '#song-count').textContent = `${settings.songIndex + 1} of ${SONGS.length}`;
+    };
+    showSongs();
+    const chooseSong = (index: number): void => {
+      if (index === settings.songIndex) return;
+      settings.songIndex = index;
+      showSongs();
       onChange();
+    };
+    this.stepCarousel = (direction) => chooseSong(stepRing(settings.songIndex, direction, SONGS.length));
+    songCards.forEach((card, index) => {
+      find(card, 'input').addEventListener('change', () => chooseSong(index));
     });
+    find(this.panel, '[data-hand="song-previous"]').addEventListener('click', () => this.stepSong(-1));
+    find(this.panel, '[data-hand="song-next"]').addEventListener('click', () => this.stepSong(1));
 
     // A round started by hand has no click behind it, and a browser plays sound only on a page
     // that was clicked or typed in at least once. Ask for that one click while it is missing.
@@ -274,6 +325,7 @@ export class GameUI {
         id: element.dataset.hand ?? '',
         rect: { x: left, y: top, width, height },
         holdSec: Number(element.dataset.handHold ?? HAND_MENU.holdSec),
+        repeats: element.dataset.handRepeat !== undefined,
       };
     });
   }
@@ -341,6 +393,7 @@ export class GameUI {
   }
 
   private openPanel(className: string, html: string): void {
+    this.stepCarousel = undefined;
     this.panel.className = className;
     this.panel.innerHTML = `<div class="fit">${html}</div>`;
     this.panel.hidden = false;

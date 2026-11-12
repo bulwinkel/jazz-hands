@@ -1,4 +1,4 @@
-import { CHART, TIMING } from './config';
+import { CHART, PREVIEW, TIMING } from './config';
 import type { Manifest, SongLength } from './types';
 
 const isText = (value: unknown): boolean => typeof value === 'string' && value.trim() !== '';
@@ -74,6 +74,32 @@ export function playEndSec(m: Manifest, length: SongLength): number {
   const earliestEndSec = playStartSec(m, length) + TIMING.shortSec;
   const barStart = m.beats.find((time, beat) => isBarStart(m, beat) && time >= earliestEndSec);
   return barStart ?? m.durationSec;
+}
+
+/**
+ * Where the menu's preview of a song starts: the bar start that begins the liveliest stretch
+ * of the song. A player then hears the chorus, and not a quiet opening.
+ * A song too short for a whole preview plays from its start.
+ */
+export function previewStartSec(m: Manifest): number {
+  let bestSec = 0;
+  let bestEnergy = -1;
+  m.beats.forEach((startSec, beat) => {
+    const endSec = startSec + PREVIEW.lengthSec;
+    if (!isBarStart(m, beat) || endSec > m.durationSec) return;
+    let sum = 0;
+    let count = 0;
+    for (let i = beat; i < m.beats.length && m.beats[i] < endSec; i++) {
+      sum += m.intensity[i];
+      count++;
+    }
+    // The earliest stretch wins a tie: the first chorus, not its repeat.
+    if (sum / count > bestEnergy + 1e-9) {
+      bestEnergy = sum / count;
+      bestSec = startSec;
+    }
+  });
+  return bestSec;
 }
 
 /** The first moment a cue may be due: after the lead-in bars and the lead-in seconds. */

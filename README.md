@@ -56,6 +56,21 @@ The last line of the report is the line to add to `SONGS` in `src/game/config.ts
 
 Then run `npm test`. It checks every song in `SONGS`.
 
+The menu shows the songs as a carousel of covers, in the order of `SONGS`, and plays the
+liveliest 20 seconds of the chosen song. The game finds that part from the manifest.
+
+### Give a song a cover picture
+
+A song with no picture shows its title on a plain cover. To give it a picture:
+
+1. Save a square image in `public/songs/`, for example `public/songs/song-name.jpg`.
+   The menu shows it at 180 pixels wide, so 512 pixels wide is enough.
+2. Add its path to the song's line in `SONGS`:
+
+```ts
+{ manifest: '/songs/song-name.json', title: 'Song Name', cover: '/songs/song-name.jpg' },
+```
+
 ### Read the report
 
 | Section | What to look for |

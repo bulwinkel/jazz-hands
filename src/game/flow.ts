@@ -8,6 +8,7 @@ import {
   HANDS_UP_CELL,
   LEVELS,
   MENU_TRACKER,
+  PREVIEW,
   SONGS,
   TIMING,
 } from './config';
@@ -28,9 +29,11 @@ import { createInput } from './input';
 import type { GameInput, InputView } from './input';
 import { frameSongTime, judgeFrame, newCueState } from './judgment';
 import type { CueState } from './judgment';
-import { playEndSec, playStartSec, validateManifest } from './manifest';
+import { playEndSec, playStartSec, previewStartSec, validateManifest } from './manifest';
 import { createPlayers, summariseChart } from './player';
 import type { ChartSummary, PlayerRun } from './player';
+import { SongPreview } from './preview';
+import type { PreviewState } from './preview';
 import { GameRenderer } from './render';
 import type { Feedback } from './render';
 import { award, freshScore } from './scoring';
@@ -52,6 +55,8 @@ interface PublicState {
   players: PublicPlayer[];
   /** The diagnostics of the last finished run. */
   report?: RunReport;
+  /** The song preview of the menu. */
+  preview: PreviewState;
 }
 declare global {
   interface Window {
@@ -60,6 +65,19 @@ declare global {
 }
 
 const TRACKER_CYCLE: readonly TrackerMode[] = ['hands-full', 'hands-split', 'pose'];
+
+/** Loads and checks a song's manifest. */
+async function fetchManifest(url: string): Promise<Manifest> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Song manifest load failed (${response.status}).`);
+  let json: unknown;
+  try {
+    json = await response.json();
+  } catch {
+    throw new Error('Song manifest: invalid JSON.');
+  }
+  return validateManifest(json);
+}
 const PLAYER_SLOTS: readonly PlayerIndex[] = [0, 1];
 
 function readStoredSettings(): unknown {
@@ -115,6 +133,11 @@ export class DanceGame {
   private pickedTracker?: TrackerMode;
   private switchingTracker = false;
 
+  private readonly preview = new SongPreview();
+  /** The song whose preview plays or is about to play, as an index into SONGS. */
+  private previewedSong: number | null = null;
+  private previewTimer = 0;
+
   private debugVisible = false;
   private fps = 60;
   private lastRenderMs = performance.now();
@@ -161,7 +184,15 @@ export class DanceGame {
     this.switchingTracker = false;
     this.ui.resumeButton.hidden = true;
     this.setPhase('menu');
-    this.ui.showMenu(this.options.settings, (byHand) => void this.start(byHand), this.saveSettings);
+    this.ui.showMenu(
+      this.options.settings,
+      (byHand) => void this.start(byHand),
+      () => {
+        this.saveSettings();
+        this.previewChosenSong();
+      },
+    );
+    this.previewChosenSong();
     // The menu tracks hands, so players can point at its items. If tracking cannot start,
     // the menu still works with the mouse and the keyboard.
     void this.openInput()
@@ -217,6 +248,7 @@ export class DanceGame {
     if (this.phase !== 'menu') return;
     this.startedByHand = byHand;
     this.saveSettings();
+    this.stopPreview();
     this.setPhase('loading');
     this.ui.hidePanel();
     this.ui.showMessage('Getting the dance floor ready…', 'Loading the song and the hand models');
@@ -271,17 +303,43 @@ export class DanceGame {
   }
 
   private async loadSong(audio: SongAudio): Promise<Manifest> {
-    const response = await fetch(SONGS[this.options.settings.songIndex].manifest);
-    if (!response.ok) throw new Error(`Song manifest load failed (${response.status}).`);
-    let json: unknown;
-    try {
-      json = await response.json();
-    } catch {
-      throw new Error('Song manifest: invalid JSON.');
-    }
-    const manifest = validateManifest(json);
+    const manifest = await fetchManifest(SONGS[this.options.settings.songIndex].manifest);
     await audio.load(manifest.audio);
     return manifest;
+  }
+
+  // --- Song preview in the menu ---
+
+  /**
+   * Plays a part of the chosen song while the menu is open. Call it when the menu opens and
+   * after every change in the menu: it acts only when the chosen song is a new one.
+   */
+  private previewChosenSong = (): void => {
+    const { songIndex } = this.options.settings;
+    if (this.phase !== 'menu' || songIndex === this.previewedSong) return;
+    this.previewedSong = songIndex;
+    this.preview.stop();
+    // Wait a moment: a player who steps through the songs hears only the one they stop on.
+    window.clearTimeout(this.previewTimer);
+    this.previewTimer = window.setTimeout(() => void this.startPreview(songIndex), PREVIEW.waitSec * 1000);
+  };
+
+  private async startPreview(songIndex: number): Promise<void> {
+    let manifest: Manifest;
+    try {
+      manifest = await fetchManifest(SONGS[songIndex].manifest);
+    } catch {
+      return; // No preview for a song whose data does not load. Starting the round reports the error.
+    }
+    // The player may have picked another song, or started the round, while this loaded.
+    if (this.phase !== 'menu' || this.previewedSong !== songIndex) return;
+    this.preview.start(manifest.audio, previewStartSec(manifest));
+  }
+
+  private stopPreview(): void {
+    window.clearTimeout(this.previewTimer);
+    this.previewedSong = null;
+    this.preview.stop();
   }
 
   private beginFit(): void {
@@ -646,6 +704,13 @@ export class DanceGame {
       case 'r':
         if (this.phase === 'play') this.beginCountdown();
         return;
+      case 'arrowleft':
+      case 'arrowright':
+        // In the menu, the arrow keys step through the songs. A focused control keeps its own arrows.
+        if (this.phase === 'menu' && (event.target as HTMLElement).tagName !== 'INPUT') {
+          this.ui.stepSong(key === 'arrowright' ? 1 : -1);
+        }
+        return;
       case '[':
       case ']':
         settings.inputLatencyMs += key === ']' ? 10 : -10;
@@ -843,10 +908,15 @@ export class DanceGame {
   };
 
   private expose(): void {
+    const { preview } = this;
     window.__dance = {
       phase: this.phase,
       songTime: this.songTime(),
       report: this.report,
+      // Read on demand: the preview changes between the moments this state is written.
+      get preview() {
+        return preview.state;
+      },
       players: PLAYER_SLOTS.map((index) => {
         const player = this.players.find((p) => p.index === index);
         if (!player) return { ...freshScore(), level: 0, chart: summariseChart([], []) };
@@ -860,6 +930,8 @@ export class DanceGame {
     cancelAnimationFrame(this.animationId);
     this.input?.dispose();
     this.audio?.close();
+    window.clearTimeout(this.previewTimer);
+    this.preview.halt();
     window.removeEventListener('keydown', this.onKey);
   }
 }

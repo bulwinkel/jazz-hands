@@ -151,7 +151,7 @@ body[data-phase="countdown"] #message h1{font-size:clamp(140px,20vw,300px);line-
   background: linear-gradient(130deg, #0d142980, #17142b73);
   text-shadow: 0 2px 12px #000;
 }
-.menu fieldset:not(.choices) {
+.menu fieldset:not(.choices, .songs) {
   background: #0b1024a6;
 }
 .level-options span {
@@ -243,4 +243,110 @@ body[data-phase="countdown"] #message h1{font-size:clamp(140px,20vw,300px);line-
   border-radius: 14px;
   background: #fde04766;
   pointer-events: none;
+}
+
+/* The song carousel: the chosen song's cover in the middle, two neighbours on each side,
+   and a step button at each end. Every card sits at the centre of the strip, and its
+   `data-offset` (set in ui.ts) moves and shrinks it, so a change of song slides the row. */
+.songs {
+  display: grid;
+  grid-template-columns: auto auto auto;
+  align-items: center;
+  justify-content: center;
+  column-gap: 18px;
+  border: none;
+  padding: 0;
+  margin: 8px 0 0;
+}
+.songs legend {
+  margin: 0 auto 6px;
+  font-size: 26px;
+  color: #fde047;
+}
+.songs legend small {
+  margin-left: 14px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #cbd5e1;
+}
+.song-strip {
+  position: relative;
+  width: 740px;
+  height: 196px;
+}
+.song-strip .song-card {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 180px;
+  height: 180px;
+  margin: -90px 0 0 -90px;
+  cursor: pointer;
+  transform: translateX(var(--x)) scale(var(--scale));
+  transition: transform 0.3s ease, opacity 0.3s ease, filter 0.3s ease, visibility 0.3s;
+}
+.song-card[data-offset="0"] { --x: 0px; --scale: 1; z-index: 3; }
+/* The neighbours stay large enough to point at by hand: 140 and 112 pixels wide. */
+.song-card[data-offset="1"] { --x: 172px; --scale: 0.78; z-index: 2; filter: brightness(0.75); }
+.song-card[data-offset="-1"] { --x: -172px; --scale: 0.78; z-index: 2; filter: brightness(0.75); }
+.song-card[data-offset="2"] { --x: 310px; --scale: 0.62; z-index: 1; filter: brightness(0.55); }
+.song-card[data-offset="-2"] { --x: -310px; --scale: 0.62; z-index: 1; filter: brightness(0.55); }
+/* Cards out of sight wait just past the last card on show, where they fade in and out. */
+.song-card[data-offset="3"] { --x: 400px; --scale: 0.45; opacity: 0; visibility: hidden; }
+.song-card[data-offset="-3"] { --x: -400px; --scale: 0.45; opacity: 0; visibility: hidden; }
+.song-card input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.cover {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border: 3px solid #ffffff35;
+  border-radius: 18px;
+  /* The plain cover of a song with no picture yet: the song's own colour. */
+  background: linear-gradient(145deg, hsl(var(--hue) 70% 44%), hsl(calc(var(--hue) + 50) 75% 20%));
+  pointer-events: none;
+}
+.cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.cover.plain span {
+  padding: 12px;
+  font-size: 23px;
+  font-weight: 850;
+  line-height: 1.12;
+  text-wrap: balance;
+}
+.cover.plain::before {
+  content: "♫";
+  position: absolute;
+  right: 8px;
+  bottom: -22px;
+  font-size: 120px;
+  line-height: 1;
+  opacity: 0.16;
+}
+.song-card input:checked + .cover {
+  border-color: #fde047;
+  box-shadow: 0 0 34px #fde04755;
+}
+.song-step {
+  width: 64px;
+  height: 96px;
+  padding: 0;
+  font-size: 46px;
+  line-height: 1;
+  background: #0b1024cc;
+}
+@media (prefers-reduced-motion: reduce) {
+  .song-strip .song-card { transition: none; }
 }

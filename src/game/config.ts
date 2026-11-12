@@ -24,15 +24,40 @@ export const HAND_MENU = {
   lowestY: 0.9,
 } as const;
 
-/** Add a song with one line here. */
-export const SONGS = [
+export interface SongEntry {
+  /** Path of the song's manifest, which the song tool writes. */
+  manifest: string;
+  title: string;
+  /** Path of the cover picture, a square. A song with no picture shows its title on a plain cover. */
+  cover?: string;
+}
+
+/** Add a song with one line here. The menu shows the songs in this order. */
+export const SONGS: readonly SongEntry[] = [
   { manifest: '/songs/blessed-on-the-hillside.json', title: 'Blessed on the Hillside' },
   { manifest: '/songs/todo-bueno.json', title: 'Todo Bueno' },
   { manifest: '/songs/from-the-garden-to-the-cross.json', title: 'From the Garden to the Cross' },
   { manifest: '/songs/drum-and-bass-violins.json', title: 'Drum and Bass Violins' },
   { manifest: '/songs/all-eyes-on-us.json', title: 'All Eyes on Us' },
   { manifest: '/songs/return-to-the-lord.json', title: 'Return to the Lord' },
-] as const;
+];
+
+/** The part of a song that plays in the menu while the song is chosen. */
+export const PREVIEW = {
+  /** The part is this long. Then it starts again. */
+  lengthSec: 20,
+  fadeInSec: 0.5,
+  fadeOutSec: 1.5,
+  /** A preview fades out this fast when the player picks another song or starts the round. */
+  stopFadeSec: 0.25,
+  /** Share of full volume. Quieter than the round's music, so players can talk over the menu. */
+  volume: 0.6,
+  /**
+   * A newly chosen song waits this long before it plays, so a step past a song stays quiet.
+   * Longer than HAND_MENU.holdSec: a fist held on "next song" then steps on in silence.
+   */
+  waitSec: 0.7,
+} as const;
 
 /**
  * The chart is the same every run unless the URL gives another seed.

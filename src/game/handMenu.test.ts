@@ -91,6 +91,42 @@ describe('a fist', () => {
   });
 });
 
+describe('a fist on an item that steps through a list', () => {
+  const NEXT: HandTarget = { id: 'next', rect: START.rect, holdSec: 0.5, repeats: true };
+
+  /** Feeds frames with a fist on the step item, and collects the time of every choice. */
+  function hold(fromMs: number, toMs: number, state = newHandMenuState()) {
+    const chosenAtMs: number[] = [];
+    let progress = 0;
+    for (let nowMs = fromMs; nowMs <= toMs; nowMs += FRAME_MS) {
+      const step = stepHandMenu(state, [NEXT], [FIST_ON_START], nowMs);
+      state = step.state;
+      progress = step.progress;
+      if (step.chooseId) chosenAtMs.push(nowMs);
+    }
+    return { state, chosenAtMs, progress };
+  }
+
+  it('chooses again after each hold time while the fist stays', () => {
+    const { chosenAtMs } = hold(0, 1700);
+    expect(chosenAtMs).toHaveLength(3);
+    expect(chosenAtMs[1] - chosenAtMs[0]).toBeGreaterThanOrEqual(500);
+    expect(chosenAtMs[2] - chosenAtMs[1]).toBeGreaterThanOrEqual(500);
+  });
+
+  it('starts its bar again from nothing after each choice', () => {
+    const first = hold(0, 528); // The frame at 528 ms is the first past the hold time.
+    expect(first.chosenAtMs).toEqual([528]);
+    expect(first.progress).toBe(1);
+    expect(hold(561, 561, first.state).progress).toBeLessThan(0.1);
+  });
+
+  it('stops when the fist opens', () => {
+    const held = hold(0, 700);
+    expect(run(held.state, [OPEN_ON_START], 733, 3000).chosen).toEqual([]);
+  });
+});
+
 describe('tracking flicker', () => {
   it('keeps a hold when the fist is read as open for a few frames', () => {
     const held = run(newHandMenuState(), [FIST_ON_START], 0, 300);

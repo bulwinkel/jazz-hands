@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TrackedFace, TrackedHand, TrackingFrame } from '../tracking/types';
 import { synthetic } from './fixtures';
-import { playEndSec, playStartSec, validateManifest } from './manifest';
+import { playEndSec, playStartSec, previewStartSec, validateManifest } from './manifest';
 import { accuracy, award, freshScore, stars } from './scoring';
 import { mergeForSolo } from './solo';
 
@@ -37,6 +37,36 @@ describe('song manifest', () => {
     expect(playStartSec(song, 'short')).toBe(100);
     expect(playStartSec(song, 'full')).toBe(0);
     expect(playStartSec(synthetic(), 'short')).toBe(0);
+  });
+
+  it('previews the liveliest part of a song, from a bar start', () => {
+    // 120 BPM: a beat every 0.5 s and a bar every 2 s. The song is quiet but for 60 s to 90 s.
+    const song = synthetic(120, 200, 0.2);
+    song.intensity = song.beats.map((time) => (time >= 60 && time < 90 ? 0.9 : 0.2));
+    // Every 20 s part that starts from 60 s to 70 s is all loud. The first of them wins.
+    expect(previewStartSec(song)).toBe(60);
+  });
+
+  it('previews from a bar start, also when the loud part starts inside a bar', () => {
+    const song = synthetic(120, 200, 0.2);
+    song.intensity = song.beats.map((time) => (time >= 61 && time < 81 ? 0.9 : 0.2));
+    // 60 s and 62 s are the bar starts around 61 s. Each part loses two loud beats: the first wins.
+    expect(previewStartSec(song)).toBe(60);
+  });
+
+  it('previews a song of one loudness from its start', () => {
+    expect(previewStartSec(synthetic())).toBe(0);
+  });
+
+  it('previews a song shorter than a preview from its start', () => {
+    expect(previewStartSec(synthetic(120, 12))).toBe(0);
+  });
+
+  it('never previews past the end of the song', () => {
+    // The loud part is the last 10 s. The last whole preview starts at 180 s.
+    const song = synthetic(120, 200, 0.2);
+    song.intensity = song.beats.map((time) => (time >= 190 ? 0.9 : 0.2));
+    expect(previewStartSec(song)).toBe(180);
   });
 
   it('runs a late Short length for 90 seconds, to a bar start', () => {

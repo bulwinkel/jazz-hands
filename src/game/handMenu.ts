@@ -14,6 +14,11 @@ export interface HandTarget {
   rect: Rect;
   /** How long a fist must stay on this item to choose it. */
   holdSec: number;
+  /**
+   * True for an item that steps through a list, such as "next song". A fist that stays on it
+   * chooses it again after each hold time, so a player need not open and close the hand per step.
+   */
+  repeats?: boolean;
 }
 
 export interface MenuHand extends Point {
@@ -113,6 +118,11 @@ export function stepHandMenu(
   const progress = Math.min(1, (nowMs - next.holdStartedMs) / (target.holdSec * 1000));
   // Choose only on a frame that really shows a fist, never inside a tracking gap.
   const chooseNow = fistOnIt && progress >= 1 && !next.chosen;
-  next.chosen = next.chosen || chooseNow;
+  if (chooseNow && target.repeats) {
+    // The hold starts again from nothing, and so does its bar.
+    next.holdStartedMs = nowMs;
+  } else {
+    next.chosen = next.chosen || chooseNow;
+  }
   return { state: next, progress, chooseId: chooseNow ? target.id : null };
 }
