@@ -157,7 +157,8 @@ while (elapsedSec() < maxSeconds) {
 }
 
 console.log('phases:', phasesSeen.map((seen) => `${seen.atSec}s ${seen.phase}`).join(' | '));
-console.log('final:', await evaluate('JSON.stringify(window.__dance)'));
+// The run report is large: print the state without it. It is saved to test-results/ anyway.
+console.log('final:', await evaluate('JSON.stringify({ ...window.__dance, report: undefined })'));
 console.log('errors:', pageErrors.length ? pageErrors : 'none');
 
 socket.close();
