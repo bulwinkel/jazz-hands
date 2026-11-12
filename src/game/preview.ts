@@ -17,6 +17,23 @@ export interface PreviewState {
 }
 
 /**
+ * The volume of a preview `playedSec` into its part. It fades in at the start, plays at the
+ * preview volume, and fades out before the end of the part. Null once the part is over.
+ */
+export function previewVolume(playedSec: number): number | null {
+  const leftSec = PREVIEW.lengthSec - playedSec;
+  if (leftSec <= 0) return null;
+  const fade = Math.min(playedSec / PREVIEW.fadeInSec, leftSec / PREVIEW.fadeOutSec);
+  return PREVIEW.volume * clamp01(fade);
+}
+
+/** The volume `elapsedMs` into the short fade that stops a preview. Null once the fade is over. */
+export function stopFadeVolume(fromVolume: number, elapsedMs: number): number | null {
+  const left = 1 - elapsedMs / (PREVIEW.stopFadeSec * 1000);
+  return left <= 0 ? null : fromVolume * left;
+}
+
+/**
  * Plays one part of a song in the menu, so players hear a song before they choose it.
  * The part plays again and again, with a fade at both ends.
  *
@@ -99,23 +116,21 @@ export class SongPreview {
   private shapeVolume = (): void => {
     const { audio } = this;
     if (this.stopping) {
-      const left = 1 - (performance.now() - this.stopping.sinceMs) / (PREVIEW.stopFadeSec * 1000);
-      if (left <= 0) this.halt();
-      else audio.volume = this.stopping.fromVolume * left;
+      const volume = stopFadeVolume(this.stopping.fromVolume, performance.now() - this.stopping.sinceMs);
+      if (volume === null) this.halt();
+      else audio.volume = volume;
       return;
     }
 
-    const playedSec = audio.currentTime - this.startSec;
-    const leftSec = PREVIEW.lengthSec - playedSec;
-    if (leftSec <= 0 || audio.ended) {
+    const volume = audio.ended ? null : previewVolume(audio.currentTime - this.startSec);
+    if (volume === null) {
       // The part is over: play it again from its start.
       audio.volume = 0;
       audio.currentTime = this.startSec;
       if (audio.paused) this.play();
       return;
     }
-    const fade = Math.min(playedSec / PREVIEW.fadeInSec, leftSec / PREVIEW.fadeOutSec);
-    audio.volume = PREVIEW.volume * clamp01(fade);
+    audio.volume = volume;
   };
 }
 

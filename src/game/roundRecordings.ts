@@ -40,6 +40,12 @@ export function addRound<T>(rounds: readonly T[], round: T, keep: number): { kep
   return { kept: all.slice(0, keep), dropped: all.slice(keep) };
 }
 
+/** The line above the list of rounds while a recording is not finished yet. Empty when none is. */
+export function recordingStatus(isRecording: boolean, finishing: number): string {
+  if (isRecording) return 'Recording the last seconds…';
+  return finishing > 0 ? 'Finishing the video…' : '';
+}
+
 /** Each player's result, as the end card of the game view shows it. */
 export function resultLines(players: readonly PlayerRun[]): ResultLine[] {
   return players.map((player) => ({
@@ -82,8 +88,7 @@ export class RoundRecordings {
   }
 
   get view(): RecordingsView {
-    const status = this.active ? 'Recording the last seconds…' : this.finishing > 0 ? 'Finishing the video…' : '';
-    return { rounds: this.rounds, status, lastRound: this.lastRound };
+    return { rounds: this.rounds, status: recordingStatus(this.active, this.finishing), lastRound: this.lastRound };
   }
 
   /**
