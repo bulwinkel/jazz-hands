@@ -16,6 +16,7 @@ export const SONGS = [
   { manifest: '/songs/blessed-on-the-hillside.json', title: 'Blessed on the Hillside' },
   { manifest: '/songs/todo-bueno.json', title: 'Todo Bueno' },
   { manifest: '/songs/from-the-garden-to-the-cross.json', title: 'From the Garden to the Cross' },
+  { manifest: '/songs/drum-and-bass-violins.json', title: 'Drum and Bass Violins' },
 ] as const;
 
 /**
