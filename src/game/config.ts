@@ -11,6 +11,18 @@ export const DEFAULT_TRACKER: Record<PlayerCount, TrackerMode> = {
   2: 'hands-split',
 };
 
+/** The menu tracks hands over the whole frame: a player may stand anywhere to point at it. */
+export const MENU_TRACKER: TrackerMode = 'hands-full';
+
+/** Pointing at menu items: a hand held on an item presses it. */
+export const HAND_MENU = {
+  dwellSec: 1,
+  /** Items that start or leave a round take longer, so they are not pressed by accident. */
+  slowDwellSec: 1.5,
+  /** Hands below this height in the frame (0 = top, 1 = bottom) are resting, not pointing. */
+  lowestY: 0.9,
+} as const;
+
 /** Add a song with one line here. */
 export const SONGS = [
   { manifest: '/songs/blessed-on-the-hillside.json', title: 'Blessed on the Hillside' },

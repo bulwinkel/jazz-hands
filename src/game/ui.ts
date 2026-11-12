@@ -1,8 +1,9 @@
-import { LEVELS, PLAYER_COLORS, SONGS } from './config';
+import { HAND_MENU, LEVELS, PLAYER_COLORS, SONGS } from './config';
+import type { HandTarget } from './handMenu';
 import type { PlayerRun } from './player';
 import { accuracy, stars } from './scoring';
 import type { Settings } from './settings';
-import type { Level, PlayerCount, PlayerIndex, SongLength } from './types';
+import type { Level, PlayerCount, PlayerIndex, Point, SongLength } from './types';
 
 const ALL_LEVELS: Level[] = [1, 2, 3, 4];
 
@@ -11,6 +12,7 @@ const SHELL_HTML = `
     <canvas aria-label="Player grids, hand positions and beat cues"></canvas>
   </main>
   <div id="panel"></div>
+  <div id="cursors" aria-hidden="true"></div>
   <div id="message" role="status" aria-live="polite"><h1></h1><p></p></div>
   <button id="resume" hidden>Click to start</button>
   <button id="pause" hidden aria-label="Pause game">Ⅱ Pause</button>
@@ -20,20 +22,26 @@ const MENU_HTML = `
   <div class="eyebrow">MOVE TOGETHER · PLAY TOGETHER</div>
   <h1>Kitchen Disco<span>✦</span></h1>
   <p class="subtitle">Reach for the beat. Make a little magic.</p>
-  <div class="song">♫ <select aria-label="Song"></select></div>
-  <fieldset class="count">
+  <fieldset class="songs choices">
+    <legend>♫ Song</legend>
+  </fieldset>
+  <fieldset class="count choices">
     <legend>Players</legend>
-    <label><input type="radio" name="count" value="1"><span>1 player</span></label>
-    <label><input type="radio" name="count" value="2"><span>2 players</span></label>
+    <label data-hand="count-1"><input type="radio" name="count" value="1"><span>1 player</span></label>
+    <label data-hand="count-2"><input type="radio" name="count" value="2"><span>2 players</span></label>
   </fieldset>
   <div class="players"></div>
-  <fieldset class="length">
+  <fieldset class="length choices">
     <legend>How long shall we dance?</legend>
-    <label><input type="radio" name="length" value="short">Short · about 90 seconds</label>
-    <label><input type="radio" name="length" value="full">Full song</label>
+    <label data-hand="length-short"><input type="radio" name="length" value="short"><span>Short · about 90 seconds</span></label>
+    <label data-hand="length-full"><input type="radio" name="length" value="full"><span>Full song</span></label>
   </fieldset>
-  <button class="primary" id="start">Let’s dance →</button>
-  <p class="keys">Space or Enter to start · F fullscreen<br><span id="stand-hint"></span></p>`;
+  <button class="primary" id="start" data-hand="start" data-hand-dwell="${HAND_MENU.slowDwellSec}">Let’s dance →</button>
+  <p class="keys">
+    Point at an item and hold your hand there to choose it · Space or Enter to start · F fullscreen<br>
+    <span id="stand-hint"></span>
+    <span id="sound-hint" hidden><br>Click or press a key once, so the browser lets the music play.</span>
+  </p>`;
 
 const STAND_HINT: Record<PlayerCount, string> = {
   1: 'Stand in the middle of the picture.',
@@ -62,7 +70,7 @@ function playerCard(player: PlayerIndex, settings: Settings, onChange: () => voi
   const title = settings.playerCount === 1 ? 'Your level' : `Player ${player + 1} · ${side}`;
   const levelOptions = ALL_LEVELS.map(
     (level) => `
-      <label>
+      <label data-hand="level-${player}-${level}">
         <input type="radio" name="level${player}" value="${level}">
         <span>Level ${level}<small>${LEVELS[level].name}</small></span>
       </label>`,
@@ -73,7 +81,7 @@ function playerCard(player: PlayerIndex, settings: Settings, onChange: () => voi
   card.innerHTML = `
     <legend>${title}</legend>
     <div class="level-options">${levelOptions}</div>
-    <label class="shapes"><input type="checkbox"><span>Hand shapes ✊ ✋ ☝️ ✌️</span></label>`;
+    <label class="shapes" data-hand="shapes-${player}"><input type="checkbox"><span>Hand shapes ✊ ✋ ☝️ ✌️</span></label>`;
 
   bindRadios(card, `level${player}`, String(settings.levels[player]), (value) => {
     settings.levels[player] = Number(value) as Level;
@@ -124,6 +132,8 @@ export class GameUI {
   readonly pauseButton: HTMLButtonElement;
   readonly resumeButton: HTMLButtonElement;
   private readonly panel: HTMLElement;
+  /** Rings that show where the game sees pointing hands. They sit above the panel. */
+  private readonly cursors: HTMLElement;
   private readonly message: HTMLElement;
   private readonly messageTitle: HTMLElement;
   private readonly messageDetail: HTMLElement;
@@ -133,6 +143,7 @@ export class GameUI {
     this.stage = find(root, '#stage');
     this.canvas = find(root, 'canvas');
     this.panel = find(root, '#panel');
+    this.cursors = find(root, '#cursors');
     this.message = find(root, '#message');
     this.messageTitle = find(this.message, 'h1');
     this.messageDetail = find(this.message, 'p');
@@ -153,17 +164,35 @@ export class GameUI {
     this.panel.hidden = true;
   }
 
-  /** Shows the menu. It edits `settings` in place and calls `onChange` after each edit. */
-  showMenu(settings: Settings, onStart: () => void, onChange: () => void): void {
+  /**
+   * Shows the menu. It edits `settings` in place and calls `onChange` after each edit.
+   * `onStart` hears whether a pointing hand pressed Start, and not a mouse or a key.
+   */
+  showMenu(settings: Settings, onStart: (byHand: boolean) => void, onChange: () => void): void {
     this.openPanel('menu', MENU_HTML);
 
-    const songs = find<HTMLSelectElement>(this.panel, '.song select');
-    SONGS.forEach((song, index) => songs.add(new Option(song.title, String(index))));
-    songs.value = String(settings.songIndex);
-    songs.addEventListener('change', () => {
-      settings.songIndex = Number(songs.value);
+    // One large button per song: a list that opens on a click cannot be pointed at by hand.
+    const songOptions = SONGS.map(
+      (song, index) => `
+        <label data-hand="song-${index}">
+          <input type="radio" name="song" value="${index}"><span>${song.title}</span>
+        </label>`,
+    ).join('');
+    find(this.panel, '.songs').insertAdjacentHTML('beforeend', songOptions);
+    bindRadios(this.panel, 'song', String(settings.songIndex), (value) => {
+      settings.songIndex = Number(value);
       onChange();
     });
+
+    // A round started by hand has no click behind it, and a browser plays sound only on a page
+    // that was clicked or typed in at least once. Ask for that one click while it is missing.
+    const soundHint = find(this.panel, '#sound-hint');
+    soundHint.hidden = navigator.userActivation?.hasBeenActive ?? true;
+    const hideSoundHint = (): void => {
+      soundHint.hidden = true;
+    };
+    window.addEventListener('pointerdown', hideSoundHint, { once: true });
+    window.addEventListener('keydown', hideSoundHint, { once: true });
 
     const cards = find(this.panel, '.players');
     const standHint = find(this.panel, '#stand-hint');
@@ -184,7 +213,8 @@ export class GameUI {
       settings.length = value as SongLength;
       onChange();
     });
-    find(this.panel, '#start').addEventListener('click', onStart);
+    // A press by a pointing hand is a click made by the page, which the browser marks as not trusted.
+    find(this.panel, '#start').addEventListener('click', (event) => onStart(!event.isTrusted));
   }
 
   showResults(players: readonly PlayerRun[], onReplay: () => void, onMenu: () => void): void {
@@ -202,8 +232,8 @@ export class GameUI {
       <p class="replay-prompt">Hands up to play again 🙌</p>
       <p>Raise a hand above your head and hold</p>
       <div class="result-actions">
-        <button id="replay" class="primary">Play again · Space</button>
-        <button id="menu">Menu · Esc</button>
+        <button id="replay" class="primary" data-hand="replay" data-hand-dwell="${HAND_MENU.slowDwellSec}">Play again · Space</button>
+        <button id="menu" data-hand="menu" data-hand-dwell="${HAND_MENU.slowDwellSec}">Menu · Esc</button>
       </div>
       <div class="diagnostics" hidden>
         <button id="copy-diagnostics">Copy diagnostics</button>
@@ -213,6 +243,51 @@ export class GameUI {
     find(this.panel, '.result-players').append(...players.map(resultCard));
     find(this.panel, '#replay').addEventListener('click', onReplay);
     find(this.panel, '#menu').addEventListener('click', onMenu);
+  }
+
+  // --- Pointing at items by hand ---
+
+  /** The items on the open panel that a hand can press, with where they are on screen. */
+  handTargets(): HandTarget[] {
+    if (this.panel.hidden) return [];
+    return [...this.panel.querySelectorAll<HTMLElement>('[data-hand]')].map((element) => {
+      const { left, top, width, height } = element.getBoundingClientRect();
+      return {
+        id: element.dataset.hand ?? '',
+        rect: { x: left, y: top, width, height },
+        dwellSec: Number(element.dataset.handDwell ?? HAND_MENU.dwellSec),
+      };
+    });
+  }
+
+  /** Presses an item as a click would. */
+  pressHandTarget(id: string): void {
+    this.panel.querySelector<HTMLElement>(`[data-hand="${id}"]`)?.click();
+  }
+
+  /**
+   * Shows a ring at each pointing hand, and on the item under a hand how far the hold has come.
+   * `hands` are screen positions. Call it with no hands to clear everything.
+   */
+  showHands(hands: readonly Point[], hoveredId: string | null, progress: number): void {
+    // Reuse the ring elements: this runs on every tracking frame.
+    while (this.cursors.children.length < hands.length) {
+      const ring = document.createElement('div');
+      ring.className = 'hand-cursor';
+      this.cursors.append(ring);
+    }
+    [...this.cursors.children].forEach((ring, i) => {
+      const hand = hands[i];
+      (ring as HTMLElement).hidden = hand === undefined;
+      if (hand) (ring as HTMLElement).style.transform = `translate(${hand.x}px, ${hand.y}px)`;
+    });
+
+    for (const element of this.panel.querySelectorAll<HTMLElement>('.hand-hover')) {
+      if (element.dataset.hand !== hoveredId) element.classList.remove('hand-hover');
+    }
+    const hovered = hoveredId ? this.panel.querySelector<HTMLElement>(`[data-hand="${hoveredId}"]`) : null;
+    hovered?.classList.add('hand-hover');
+    hovered?.style.setProperty('--dwell', progress.toFixed(3));
   }
 
   /**
