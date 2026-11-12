@@ -2,9 +2,15 @@ import { find } from './dom';
 import { sizeText } from './recording';
 import type { RoundVideos, VideoKind } from './recording';
 
-/** The buttons sit at the top, in from the sides, where the camera tracks a hand well. */
+/**
+ * The buttons sit at the top, in from the sides, where the camera tracks a hand well.
+ * The browser's own video controls keep only play, the time line and the volume. Their full
+ * screen would show the video without these buttons, and their Esc would not close the player;
+ * their download would be a second way to do what the Download button does.
+ */
 const PLAYER_HTML = `
-  <video playsinline controls></video>
+  <video playsinline controls disablepictureinpicture
+    controlslist="nofullscreen nodownload noremoteplayback noplaybackrate"></video>
   <div class="player-bar">
     <button type="button" id="player-game" data-hand="player-game">🎮 Game view</button>
     <button type="button" id="player-camera" data-hand="player-camera">🎥 Camera only</button>
