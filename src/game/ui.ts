@@ -204,11 +204,33 @@ export class GameUI {
       <div class="result-actions">
         <button id="replay" class="primary">Play again · Space</button>
         <button id="menu">Menu · Esc</button>
+      </div>
+      <div class="diagnostics" hidden>
+        <button id="copy-diagnostics">Copy diagnostics</button>
+        <span id="diagnostics-status" role="status"></span>
       </div>`,
     );
     find(this.panel, '.result-players').append(...players.map(resultCard));
     find(this.panel, '#replay').addEventListener('click', onReplay);
     find(this.panel, '#menu').addEventListener('click', onMenu);
+  }
+
+  /**
+   * Shows the diagnostics row on the results panel: a status line and a button that copies
+   * the run report as JSON. Does nothing when the results panel is no longer open.
+   */
+  showDiagnostics(json: string, status: string): void {
+    const row = this.panel.querySelector<HTMLElement>('.diagnostics');
+    if (!row) return;
+    const statusLine = find(row, '#diagnostics-status');
+    row.hidden = false;
+    statusLine.textContent = status;
+    find<HTMLButtonElement>(row, '#copy-diagnostics').onclick = () => {
+      navigator.clipboard.writeText(json).then(
+        () => (statusLine.textContent = 'Diagnostics copied.'),
+        () => (statusLine.textContent = 'Copy failed. The report is also at window.__dance.report.'),
+      );
+    };
   }
 
   /** Fills each result card's bar while its player holds a hand up to replay. */

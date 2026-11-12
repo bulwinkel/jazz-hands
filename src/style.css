@@ -183,3 +183,19 @@ h1{font-size:48px;margin:10px 0}
 .level-options span {
   flex: 1;
 }
+
+/* Dev server only: the diagnostics row under the result buttons. */
+.diagnostics {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 16px;
+  font-size: 15px;
+  color: #94a3b8;
+}
+.diagnostics button {
+  font-size: 15px;
+  padding: 6px 14px;
+  border-radius: 10px;
+}

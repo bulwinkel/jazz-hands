@@ -34,7 +34,8 @@ export function frameSongTime(
   return songTimeNowSec - (nowMs - frameTimeMs) / 1000 - inputLatencyMs / 1000;
 }
 
-function within(deltaMs: number, [early, late]: WindowMs): boolean {
+/** True when a time offset from a cue's due time lies inside a timing window, edges included. */
+export function isInsideWindow(deltaMs: number, [early, late]: WindowMs): boolean {
   return deltaMs >= early - EPSILON_MS && deltaMs <= late + EPSILON_MS;
 }
 
@@ -66,11 +67,11 @@ export function judgeFrame(
   const marks = state.marks.map((mark, k): CellMark => {
     if (mark === 'perfect') return mark;
     const deltaMs = (timeSec - cue.times[k]) * 1000;
-    if (!within(deltaMs, goodMs)) return mark;
+    if (!isInsideWindow(deltaMs, goodMs)) return mark;
     const rect = cellRect(grid, cue.cells[k]);
     if (!hands.some((hand) => handSatisfies(hand, rect, cue.gesture))) return mark;
     // A Good mark is provisional: a hand that stays into the Perfect window upgrades it.
-    return within(deltaMs, perfectMs) ? 'perfect' : 'good';
+    return isInsideWindow(deltaMs, perfectMs) ? 'perfect' : 'good';
   });
 
   const next: CueState = { cue, marks };

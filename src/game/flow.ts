@@ -2,6 +2,8 @@ import type { TrackerMode, TrackingFrame } from '../tracking/types';
 import { SongAudio } from './audio';
 import { generateChart } from './chart';
 import { DEFAULT_TRACKER, HANDS_UP_CELL, LEVELS, SONGS, TIMING } from './config';
+import { buildRunReport, newObservation, newTrackingStats, observeFrame } from './diagnostics';
+import type { RunReport, TrackingStats } from './diagnostics';
 import { cellRect, defaultGrid, fitGrid, insideCell } from './geometry';
 import { createInput } from './input';
 import type { GameInput, InputView } from './input';
@@ -29,6 +31,8 @@ interface PublicState {
   phase: Phase;
   songTime: number;
   players: PublicPlayer[];
+  /** The diagnostics of the last finished run. */
+  report?: RunReport;
 }
 declare global {
   interface Window {
@@ -74,6 +78,10 @@ export class DanceGame {
   private startSec = 0;
   private endSec = 0;
   private paused = false;
+
+  /** Totals about tracking during the current run, and the report of the last finished run. */
+  private trackingStats: TrackingStats = newTrackingStats(0);
+  private report?: RunReport;
 
   /** Tracker picked with the M key. It lasts until the page reloads. */
   private pickedTracker?: TrackerMode;
@@ -224,6 +232,7 @@ export class DanceGame {
     for (const player of this.players) {
       player.score = freshScore();
       player.states = player.cues.map(newCueState);
+      player.observations = player.cues.map(newObservation);
     }
     this.ui.hidePanel();
     this.setPhase('countdown');
@@ -236,6 +245,7 @@ export class DanceGame {
       this.fail(error);
       return;
     }
+    this.trackingStats = newTrackingStats(performance.now());
     this.setPhase('play');
     this.ui.pauseButton.textContent = 'Ⅱ Pause';
     this.ui.showMessage();
@@ -243,9 +253,58 @@ export class DanceGame {
 
   private finish(): void {
     this.judge(this.endSec + 1); // Closes every cue that is still open.
+    this.report = this.buildReport();
     this.audio?.stop();
     this.setPhase('results');
     this.ui.showResults(this.players, this.beginCountdown, this.showMenu);
+    if (import.meta.env.DEV) void this.saveReport(this.report);
+  }
+
+  private buildReport(): RunReport {
+    const { settings } = this.options;
+    return buildRunReport({
+      song: {
+        id: this.manifest?.id ?? '',
+        title: this.manifest?.title ?? '',
+        length: settings.length,
+        startSec: this.startSec,
+        endSec: this.endSec,
+      },
+      settings: {
+        playerCount: settings.playerCount,
+        input: this.options.input,
+        seed: this.options.seed,
+        inputLatencyMs: settings.inputLatencyMs,
+        avOffsetMs: settings.avOffsetMs,
+        audioOutputLatencyMs: Math.round((this.audio?.outputLatencySec ?? 0) * 1000),
+      },
+      trackerMode: this.input?.mode ?? this.trackerMode(),
+      trackerDelegate: this.input?.delegate ?? '',
+      players: this.players,
+      stats: this.trackingStats,
+      nowMs: performance.now(),
+    });
+  }
+
+  /**
+   * Dev server only: saves the run report to `test-results/` on disk and offers it for copying,
+   * so a run can be studied afterwards without reading numbers off the screen.
+   */
+  private async saveReport(report: RunReport): Promise<void> {
+    const json = JSON.stringify(report);
+    this.ui.showDiagnostics(json, 'Saving diagnostics…');
+    try {
+      const response = await fetch('/__run-diagnostics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: json,
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const saved: { path: string } = await response.json();
+      this.ui.showDiagnostics(json, `Diagnostics saved: ${saved.path}`);
+    } catch (error) {
+      this.ui.showDiagnostics(json, `Diagnostics not saved (${errorText(error)}). Copy them instead.`);
+    }
   }
 
   private fail(error: unknown): void {
@@ -278,6 +337,7 @@ export class DanceGame {
     } else if (this.phase === 'ready' || this.phase === 'results') {
       this.trackHandsUp(frame, previous);
     } else if (this.phase === 'play' && !this.paused && this.audio?.context.state === 'running') {
+      this.countFrame(frame);
       const { inputLatencyMs } = this.options.settings;
       this.judge(frameSongTime(this.songTime(), performance.now(), frame.timeMs, inputLatencyMs), frame);
     }
@@ -310,6 +370,16 @@ export class DanceGame {
     if (this.players.every((player) => player.hold >= 1)) this.beginCountdown();
   }
 
+  private countFrame(frame: TrackingFrame): void {
+    const stats = this.trackingStats;
+    stats.frames++;
+    stats.inferenceMs.push(frame.inferenceMs);
+    for (const player of this.players) {
+      const handCount = Math.min(2, frame.players[player.index].hands.length);
+      stats.handCounts[player.index][handCount]++;
+    }
+  }
+
   /** Judges every open cue at `timeSec`. With no frame, it only closes cues whose time has passed. */
   private judge(timeSec: number, frame?: TrackingFrame): void {
     for (const player of this.players) {
@@ -318,6 +388,7 @@ export class DanceGame {
       for (let i = 0; i < player.states.length; i++) {
         const state = player.states[i];
         if (state.cue.timeSec - opensAheadSec > timeSec) break; // This cue and all later ones are not open yet.
+        if (frame) observeFrame(player.observations[i], state.cue, player.level, player.grid, hands, timeSec);
         if (state.result) continue;
         const next = judgeFrame(state, player.level, player.grid, hands, timeSec);
         player.states[i] = next;
@@ -593,6 +664,7 @@ export class DanceGame {
     window.__dance = {
       phase: this.phase,
       songTime: this.songTime(),
+      report: this.report,
       players: PLAYER_SLOTS.map((index) => {
         const player = this.players.find((p) => p.index === index);
         if (!player) return { ...freshScore(), level: 0, chart: summariseChart([]) };
