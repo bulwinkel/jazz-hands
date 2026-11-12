@@ -10,7 +10,8 @@
 //   --shot     Save a screenshot when the game reaches a phase, after an optional delay.
 //   --size     Browser window size as <width>x<height>. Default 1440x900.
 //   --hover    Move the mouse pointer onto the element with this CSS selector, in the menu,
-//              and leave it there. With `input=mouse` the pointer is a hand, so this tests pointing.
+//              and leave it there. With `input=mouse` the pointer is an open hand.
+//   --fist     With --hover: also hold the 1 key, which makes the pointer hand a fist.
 //
 // The camera is always Chrome's fake camera, never the real one. Sound is muted.
 // The game needs a dev server, for example: npx vite --port 5174 --strictPort
@@ -41,6 +42,7 @@ const untilPhase = flag('until') ?? 'results';
 const [shotPhase, shotFile, shotDelayMs] = flag('shot')?.split(':') ?? [];
 const windowSize = (flag('size') ?? '1440x900').replace('x', ',');
 const hoverSelector = flag('hover');
+const makeFist = flags.includes('--fist');
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -158,6 +160,7 @@ while (elapsedSec() < maxSeconds) {
   if (hoverSelector && phase === 'menu' && !hovered) {
     hovered = true;
     await movePointerOnto(hoverSelector);
+    if (makeFist) await send('Input.dispatchKeyEvent', { type: 'keyDown', key: '1', code: 'Digit1', windowsVirtualKeyCode: 49 });
   }
   if (phase === pressAtPhase && !pressed) {
     pressed = true;

@@ -123,36 +123,13 @@ describe('face cues', () => {
 });
 
 describe('hand charts', () => {
-  /** FNV-1a over the JSON text: one number that changes when any cue changes. */
-  function fingerprint(value: unknown): number {
-    let hash = 0x811c9dc5;
-    for (const char of JSON.stringify(value)) {
-      hash ^= char.charCodeAt(0);
-      hash = Math.imul(hash, 0x01000193) >>> 0;
-    }
-    return hash;
-  }
-
-  // Cue count and fingerprint of each level's chart, taken from the game without face cues.
-  const BEFORE_FACES: [Level, number, number][] = [
-    [1, 94, 1672571102],
-    [2, 188, 2944844745],
-    [3, 141, 2486315852],
-    [4, 156, 1446666729],
-  ];
-
-  it.each(BEFORE_FACES)('at level %i are what they were before face cues existed', (level, count, expected) => {
-    const song = synthetic(100, 120);
-    const cues = generateChart(song, { level, shapes: true, seed: 42, endSec: song.durationSec });
-    expect(cues).toHaveLength(count);
-    expect(fingerprint(cues)).toBe(expected);
-  });
-
   it('are the same whether or not face cues are made from the same seed', () => {
     const song = synthetic(100, 120);
-    const options = { level: 3 as const, shapes: true, seed: 42, endSec: song.durationSec };
-    const before = generateChart(song, options);
-    faces(song, 42);
-    expect(generateChart(song, options)).toEqual(before);
+    for (const level of [1, 2, 3, 4] as Level[]) {
+      const options = { level, shapes: true, seed: 42, endSec: song.durationSec };
+      const before = generateChart(song, options);
+      faces(song, 42);
+      expect(generateChart(song, options)).toEqual(before);
+    }
   });
 });

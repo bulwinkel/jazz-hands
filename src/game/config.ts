@@ -14,11 +14,12 @@ export const DEFAULT_TRACKER: Record<PlayerCount, TrackerMode> = {
 /** The menu tracks hands over the whole frame: a player may stand anywhere to point at it. */
 export const MENU_TRACKER: TrackerMode = 'hands-full';
 
-/** Pointing at menu items: a hand held on an item presses it. */
+/** Choosing menu items by hand: an open hand highlights an item, a fist held on it chooses it. */
 export const HAND_MENU = {
-  dwellSec: 1,
-  /** Items that start or leave a round take longer, so they are not pressed by accident. */
-  slowDwellSec: 1.5,
+  /** How long the fist must hold. Short, because a fist is a deliberate act. */
+  holdSec: 0.5,
+  /** Items that start or leave a round take a little longer. */
+  slowHoldSec: 0.8,
   /** Hands below this height in the frame (0 = top, 1 = bottom) are resting, not pointing. */
   lowestY: 0.9,
 } as const;
@@ -29,6 +30,8 @@ export const SONGS = [
   { manifest: '/songs/todo-bueno.json', title: 'Todo Bueno' },
   { manifest: '/songs/from-the-garden-to-the-cross.json', title: 'From the Garden to the Cross' },
   { manifest: '/songs/drum-and-bass-violins.json', title: 'Drum and Bass Violins' },
+  { manifest: '/songs/all-eyes-on-us.json', title: 'All Eyes on Us' },
+  { manifest: '/songs/return-to-the-lord.json', title: 'Return to the Lord' },
 ] as const;
 
 /**

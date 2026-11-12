@@ -94,9 +94,9 @@ export class DanceGame {
   private inputOpening?: Promise<void>;
   /** Why the input could not start, when it could not. */
   private inputError?: unknown;
-  /** True when a pointing hand started the round: the players are then already at their spots. */
+  /** True when a hand chose Start: the players are then already at their spots. */
   private startedByHand = false;
-  /** Where the hold of a pointing hand stands, in the menu and on the results screen. */
+  /** Which item a hand is on and how far its fist hold has come, in the menu and on the results screen. */
   private handMenu = newHandMenuState();
   private manifest?: Manifest;
   private players: PlayerRun[] = [];
@@ -431,16 +431,16 @@ export class DanceGame {
     }
   }
 
-  /** Menu and results: a hand held on an item of the panel presses it. */
+  /** Menu and results: an open hand highlights an item of the panel, a fist held on it chooses it. */
   private pointAtPanel(frame: TrackingFrame): void {
     const hands = frame.players
       .flatMap((player) => player.hands)
       .filter((hand) => hand.y <= HAND_MENU.lowestY)
-      .map((hand) => this.toScreen(hand));
+      .map((hand) => ({ ...this.toScreen(hand), fist: hand.gesture === 'fist' }));
     const step = stepHandMenu(this.handMenu, this.ui.handTargets(), hands, frame.timeMs);
     this.handMenu = step.state;
     this.ui.showHands(hands, step.state.hoveredId, step.progress);
-    if (step.pressId) this.ui.pressHandTarget(step.pressId);
+    if (step.chooseId) this.ui.chooseHandTarget(step.chooseId);
   }
 
   /** A point in the camera frame, as a position on the screen in pixels. */

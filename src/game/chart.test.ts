@@ -260,6 +260,16 @@ describe('level 4', () => {
     });
   });
 
+  it('gives every slide a clear moment: no cue within a cue interval before it or after it', () => {
+    // A real round showed that a tap 0.3 s after a fast slide, or an off-beat tap 0.3 s before
+    // a slide, cannot be played.
+    cues.forEach((cue, i) => {
+      if (!isSlide(cue)) return;
+      if (i > 0) expect(cue.timeSec - lastTime(cues[i - 1])).toBeGreaterThan(0.9 * beatSec);
+      if (i < cues.length - 1) expect(cues[i + 1].timeSec - lastTime(cue)).toBeGreaterThan(0.9 * beatSec);
+    });
+  });
+
   it('follows its single taps with an off-beat tap as often as the level rules say', () => {
     // Only a single tap leaves a hand free for an off-beat tap: a double uses both hands.
     const many = chart(synthetic(100, 1800), 4, 42);

@@ -7,6 +7,11 @@ import type { GestureName, Point } from './types';
  * the side or down points sideways or down, and the model then reads "none": measured in real
  * rounds, it read an open palm in 0% of frames in the bottom row of the grid.
  * Looking at which fingers are straight does not depend on the hand's direction.
+ *
+ * The reader measures in the flat picture, with no depth. A finger that points toward the
+ * camera therefore looks short and reads as curled, which makes pointing low in the grid
+ * harder (19% of frames in real rounds). That is left as it is on purpose: the owner wants the
+ * bottom row to be the hard one, and a player who bends down a little gets it right.
  */
 
 /** Landmark indices of one finger, from the knuckle at the palm to the tip. */
