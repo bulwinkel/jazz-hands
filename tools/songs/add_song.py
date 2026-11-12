@@ -3,18 +3,23 @@
 Usage, from the repo root, after `npm run setup-songs`:
 
     npm run add-song -- "/path/to/Song Name.mp3" [--title "Song Name"] [--id song-name]
-        [--first-downbeat N] [--out-dir DIR] [--compare MANIFEST.json] [--keep-work]
+        [--first-downbeat N] [--pacing rank|level] [--short-start auto|none|SECONDS]
+        [--out-dir DIR] [--compare MANIFEST.json] [--keep-work]
 
 The steps, in order:
 
   1. Decode the file with ffmpeg, and with headless Chrome as the game does. The two decoders
      can disagree about where the audio starts, so the offset between them is measured.
   2. Make three onset envelopes: all bands, percussive, and the kick band (30 to 150 Hz).
-  3. Find the tempo, then test whether one tempo holds for the whole song.
-     If it holds, fit one exact grid. If not, track the beats and smooth them.
-  4. Move the beats onto the kick drum's onset.
-  5. Find the first and last beat of the music, and the beat that starts the bars.
-  6. Rate the energy of each bar.
+  3. Find the tempo, then test whether one tempo holds for the whole song. If it holds, fit
+     one exact grid. If not, fit tempo and phase in short windows and join them. Where the
+     kick is clear, also track the beats, and keep the tracked beats when they follow the
+     kick more closely.
+  4. Put the beats on the pulses that carry the kick and the chord changes, then move them
+     onto the kick drum's onset.
+  5. Find the first and last beat of the music, where the beat stops being clear, and the
+     beat that starts the bars.
+  6. Rate the energy of each bar, set the pace from it, and choose where the Short round starts.
   7. Write two click-check clips, the audio copy and the manifest.
 
 Every step prints its evidence, so a reader can judge the result without running it again.
@@ -60,8 +65,8 @@ SONGS_URL = '/songs'
 
 FFMPEG_TIMEOUT_SEC = 300
 CHROME_TIMEOUT_SEC = 120
-# A song shorter than this cannot fill the game's short play length with cues.
-MIN_SONG_SEC = 40.0
+# The game's song test needs a Short round of more than this, so a song must last as long.
+MIN_SONG_SEC = 60.0
 # A file whose largest sample is below this (-80 dB) is silent.
 SILENT_PEAK = 1e-4
 # Landmarks compare the two decoders: the time of the largest sample in each of these 1 s
@@ -99,6 +104,9 @@ TEMPO_STEP_BPM = 0.25
 TEMPO_CHOICE_BPM = (70.0, 140.0)
 # Tempo is scored in windows, so a song that drifts by a few percent still gives one peak.
 TEMPO_WINDOW_SEC = 30.0
+# A tempo's score is this percentile of its window scores: its clearest windows. The drums
+# show the tempo best, and a soft song has them in a few sections only.
+TEMPO_WINDOW_PERCENTILE = 90
 # Phases tried for each comb in the tempo search.
 COMB_PHASES = 32
 # Peaks closer than this share of the tempo are one peak.
@@ -143,11 +151,44 @@ SMOOTHING_ROUNDS = 4
 # Kept beats in a run shorter than this, between dropped beats, are dropped too:
 # nothing next to them confirms them.
 MIN_TRUSTED_RUN = 4
-# With fewer tracked beats than this share on the smooth curve, the tracker lost the beat.
-MIN_KEPT_SHARE = 0.5
-WARN_KEPT_SHARE = 0.9
+# The tracker reads the kick. It is tried when this share of the song's blocks has a clear kick,
+# and dropped when less than this share of its beats stays on the smooth curve.
+TRACKER_MIN_KICK_SHARE = 0.75
+TRACKER_MIN_KEPT_SHARE = 0.9
+# Tracked beats are used only when they stay this close to the window anchors' beats: the
+# tracker may place a beat better, it may not slip to another pulse.
+TRACKER_MAX_FROM_ANCHORS_SEC = 0.050
+# Tracked beats and window anchors are compared by how the kick sits on them, in blocks this long.
+KICK_COMPARE_SEC = 10.0
 # The game's song test rejects a beat interval further than this from the median.
 MAX_INTERVAL_DEVIATION = 0.05
+
+# --- Window anchors ---
+
+# Tempo and phase are fitted in windows of this length, this far apart.
+ANCHOR_WINDOW_SEC = 12.0
+ANCHOR_HOP_SEC = 2.0
+# A window fitted alone may be this far from the song's tempo.
+ANCHOR_FREE_RANGE_BPM = 2.5
+ANCHOR_FREE_STEP_BPM = 0.05
+# A window tied to its neighbour may differ from it by this much tempo and this much phase.
+ANCHOR_TIED_RANGE_BPM = 0.5
+ANCHOR_TIED_STEP_BPM = 0.02
+ANCHOR_TIED_PHASE_SEC = 0.050
+ANCHOR_PHASE_STEP_SEC = 0.003
+# The smoothing spline may leave this much RMS distance to the anchors.
+ANCHOR_SMOOTHING_SEC = 0.006
+# A window's clarity is its best comb score over the median score of all phases: near 1 with
+# no beat. A window holds the beat with this clarity.
+BEAT_MIN_CLARITY = 2.0
+# Where the song starts or ends with no beat, the windows next to that part are partly on the
+# beat and score in between. The beat reaches as far as the windows with this share of the
+# typical clarity.
+BEAT_EDGE_SHARE_OF_TYPICAL = 0.5
+MIN_HOLDING_WINDOWS = 4
+# The beat list stops early when the music goes on this long after the last clear beat.
+# A shorter stretch is the song's own ending.
+BEATLESS_END_MIN_SEC = 8.0
 
 # --- Kick alignment ---
 
@@ -182,10 +223,6 @@ ONSET_WINDOW_SEC = (-0.05, 0.07)
 # A beat with this share of the typical onset strength has a hit on it, so it has music
 # even when the sound between the hits is near silence.
 HIT_SHARE_OF_TYPICAL = 0.25
-# The final hit is the strongest of this many last beats, when it stands out.
-FINAL_HIT_SEARCH_BEATS = 4
-# A hit stands out when it is at least this percentile of the song's beats.
-STANDOUT_PERCENTILE = 90
 MIN_BEATS = 32
 
 # --- Bars ---
@@ -207,8 +244,7 @@ CHROMA_INSET_SEC = 0.04
 # How much each clue counts when the bar start is chosen.
 START_WEIGHT = 1.0
 RISES_WEIGHT = 2.0
-FINAL_HIT_WEIGHT = 1.0
-CHORDS_WEIGHT = 0.5
+CHORDS_WEIGHT = 1.0
 # The bar start is certain when the clues for it weigh this much and no clue is against it.
 CERTAIN_WEIGHT = 3.0
 
@@ -218,8 +254,23 @@ LEVEL_SHARE = 0.6
 DENSITY_SHARE = 0.4
 INTENSITY_PERCENTILES = (5, 95)
 INTENSITY_MEDIAN_BARS = 3
-# The game's level rules change at these intensities (see LEVELS and CHART in config.ts).
+# The game's level rules change at these intensities (see LEVELS and CHART in config.ts):
+# below the first a bar plays slow, below the second medium, from the second on full.
 INTENSITY_STEPS = (0.35, 0.5)
+# Rank pacing gives every song the same pace mix. The quietest bars, up to the first share,
+# play slow. The bars up to the second share play medium. The rest play full.
+RANK_PACING_SHARES = (0.12, 0.30)
+
+# --- Short round ---
+
+# The Short round lasts this long (TIMING.shortSec in config.ts), then ends on a bar start.
+SHORT_ROUND_SEC = 90.0
+# The game's song test accepts a Short round between these lengths.
+SHORT_ROUND_LIMITS_SEC = (60.0, 95.0)
+# The round may start on every bar start this many bars apart, counted from the first downbeat.
+SHORT_START_EVERY_BARS = 4
+# A later start is written only when its 90 s are this much more intense than the first 90 s.
+SHORT_START_MIN_GAIN = 0.1
 
 # --- Report and check clips ---
 
@@ -273,6 +324,10 @@ class Job:
     song_id: str
     extension: str
     first_downbeat: int | None
+    # 'rank' or 'level'.
+    pacing: str
+    # 'auto', 'none', or a time in seconds.
+    short_start: str | float
     out_dir: Path
     reference: dict | None
     reference_path: Path | None
@@ -300,6 +355,12 @@ def parse_arguments(argv: list[str]) -> argparse.Namespace:
     parser.add_argument('--id', help='song id (default: the title in lower case with hyphens)')
     parser.add_argument('--first-downbeat', type=int, metavar='N',
                         help='index of the first bar start, to overrule the tool')
+    parser.add_argument('--pacing', choices=['rank', 'level'], default='rank',
+                        help='how intensity sets the pace: by the rank of each bar in the song (default), '
+                             'or by its level alone')
+    parser.add_argument('--short-start', default='auto', metavar='auto|none|SECONDS',
+                        help='where the Short round starts: the best 90 s (default), the start of the song, '
+                             'or the bar start nearest a time')
     parser.add_argument('--out-dir', type=Path, metavar='DIR',
                         help=f'write the manifest and the audio copy here, not in {SONGS_DIR.relative_to(REPO_ROOT)}')
     parser.add_argument('--compare', type=Path, metavar='MANIFEST.json',
@@ -318,12 +379,26 @@ def read_reference(path: Path) -> dict:
     """Returns the manifest to compare with. Read before the analysis, so a bad path fails at once."""
     try:
         reference = json.loads(path.read_text(encoding='utf-8'))
-        beats = reference['beats']
+        usable = (len(reference['beats']) >= 2 and len(reference['intensity']) == len(reference['beats'])
+                  and reference['firstDownbeat'] >= 0 and reference['beatsPerBar'] >= 1)
     except (OSError, ValueError, KeyError, TypeError) as error:
-        raise SongError(f'Cannot read a manifest with beats from {path}: {error}') from error
-    if not isinstance(beats, list) or len(beats) < 2:
-        raise SongError(f'{path} has no list of beats to compare with.')
+        raise SongError(f'Cannot read a song manifest from {path}: {error!r}') from error
+    if not usable:
+        raise SongError(f'{path} is not a song manifest the tool can compare with.')
     return reference
+
+
+def read_short_start(text: str) -> str | float:
+    """Returns the --short-start choice: 'auto', 'none', or a time in seconds."""
+    if text in ('auto', 'none'):
+        return text
+    try:
+        seconds = float(text)
+    except ValueError:
+        seconds = math.nan
+    if not seconds >= 0 or math.isinf(seconds):
+        raise SongError('--short-start must be auto, none, or a time in seconds.')
+    return seconds
 
 
 def plan_job(arguments: argparse.Namespace) -> Job:
@@ -353,6 +428,8 @@ def plan_job(arguments: argparse.Namespace) -> Job:
         song_id=song_id,
         extension=extension,
         first_downbeat=arguments.first_downbeat,
+        pacing=arguments.pacing,
+        short_start=read_short_start(arguments.short_start),
         out_dir=arguments.out_dir.expanduser().resolve() if arguments.out_dir else SONGS_DIR,
         reference=read_reference(arguments.compare) if arguments.compare else None,
         reference_path=arguments.compare,
@@ -614,10 +691,11 @@ class TempoEstimate:
 
 
 def windowed_tempo_scores(envelopes: np.ndarray, duration_sec: float) -> tuple[np.ndarray, np.ndarray]:
-    """Returns the tempos scored and, for each envelope and tempo, its typical comb score.
+    """Returns the tempos scored and, for each envelope and tempo, the score of its clearest windows.
 
-    Each window of the song scores a tempo by its best-phase comb. The result is the median
-    over the windows. One comb over the whole song would smear a tempo that drifts.
+    Each window of the song scores a tempo by its best-phase comb. One comb over the whole song
+    would smear a tempo that drifts. The clearest windows count, not the typical one: where
+    only soft percussion plays, a comb at two thirds of the tempo scores as well as the beat.
     """
     bpms = np.arange(TEMPO_SCORED_BPM[0], TEMPO_SCORED_BPM[1] + TEMPO_STEP_BPM / 2, TEMPO_STEP_BPM)
     window_starts = np.arange(0, duration_sec - TEMPO_WINDOW_SEC, TEMPO_WINDOW_SEC / 2)
@@ -628,7 +706,7 @@ def windowed_tempo_scores(envelopes: np.ndarray, duration_sec: float) -> tuple[n
             phases_sec = np.arange(COMB_PHASES) * period_sec / COMB_PHASES
             by_phase = comb_scores(envelopes, period_sec, start_sec, start_sec + TEMPO_WINDOW_SEC, phases_sec)
             scores[window, :, column] = by_phase.max(axis=-1)
-    return bpms, np.median(scores, axis=0)
+    return bpms, np.percentile(scores, TEMPO_WINDOW_PERCENTILE, axis=0)
 
 
 def strongest_tempos(bpms: np.ndarray, scores: np.ndarray, count: int) -> list[tuple[float, float]]:
@@ -675,7 +753,8 @@ def report_tempo(report: Report, tempo: TempoEstimate) -> None:
         return '   '.join(f'{bpm:.1f}: {score:.1f}' for bpm, score in peaks)
 
     report.section('Tempo')
-    report.line('Score of a comb of evenly spaced beats, by tempo. 1.0 means no beat at that tempo.')
+    report.line('Score of a comb of evenly spaced beats, by tempo, in the clearest parts of the song. '
+                '1.0 means no beat at that tempo.')
     report.line(f'kick band (BPM: score)   {listed(tempo.kick_peaks)}')
     report.line(f'all bands (BPM: score)   {listed(tempo.joint_peaks)}')
     chooser = 'the kick band' if tempo.from_kick else 'all bands'
@@ -803,26 +882,22 @@ def kick_drift_sec(blocks: list[BlockPhase]) -> float | None:
 
 
 def report_grid_test(report: Report, grid: ConstantGrid, blocks: list[BlockPhase], drift_sec: float | None) -> None:
-    """Prints the constant-tempo test and which method it leads to."""
+    """Prints the constant-tempo test: where the kick sits against one grid, block by block."""
     report.section('Beat grid')
     report.line(f'Best constant tempo: {grid.bpm:.3f} BPM. Kick against that grid, per {BLOCK_SEC:.0f} s:')
     for block in blocks:
-        offset = f'{block.offset_sec * 1000:+5.0f} ms' if block.clear else 'no clear beat'
+        offset = f'{block.offset_sec * 1000:+5.0f} ms' if block.clear else 'no clear kick'
         report.line(f'  {block.start_sec:4.0f} to {block.end_sec:4.0f} s   {offset}')
 
     limit_ms = MAX_KICK_DRIFT_SEC * 1000
     if drift_sec is None:
-        report.line('Too few blocks have a clear beat to show a constant tempo.')
-        report.line('Method: tracked beats.')
-        report.warn('The kick is unclear in most of the song. The beat times are less certain.')
+        report.line('Too few blocks have a clear kick to show a constant tempo.')
     elif drift_sec <= MAX_KICK_DRIFT_SEC:
         report.line(f'The kick stays within {drift_sec * 1000:.0f} ms of its usual place (limit {limit_ms:.0f} ms): '
                     'the tempo is constant.')
-        report.line(f'Method: one constant grid, {grid.bpm:.3f} BPM.')
     else:
         report.line(f'The kick moves up to {drift_sec * 1000:.0f} ms from its usual place (limit {limit_ms:.0f} ms): '
                     'the tempo is not constant.')
-        report.line('Method: tracked beats.')
 
 
 # --- Tracked beats ---
@@ -882,7 +957,8 @@ def smooth_beats(tracked: np.ndarray) -> SmoothedBeats:
 
     A cubic smoothing spline removes the tracker's jitter and keeps the slow drift. Beats far
     from the curve are dropped and the curve is fitted again, a few rounds. Outside the kept
-    beats the curve continues at a constant tempo: a cubic would bend away.
+    beats the curve continues at a constant tempo: a cubic would bend away. When fewer than
+    TRACKER_MIN_KEPT_SHARE of the beats stay, the rounds stop: the caller does not use such a curve.
     """
     indices = np.arange(len(tracked), dtype=float)
 
@@ -890,13 +966,18 @@ def smooth_beats(tracked: np.ndarray) -> SmoothedBeats:
         """Returns the smooth curve through the kept beats."""
         return UnivariateSpline(indices[kept], tracked[kept], k=3, s=kept.sum() * SMOOTHING_SEC ** 2)
 
+    def rms_distance(times: np.ndarray, kept: np.ndarray) -> float:
+        """Returns the RMS distance of the kept tracked beats from the curve."""
+        return float(np.sqrt(((tracked - times)[kept] ** 2).mean()))
+
     kept = np.ones(len(tracked), dtype=bool)
     spline = fit(kept)
     for _ in range(SMOOTHING_ROUNDS):
-        kept = drop_short_runs(np.abs(tracked - spline(indices)) < OUTLIER_SEC)
-        if kept.sum() < MIN_KEPT_SHARE * len(tracked):
-            raise SongError(f'The beat tracker lost the beat: only {kept.sum()} of {len(tracked)} tracked '
-                            'beats fit a smooth tempo curve.')
+        close = drop_short_runs(np.abs(tracked - spline(indices)) < OUTLIER_SEC)
+        if close.mean() < TRACKER_MIN_KEPT_SHARE:
+            times = spline(indices)
+            return SmoothedBeats(times=times, kept=close, residual_rms_sec=rms_distance(times, kept))
+        kept = close
         spline = fit(kept)
 
     first, last = np.flatnonzero(kept)[[0, -1]]
@@ -904,8 +985,7 @@ def smooth_beats(tracked: np.ndarray) -> SmoothedBeats:
     times = spline(indices)
     times[:first] = spline(first) + (indices[:first] - first) * interval(first)
     times[last + 1:] = spline(last) + (indices[last + 1:] - last) * interval(last)
-    residuals = (tracked - times)[kept]
-    return SmoothedBeats(times=times, kept=kept, residual_rms_sec=float(np.sqrt((residuals ** 2).mean())))
+    return SmoothedBeats(times=times, kept=kept, residual_rms_sec=rms_distance(times, kept))
 
 
 def extend_beats(beats: np.ndarray, end_sec: float) -> np.ndarray:
@@ -925,13 +1005,190 @@ def extend_beats(beats: np.ndarray, end_sec: float) -> np.ndarray:
 def report_tracking(report: Report, tracked: np.ndarray, smoothed: SmoothedBeats) -> None:
     """Prints how many tracked beats shaped the smooth curve, and which were dropped."""
     dropped = np.flatnonzero(~smoothed.kept)
-    report.line(f'Tracked {len(tracked)} beats. {int(smoothed.kept.sum())} shape the smooth tempo curve, '
+    report.line(f'Beat tracker: {len(tracked)} beats. {int(smoothed.kept.sum())} lie on one smooth tempo curve, '
                 f'{smoothed.residual_rms_sec * 1000:.1f} ms RMS from it.')
-    if len(dropped):
+    if 0 < len(dropped) <= 20:
         report.line(f'Tracked beats dropped as misplaced, by index: {" ".join(str(index) for index in dropped)}')
-    if smoothed.kept.mean() < WARN_KEPT_SHARE:
-        report.warn(f'The tracker misplaced {len(dropped)} of {len(tracked)} beats. '
-                    'The beat is unclear in parts of the song.')
+
+
+# --- Window anchors ---
+
+
+@dataclass(frozen=True)
+class WindowFit:
+    """The best comb in one window of the song: a local tempo and one beat time."""
+
+    centre_sec: float
+    bpm: float
+    # Time of one beat near the window's centre.
+    anchor_sec: float
+    # Mean envelope value on the comb's teeth. High where the drums are loud.
+    score: float
+    # The score over the median score of all phases at this tempo.
+    clarity: float
+
+
+@dataclass(frozen=True)
+class AnchorGrid:
+    """Beats made from the window fits, covering the whole file."""
+
+    beats: np.ndarray
+    # How clear the beat is in each window, in time order.
+    clarity: np.ndarray
+    # The curve runs through the windows between these times: the first and the last that hold
+    # a clear beat. Outside them the beats continue at the curve's tempo.
+    fitted_from_sec: float
+    fitted_to_sec: float
+    # Largest distance from a whole number in the beat counts between neighbouring windows.
+    worst_count_error: float
+    residual_rms_sec: float
+
+
+def window_comb(envelope: np.ndarray, centre_sec: float, bpm: float, anchors_sec: np.ndarray) -> np.ndarray:
+    """Returns the mean envelope value on a comb through each candidate anchor, inside one window."""
+    period_sec = 60 / bpm
+    start_sec = centre_sec - ANCHOR_WINDOW_SEC / 2
+    first_tooth = anchors_sec - np.floor((anchors_sec - start_sec) / period_sec) * period_sec
+    times = first_tooth[:, None] + period_sec * np.arange(int(ANCHOR_WINDOW_SEC / period_sec) + 1)
+    inside = times < start_sec + ANCHOR_WINDOW_SEC
+    return (sample_at(envelope, times) * inside).sum(axis=1) / inside.sum(axis=1)
+
+
+def window_centres(duration_sec: float) -> np.ndarray:
+    """Returns the centre time of each window of the song."""
+    return np.arange(ANCHOR_WINDOW_SEC / 2, duration_sec - ANCHOR_WINDOW_SEC / 2 + 1e-9, ANCHOR_HOP_SEC)
+
+
+def phase_scores(envelope: np.ndarray, centre_sec: float, bpm: float, first_anchor_sec: float) -> np.ndarray:
+    """Returns the comb score in one window for every phase of one tempo.
+
+    The first score belongs to the comb through `first_anchor_sec`. A score well above the
+    median of the others is a clear beat. With no beat at this tempo, all phases score alike.
+    """
+    every_phase = first_anchor_sec + np.arange(0, 60 / bpm, ANCHOR_PHASE_STEP_SEC)
+    return window_comb(envelope, centre_sec, bpm, every_phase)
+
+
+def best_window_fit(envelope: np.ndarray, centre_sec: float, bpms: np.ndarray,
+                    anchors_at: np.ndarray) -> WindowFit:
+    """Returns the tempo and anchor, among the candidates, whose comb scores highest in the window.
+
+    `anchors_at` holds the candidate anchor times. They are the same for every tempo.
+    """
+    best_score, best_bpm, best_anchor = -np.inf, float(bpms[0]), float(anchors_at[0])
+    for bpm in bpms:
+        scores = window_comb(envelope, centre_sec, bpm, anchors_at)
+        top = int(scores.argmax())
+        if scores[top] > best_score:
+            best_score, best_bpm, best_anchor = float(scores[top]), float(bpm), float(anchors_at[top])
+
+    by_phase = phase_scores(envelope, centre_sec, best_bpm, best_anchor)
+    return WindowFit(centre_sec=centre_sec, bpm=best_bpm, anchor_sec=best_anchor, score=float(by_phase[0]),
+                     clarity=float(by_phase[0] / max(float(np.median(by_phase)), 1e-9)))
+
+
+def fit_free_window(envelope: np.ndarray, centre_sec: float, about_bpm: float) -> WindowFit:
+    """Returns the best fit of one window on its own, with any phase, near the song's tempo."""
+    bpms = np.arange(about_bpm - ANCHOR_FREE_RANGE_BPM, about_bpm + ANCHOR_FREE_RANGE_BPM + ANCHOR_FREE_STEP_BPM / 2,
+                     ANCHOR_FREE_STEP_BPM)
+    longest_period_sec = 60 / bpms[0]
+    anchors_at = centre_sec + np.arange(-longest_period_sec / 2, longest_period_sec / 2, ANCHOR_PHASE_STEP_SEC)
+    return best_window_fit(envelope, centre_sec, bpms, anchors_at)
+
+
+def fit_tied_window(envelope: np.ndarray, centre_sec: float, neighbour: WindowFit) -> WindowFit:
+    """Returns the best fit of one window that continues its neighbour's beats.
+
+    The neighbour's beats, carried on at its tempo, predict a beat near this window's centre.
+    The fit may move a little from that beat and that tempo, never by half a beat. A window
+    with no beat gives the fit nothing to hold on to, and a run of them would walk away from
+    the beat. Such a window keeps the neighbour's tempo and the predicted beat as they are.
+    """
+    period_sec = 60 / neighbour.bpm
+    predicted_sec = neighbour.anchor_sec + round((centre_sec - neighbour.anchor_sec) / period_sec) * period_sec
+    bpms = np.arange(neighbour.bpm - ANCHOR_TIED_RANGE_BPM,
+                     neighbour.bpm + ANCHOR_TIED_RANGE_BPM + ANCHOR_TIED_STEP_BPM / 2, ANCHOR_TIED_STEP_BPM)
+    anchors_at = predicted_sec + np.arange(-ANCHOR_TIED_PHASE_SEC, ANCHOR_TIED_PHASE_SEC + ANCHOR_PHASE_STEP_SEC / 2,
+                                           ANCHOR_PHASE_STEP_SEC)
+    fit = best_window_fit(envelope, centre_sec, bpms, anchors_at)
+    if fit.clarity >= BEAT_MIN_CLARITY:
+        return fit
+    return WindowFit(centre_sec=centre_sec, bpm=neighbour.bpm, anchor_sec=predicted_sec, score=fit.score,
+                     clarity=fit.clarity)
+
+
+def fit_windows(envelope: np.ndarray, duration_sec: float, about_bpm: float) -> list[WindowFit]:
+    """Returns the tempo and one beat time for each window of the song, in time order.
+
+    A window on its own can lock onto the pulses between the beats. So the window with the
+    strongest beat is fitted alone, and the fit walks outwards from it, each window tied to
+    the one before. This follows soft percussion where the beat tracker loses the beat.
+    """
+    centres = window_centres(duration_sec)
+    alone = [fit_free_window(envelope, float(centre), about_bpm) for centre in centres]
+    start = int(np.argmax([fit.score for fit in alone]))
+
+    fits = {start: alone[start]}
+    for step in (1, -1):
+        index = start + step
+        while 0 <= index < len(centres):
+            fits[index] = fit_tied_window(envelope, float(centres[index]), fits[index - step])
+            index += step
+    return [fits[index] for index in range(len(centres))]
+
+
+def holds_beat(clarity: np.ndarray) -> np.ndarray:
+    """Returns True for each window that holds a clear beat, given the clarity of every window in time order.
+
+    A window with a clarity of BEAT_MIN_CLARITY holds the beat. Where the song starts or ends
+    with no beat, the windows next to that part cover it in part: they are counted out too,
+    up to the first that is as clear as BEAT_EDGE_SHARE_OF_TYPICAL of the typical window.
+    """
+    holding = clarity >= BEAT_MIN_CLARITY
+    fully_on_beat = np.flatnonzero(holding & (clarity >= BEAT_EDGE_SHARE_OF_TYPICAL * np.median(clarity)))
+    if len(fully_on_beat) and not holding[0]:
+        holding[:fully_on_beat[0]] = False
+    if len(fully_on_beat) and not holding[-1]:
+        holding[fully_on_beat[-1] + 1:] = False
+    return holding
+
+
+def join_windows(fits: list[WindowFit], duration_sec: float) -> AnchorGrid:
+    """Returns one smooth beat sequence through the windows, from the first to the last that holds the beat.
+
+    The beats between neighbouring anchors are counted, which gives each anchor a beat index.
+    A smoothing spline of anchor time against beat index is the tempo curve. Beyond its ends
+    the beats continue at the curve's own tempo there, so the spacing has no kink.
+    """
+    clarity = np.array([fit.clarity for fit in fits])
+    holding = holds_beat(clarity)
+    if holding.sum() < MIN_HOLDING_WINDOWS:
+        raise SongError('Too little of the song has a clear beat to place the beats.')
+    first, last = np.flatnonzero(holding)[[0, -1]]
+    anchors_sec = np.array([fit.anchor_sec for fit in fits[first:last + 1]])
+    periods_sec = np.array([60 / fit.bpm for fit in fits[first:last + 1]])
+
+    beats_apart = np.diff(anchors_sec) / ((periods_sec[:-1] + periods_sec[1:]) / 2)
+    index = np.concatenate(([0], np.cumsum(np.round(beats_apart))))
+    curve = UnivariateSpline(index, anchors_sec, k=3, s=len(index) * ANCHOR_SMOOTHING_SEC ** 2)
+    residuals = anchors_sec - curve(index)
+    return AnchorGrid(
+        beats=extend_beats(curve(np.arange(index[-1] + 1)), duration_sec),
+        clarity=clarity,
+        fitted_from_sec=fits[first].centre_sec,
+        fitted_to_sec=fits[last].centre_sec,
+        worst_count_error=float(np.abs(beats_apart - np.round(beats_apart)).max()),
+        residual_rms_sec=float(np.sqrt((residuals ** 2).mean())),
+    )
+
+
+def report_anchors(report: Report, grid: AnchorGrid) -> None:
+    """Prints how well the window fits join into one beat sequence."""
+    report.line(f'Window anchors: tempo and phase fitted in {len(grid.clarity)} windows of '
+                f'{ANCHOR_WINDOW_SEC:.0f} s, each tied to its neighbour. {int(holds_beat(grid.clarity).sum())} '
+                'hold a clear beat.')
+    report.line(f'Beats between neighbouring windows: at most {grid.worst_count_error:.3f} from a whole number. '
+                f'Anchors lie {grid.residual_rms_sec * 1000:.1f} ms RMS from the smooth tempo curve.')
 
 
 # --- Kick alignment ---
@@ -996,11 +1253,11 @@ def half_rise_ms(profile: np.ndarray) -> float | None:
     return KICK_PROFILE_MS[0] + above - 1 + float(step_share)
 
 
-def measure_kick(amplitude: np.ndarray, beats: np.ndarray) -> list[KickSection]:
-    """Returns the kick alignment of each 30 s section that has beats."""
+def measure_kick(amplitude: np.ndarray, beats: np.ndarray, section_sec: float = KICK_SECTION_SEC) -> list[KickSection]:
+    """Returns the kick alignment of each section of the song that has beats."""
     profiles = []
-    for start_sec in np.arange(0, beats[-1], KICK_SECTION_SEC):
-        section_beats = beats[(beats >= start_sec) & (beats < start_sec + KICK_SECTION_SEC)]
+    for start_sec in np.arange(0, beats[-1], section_sec):
+        section_beats = beats[(beats >= start_sec) & (beats < start_sec + section_sec)]
         if len(section_beats):
             profiles.append((float(start_sec), len(section_beats), kick_profile(amplitude, section_beats)))
 
@@ -1012,7 +1269,7 @@ def measure_kick(amplitude: np.ndarray, beats: np.ndarray) -> list[KickSection]:
         rise_ms = half_rise_ms(profile)
         sections.append(KickSection(
             start_sec=start_sec,
-            end_sec=start_sec + KICK_SECTION_SEC,
+            end_sec=start_sec + section_sec,
             beats=count,
             strength=float(profile.max() / max(strongest, 1e-12)),
             contrast=float((profile[peak] - low) / max(profile[peak], 1e-12)),
@@ -1030,6 +1287,20 @@ def kick_shift_sec(sections: list[KickSection]) -> float | None:
     if not half_rises:
         return None
     return float(np.median(half_rises)) - BEAT_BEFORE_HALF_RISE_SEC
+
+
+def kick_scatter(amplitude: np.ndarray, beats: np.ndarray) -> tuple[int, float]:
+    """Returns how many short blocks have a clear kick on these beats, and how far it strays in them.
+
+    The second value is the RMS distance, in seconds, of the kick from its usual place against
+    the beat. Beats that follow the music keep the kick in one place. This is how two beat
+    grids for one song are compared.
+    """
+    half_rises = np.array([section.half_rise_sec for section in measure_kick(amplitude, beats, KICK_COMPARE_SEC)
+                           if section.clear])
+    if len(half_rises) == 0:
+        return 0, math.inf
+    return len(half_rises), float(np.sqrt(((half_rises - np.median(half_rises)) ** 2).mean()))
 
 
 def report_kick(report: Report, shift_sec: float | None, sections: list[KickSection]) -> None:
@@ -1109,6 +1380,13 @@ def beat_onset_strength(envelope: np.ndarray, beats: np.ndarray) -> np.ndarray:
     return np.array(strengths)
 
 
+def nearest_beats(beats: np.ndarray, others: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Returns, for each beat, the index of the nearest of the other beats and the time from it."""
+    after = np.clip(np.searchsorted(others, beats), 1, len(others) - 1)
+    nearest = np.where(beats - others[after - 1] < others[after] - beats, after - 1, after)
+    return nearest, beats - others[nearest]
+
+
 # --- First and last beat of the music ---
 
 
@@ -1147,45 +1425,107 @@ def find_music_span(samples: np.ndarray, grid: np.ndarray, onset_strength: np.nd
     return MusicSpan(first_sound_sec=first_sound_sec, first=first, last=last)
 
 
-def find_final_hit(onset_strength: np.ndarray) -> int | None:
-    """Returns the index of the final hit among the beats with sound, or None.
+@dataclass(frozen=True)
+class ClearBeat:
+    """Where the song holds a clear beat, and where it does not."""
 
-    Many songs end on one accented hit. It is the strongest of the last few beats, and it
-    counts only when it stands out among all beats of the song.
+    # No window before this time holds a clear beat. None when the first window does.
+    from_sec: float | None
+    # No window after this time holds a clear beat. None when the last window does.
+    to_sec: float | None
+    # Parts in between with no clear beat, as (start, end) times.
+    gaps: list[tuple[float, float]]
+
+
+def constant_grid_clarity(envelope: np.ndarray, grid: ConstantGrid, duration_sec: float) -> np.ndarray:
+    """Returns how clear the beat is in each window of a song with one constant tempo.
+
+    The best phase counts, not the grid's own: the grid follows the kick, and other
+    percussion can sit some tens of milliseconds from it.
     """
-    search_from = len(onset_strength) - FINAL_HIT_SEARCH_BEATS
-    strongest = search_from + int(np.argmax(onset_strength[search_from:]))
-    stands_out = onset_strength[strongest] >= np.percentile(onset_strength, STANDOUT_PERCENTILE)
-    return strongest if stands_out else None
+    clarity = []
+    for centre_sec in window_centres(duration_sec):
+        by_phase = phase_scores(envelope, float(centre_sec), grid.bpm, grid.phase_sec)
+        clarity.append(float(by_phase.max() / max(float(np.median(by_phase)), 1e-9)))
+    return np.array(clarity)
 
 
-def last_listed_beat(sounding: int, first_downbeat: int, final_hit: int | None) -> int:
-    """Returns the index of the last beat for the manifest, among `sounding` beats with sound.
+def find_clear_beat(clarity: np.ndarray, duration_sec: float) -> ClearBeat:
+    """Returns where the song holds a clear beat, from the clarity of each of its windows."""
+    centres = window_centres(duration_sec)
+    holding = holds_beat(clarity)
+    if not holding.any():
+        raise SongError('No part of the song has a clear beat.')
+    first, last = np.flatnonzero(holding)[[0, -1]]
+    return ClearBeat(
+        from_sec=None if first == 0 else float(centres[first]),
+        to_sec=None if last == len(centres) - 1 else float(centres[last]),
+        gaps=[(float(centres[start - 1]), float(centres[stop]))
+              for start, stop in runs_of_true(~holding) if start > first and stop <= last],
+    )
 
-    The list stops at the final hit. With no final hit it stops at the end of the last full
-    bar: the rest is a held note or a ring-out, not a place for a cue.
+
+def report_clear_beat(report: Report, clear: ClearBeat) -> None:
+    """Warns about the parts of the song with no clear beat before its end. The end is dealt with later."""
+    if clear.from_sec is not None:
+        report.warn(f'No clear beat before {clear.from_sec:.0f} s. The beats there carry on the tempo of the '
+                    'first clear part and are less certain.')
+    for start_sec, end_sec in clear.gaps:
+        report.warn(f'No clear beat from {start_sec:.0f} to {end_sec:.0f} s. The beats there carry on the tempo '
+                    'before it and are less certain.')
+
+
+def clear_beat_count(sounding: np.ndarray, clear_to_sec: float | None) -> int | None:
+    """Returns how many of the beats with sound come before the beat stops being clear.
+
+    Returns None when the beat is clear to the end of the music. A beatless stretch shorter
+    than BEATLESS_END_MIN_SEC is the song's own ending, and the ending rules deal with it.
+    A longer one has no beat to trust, so the grid does not run through it.
     """
-    if final_hit is not None:
-        return final_hit
-    full_bars = (sounding - first_downbeat) // BEATS_PER_BAR
-    return first_downbeat + full_bars * BEATS_PER_BAR - 1
+    if clear_to_sec is None or sounding[-1] - clear_to_sec < BEATLESS_END_MIN_SEC:
+        return None
+    return int(np.searchsorted(sounding, clear_to_sec, side='right'))
 
 
-def report_music(report: Report, sounding: np.ndarray, span: MusicSpan, onset_strength: np.ndarray,
-                 final_hit: int | None) -> None:
-    """Prints where the music starts and ends, and the final hit if one stands out."""
-    typical = float(np.median(onset_strength))
+def last_listed_beat(onset_strength: np.ndarray, first_downbeat: int, music_goes_on: bool) -> tuple[int, str]:
+    """Returns the index of the last beat for the manifest, and a few words on what that beat is.
+
+    `onset_strength` has one value for each beat that may be listed. The list covers the full
+    bars. A song often ends with one more hit, on the bar start after its last full bar: that
+    beat is listed too when it is hit as hard as a typical beat. A held note or a ring-out
+    there is not. When the music goes on with no clear beat, the list stops on its last bar
+    start: the game gives no cues from the last bar start on, so no clear bar is lost.
+    """
+    count = len(onset_strength)
+    if music_goes_on:
+        last_bar = (count - 1 - first_downbeat) // BEATS_PER_BAR
+        return first_downbeat + last_bar * BEATS_PER_BAR, 'the last bar start with a clear beat'
+
+    after_full_bars = (count - first_downbeat) % BEATS_PER_BAR
+    if after_full_bars == 0:
+        return count - 1, 'the end of the last full bar, where the music ends'
+    bar_start = count - after_full_bars
+    strength, typical = onset_strength[bar_start], float(np.median(onset_strength))
+    if strength >= typical:
+        return bar_start, (f'the final hit, on the bar start after the last full bar (onset strength '
+                           f'{strength:.1f}; a typical beat has {typical:.1f})')
+    return bar_start - 1, (f'the end of the last full bar. The bar start after it has no clear hit (onset '
+                           f'strength {strength:.1f}; a typical beat has {typical:.1f})')
+
+
+def report_music(report: Report, sounding: np.ndarray, span: MusicSpan, clear_beats: int | None) -> None:
+    """Prints where the music starts and ends, and where the beat stops being clear before the end.
+
+    `sounding` holds every beat with sound, also those after the clear beat.
+    """
     report.section('Music')
     report.line(f'Sound starts at {span.first_sound_sec:.2f} s. The first beat of the music is at {sounding[0]:.3f} s.')
     report.line(f'The last beat with sound is beat index {len(sounding) - 1}, at {sounding[-1]:.2f} s. '
                 'After it comes ring-out or silence.')
-    if final_hit is None:
-        tail = ', '.join(f'{strength:.1f}' for strength in onset_strength[-FINAL_HIT_SEARCH_BEATS:])
-        report.line(f'No final hit stands out: the last beats have onset strength {tail}, and a typical '
-                    f'beat has {typical:.1f}.')
-    else:
-        report.line(f'Final hit: beat index {final_hit}, at {sounding[final_hit]:.2f} s, with onset strength '
-                    f'{onset_strength[final_hit]:.1f}. A typical beat has {typical:.1f}.')
+    if clear_beats is not None:
+        report.warn(f'The beat is not clear after {sounding[clear_beats - 1]:.0f} s, and the music lasts until '
+                    f'{sounding[-1]:.0f} s. The beat list stops there, on a bar start: the game gives no cues '
+                    'in the rest of the song.')
 
 
 # --- Bars ---
@@ -1258,13 +1598,6 @@ def rises_clue(rises: list[tuple[int, float]]) -> BarClue:
     return BarClue('level rises', RISES_WEIGHT, decisive_choice(scores, RISE_DECISIVE_RATIO), detail)
 
 
-def final_hit_clue(final_hit: int | None) -> BarClue:
-    """The final hit of a song falls on a bar start."""
-    if final_hit is None:
-        return BarClue('final hit', FINAL_HIT_WEIGHT, None, 'no hit stands out at the end')
-    return BarClue('final hit', FINAL_HIT_WEIGHT, final_hit % BEATS_PER_BAR, f'on beat index {final_hit}')
-
-
 def chroma_change_by_beat(chroma: np.ndarray, beats: np.ndarray) -> np.ndarray:
     """Returns how much the notes change from the beat before, for each beat, from 0 to 1."""
     frame_times = np.arange(chroma.shape[1]) * CHROMA_HOP / ANALYSIS_RATE
@@ -1277,18 +1610,28 @@ def chroma_change_by_beat(chroma: np.ndarray, beats: np.ndarray) -> np.ndarray:
     return np.concatenate(([0.0], 1 - (per_beat[1:] * per_beat[:-1]).sum(axis=1)))
 
 
-def chords_clue(samples: np.ndarray, harmonic: np.ndarray, beats: np.ndarray) -> BarClue:
-    """Chords and bass notes change on bar starts. This was clear on one song and not on another,
-    so the clue is weak."""
+def harmony_chroma(samples: np.ndarray, harmonic: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Returns the chroma of the chords and of the bass: which notes sound, frame by frame."""
     chords = librosa.feature.chroma_cqt(y=harmonic, sr=ANALYSIS_RATE, hop_length=CHROMA_HOP)
     bass = librosa.feature.chroma_cqt(y=samples, sr=ANALYSIS_RATE, hop_length=CHROMA_HOP,
                                       fmin=librosa.note_to_hz('C1'), n_octaves=3)
+    return chords, bass
+
+
+def harmony_change(harmony: tuple[np.ndarray, np.ndarray], beats: np.ndarray) -> np.ndarray:
+    """Returns how much chords and bass change at each beat. 1 is the mean over all beats."""
+    change = np.zeros(len(beats))
+    for chroma in harmony:
+        by_beat = chroma_change_by_beat(chroma, beats)
+        change += by_beat / max(float(by_beat.mean()), 1e-9) / len(harmony)
+    return change
+
+
+def chords_clue(harmony: tuple[np.ndarray, np.ndarray], beats: np.ndarray) -> BarClue:
+    """Chords and bass notes change on bar starts."""
+    change = harmony_change(harmony, beats)
     position = np.arange(len(beats)) % BEATS_PER_BAR
-    scores = np.zeros(BEATS_PER_BAR)
-    for chroma in (chords, bass):
-        change = chroma_change_by_beat(chroma, beats)
-        by_position = np.array([change[position == beat].mean() for beat in range(BEATS_PER_BAR)])
-        scores += by_position / max(float(by_position.mean()), 1e-9) / 2
+    scores = np.array([change[position == beat].mean() for beat in range(BEATS_PER_BAR)])
     detail = 'chord and bass change, on   ' + '   '.join(
         f'beat {beat}: {score:.2f}' for beat, score in enumerate(scores))
     return BarClue('chord changes', CHORDS_WEIGHT, decisive_choice(scores, CHORD_DECISIVE_RATIO), detail)
@@ -1398,6 +1741,25 @@ def bar_intensity(level_db: np.ndarray, density: np.ndarray, first_downbeat: int
     return median_filter(per_bar, size=INTENSITY_MEDIAN_BARS, mode='nearest')
 
 
+def pace_by_rank(per_bar: np.ndarray) -> np.ndarray:
+    """Returns the bar intensities mapped by rank, so every song has the same pace mix.
+
+    A song with a wide dynamic range would otherwise play slow for much of its length. The
+    quietest bars land below the first intensity step, the next between the steps, the rest
+    above. A median over neighbours follows, as for the levels.
+    """
+    rank = np.argsort(np.argsort(per_bar, kind='stable'), kind='stable') / max(1, len(per_bar) - 1)
+    paced = np.interp(rank, [0, *RANK_PACING_SHARES, 1], [0, *INTENSITY_STEPS, 1])
+    return median_filter(paced, size=INTENSITY_MEDIAN_BARS, mode='nearest')
+
+
+def pace_shares(per_bar: np.ndarray) -> tuple[float, float, float]:
+    """Returns the share of bars the game plays slow, medium and full."""
+    low, high = INTENSITY_STEPS
+    return (float((per_bar < low).mean()), float(((per_bar >= low) & (per_bar < high)).mean()),
+            float((per_bar >= high).mean()))
+
+
 def beat_intensity(per_bar: np.ndarray, beats: int, first_downbeat: int) -> np.ndarray:
     """Returns one intensity per beat: its bar's value. Beats outside a full bar take the nearest bar's."""
     bar_of_beat = (np.arange(beats) - first_downbeat) // BEATS_PER_BAR
@@ -1414,16 +1776,110 @@ def percussive_density(percussive: np.ndarray, beats: np.ndarray) -> np.ndarray:
     return np.array(density)
 
 
-def report_intensity(report: Report, per_bar: np.ndarray) -> None:
-    """Prints the intensity of each bar, and how many bars fall in each range the game uses."""
+def report_intensity(report: Report, per_bar: np.ndarray, pacing: str) -> None:
+    """Prints the intensity of each bar, and the share of bars at each pace of the game."""
+    slow, medium, full = pace_shares(per_bar)
     low, high = INTENSITY_STEPS
-    report.section('Intensity per bar')
+    report.section(f'Intensity per bar (pacing: {pacing})')
     for row_start in range(0, len(per_bar), 16):
         row = ' '.join(f'{value:.2f}' for value in per_bar[row_start:row_start + 16])
         report.line(f'bar {row_start:3d}   {row}')
-    report.line(f'Bars below {low}: {int((per_bar < low).sum())}.   {low} to {high}: '
-                f'{int(((per_bar >= low) & (per_bar < high)).sum())}.   {high} and above: '
-                f'{int((per_bar >= high).sum())}.')
+    report.line(f'Slow bars (below {low}): {slow:.0%}.   Medium ({low} to {high}): {medium:.0%}.   '
+                f'Full ({high} and above): {full:.0%}.')
+
+
+# --- Short round ---
+
+
+@dataclass(frozen=True)
+class ShortStart:
+    """The best place to start the Short round, and the numbers behind the choice."""
+
+    # Bar where the round starts, counted from the first downbeat. None is the start of the song.
+    bar: int | None
+    # Mean intensity of the 90 s from the start of the song, and of the best 90 s.
+    first_mean: float
+    best_mean: float
+    best_bar: int
+    # True when the best 90 s are the last, and the start is moved so the round ends with the song.
+    runs_to_end: bool
+
+
+def manifest_bars(manifest: dict) -> tuple[np.ndarray, np.ndarray]:
+    """Returns the start time and the intensity of each full bar of a manifest."""
+    per_bar = manifest['beatsPerBar']
+    beats = np.array(manifest['beats'], dtype=float)
+    starts = np.arange(manifest['firstDownbeat'], len(beats) - per_bar + 1, per_bar)
+    return beats[starts], np.array(manifest['intensity'], dtype=float)[starts]
+
+
+def short_round_sec(manifest: dict) -> float:
+    """Returns how long the Short round lasts, as `playStartSec` and `playEndSec` in manifest.ts give it."""
+    start_sec = manifest.get('shortStartSec', 0.0)
+    bar_starts = manifest['beats'][manifest['firstDownbeat']::manifest['beatsPerBar']]
+    ends = [time for time in bar_starts if time >= start_sec + SHORT_ROUND_SEC]
+    return (ends[0] if ends else manifest['durationSec']) - start_sec
+
+
+def choose_short_start(manifest: dict) -> ShortStart:
+    """Returns where the Short round has the most to play.
+
+    Each candidate is a bar start a multiple of 4 bars from the first downbeat, with 90 s of
+    beats after it. Its value is the mean intensity of the bars in those 90 s. A later start
+    must beat the first 90 s by SHORT_START_MIN_GAIN. When the best 90 s are the last, the
+    round starts a little later, so that it ends with the song and not a few bars before.
+    """
+    bar_times, per_bar = manifest_bars(manifest)
+    last_beat_sec = manifest['beats'][-1]
+
+    def mean_from(bar: int) -> float:
+        """Returns the mean intensity of the bars in the 90 s from the start of this bar."""
+        in_round = (bar_times >= bar_times[bar]) & (bar_times < bar_times[bar] + SHORT_ROUND_SEC)
+        return float(per_bar[in_round].mean())
+
+    candidates = range(0, len(bar_times), SHORT_START_EVERY_BARS)
+    full_rounds = [bar for bar in candidates if bar_times[bar] + SHORT_ROUND_SEC <= last_beat_sec]
+    first_mean = mean_from(0)
+    if not full_rounds:
+        return ShortStart(bar=None, first_mean=first_mean, best_mean=first_mean, best_bar=0, runs_to_end=False)
+    best = max(full_rounds, key=mean_from)
+    if mean_from(best) - first_mean < SHORT_START_MIN_GAIN:
+        return ShortStart(bar=None, first_mean=first_mean, best_mean=mean_from(best), best_bar=best,
+                          runs_to_end=False)
+
+    to_end = next(bar for bar in candidates if bar_times[bar] >= last_beat_sec - SHORT_ROUND_SEC)
+    runs_to_end = (best == full_rounds[-1]
+                   and manifest['durationSec'] - bar_times[to_end] < SHORT_ROUND_LIMITS_SEC[1])
+    return ShortStart(bar=to_end if runs_to_end else best, first_mean=first_mean, best_mean=mean_from(best),
+                      best_bar=best, runs_to_end=runs_to_end)
+
+
+def short_start_sec(report: Report, job: Job, manifest: dict) -> float | None:
+    """Returns the time for `shortStartSec`, or None to leave it out. Prints how it was chosen."""
+    bar_times, _ = manifest_bars(manifest)
+    choice = choose_short_start(manifest)
+    report.section('Short round')
+    report.line(f'Mean intensity of the bars in {SHORT_ROUND_SEC:.0f} s: {choice.first_mean:.2f} from the start of '
+                f'the song, {choice.best_mean:.2f} from bar {choice.best_bar} ({bar_times[choice.best_bar]:.2f} s), '
+                'the best start.')
+
+    if job.short_start == 'none':
+        report.line('--short-start none: no shortStartSec. The Short round starts with the song.')
+        return None
+    if job.short_start != 'auto':
+        nearest = int(np.argmin(np.abs(bar_times - job.short_start)))
+        report.line(f'--short-start {job.short_start:g}: shortStartSec {bar_times[nearest]}, the nearest bar '
+                    f'start (bar {nearest}).')
+        return float(bar_times[nearest])
+    if choice.bar is None:
+        report.line(f'The best start is less than {SHORT_START_MIN_GAIN} better than the start of the song: '
+                    'no shortStartSec.')
+        return None
+    if choice.runs_to_end:
+        report.line(f'The best {SHORT_ROUND_SEC:.0f} s are the last. The round starts at bar {choice.bar}, '
+                    'so that it ends with the song.')
+    report.line(f'shortStartSec {bar_times[choice.bar]} (bar {choice.bar}).')
+    return float(bar_times[choice.bar])
 
 
 # --- Manifest ---
@@ -1456,11 +1912,27 @@ def build_manifest(job: Job, beats: np.ndarray, intensity: np.ndarray, first_dow
     }
 
 
+def with_short_start(manifest: dict, start_sec: float | None) -> dict:
+    """Returns the manifest with `shortStartSec` after `durationSec`, where the `Manifest` type has it.
+
+    None leaves the field out: the Short round then starts with the song.
+    """
+    if start_sec is None:
+        return manifest
+    placed = {}
+    for key, value in manifest.items():
+        placed[key] = value
+        if key == 'durationSec':
+            placed['shortStartSec'] = start_sec
+    return placed
+
+
 def check_manifest(manifest: dict) -> None:
     """Raises SongError when the manifest breaks a rule of the game.
 
-    The first rules repeat `validateManifest` in src/game/manifest.ts. The last repeats the
-    song test in src/game/songs.test.ts: every beat interval within 5% of the median.
+    The first rules repeat `validateManifest` in src/game/manifest.ts. The last two repeat the
+    song test in src/game/songs.test.ts: every beat interval within 5% of the median, and a
+    Short round of 60 to 95 s.
     """
     def is_number(value: object) -> bool:
         """Returns True for a finite number, as `Number.isFinite` does in the game."""
@@ -1477,6 +1949,9 @@ def check_manifest(manifest: dict) -> None:
     if not (is_number(manifest['durationSec']) and manifest['durationSec'] > 0
             and is_number(manifest['bpm']) and manifest['bpm'] > 0):
         fail('durationSec and bpm must be positive.')
+    short_start = manifest.get('shortStartSec', 0.0)
+    if not (is_number(short_start) and 0 <= short_start < manifest['durationSec']):
+        fail('shortStartSec must be a time inside the song.')
     if not isinstance(manifest['beatsPerBar'], int) or manifest['beatsPerBar'] < 1:
         fail('beatsPerBar must be a positive integer.')
 
@@ -1498,16 +1973,18 @@ def check_manifest(manifest: dict) -> None:
         worst = int(np.argmax(deviation))
         fail(f'the beat interval at {beats[worst]:.1f} s is {deviation.max() * 100:.0f}% off the median. '
              f'The song test allows less than {MAX_INTERVAL_DEVIATION * 100:.0f}%.')
+    shortest, longest = SHORT_ROUND_LIMITS_SEC
+    if not shortest < short_round_sec(manifest) < longest:
+        fail(f'the Short round would last {short_round_sec(manifest):.0f} s. The song test allows '
+             f'{shortest:.0f} to {longest:.0f} s.')
 
 
-def report_beats(report: Report, manifest: dict, method: str, sounding: int, final_hit: int | None) -> None:
+def report_beats(report: Report, manifest: dict, method: str, stops_at: str) -> None:
     """Prints where the beat list stops and why, the beat count and the tempo over the song."""
     beats = np.array(manifest['beats'])
     middle = len(beats) // 2 - TEMPO_SPAN_BEATS // 2
-    stop = 'the final hit' if final_hit is not None else 'the end of the last full bar'
     report.section('Beats')
-    report.line(f'The list stops at {stop}: beat index {len(beats) - 1}. '
-                f'Beats with sound left out after it: {sounding - len(beats)}.')
+    report.line(f'The list stops at beat index {len(beats) - 1}: {stops_at}.')
     report.line(f'{len(beats)} beats, {method}, from {beats[0]:.3f} s to {beats[-1]:.3f} s in the game\'s time. '
                 f'durationSec {manifest["durationSec"]}.')
     report.line(f'Tempo: {tempo_bpm(beats, 0):.2f} BPM at the start, {tempo_bpm(beats, middle):.2f} in the '
@@ -1590,20 +2067,28 @@ def write_clips(job: Job, work_dir: Path, samples: np.ndarray, beats: np.ndarray
 
 
 def report_comparison(report: Report, manifest: dict, reference: dict, reference_path: Path) -> None:
-    """Prints how the new beat times differ from the reference manifest, beat index by beat index."""
+    """Prints how the new manifest differs from the reference: beats, bar starts, Short round, pacing.
+
+    Each of our beats is compared with the nearest of theirs, so the comparison also works when
+    one manifest has half the tempo of the other or one more beat at the start.
+    """
     ours = np.array(manifest['beats'])
-    theirs = np.array(reference['beats'], dtype=float)
-    shared = min(len(ours), len(theirs))
-    difference_ms = (ours[:shared] - theirs[:shared]) * 1000
+    nearest, difference_sec = nearest_beats(ours, np.array(reference['beats'], dtype=float))
+    difference_ms = difference_sec * 1000
 
     report.section(f'Compared with {reference_path}')
-    report.line(f'beats: {len(ours)} (theirs {len(theirs)})   firstDownbeat: {manifest["firstDownbeat"]} '
-                f'(theirs {reference.get("firstDownbeat")})   durationSec: {manifest["durationSec"]} '
-                f'(theirs {reference.get("durationSec")})')
-    if len(ours) != len(theirs):
-        report.line(f'The beat counts differ. The table compares the first {shared} beats of each.')
-    report.line('Our beat time minus theirs, for beats with the same index:')
-    report.line('  section          beats    mean ms     RMS ms   largest ms')
+    for key in ('firstDownbeat', 'beatsPerBar', 'durationSec', 'shortStartSec'):
+        report.line(f'{key}: {manifest.get(key, "none")} (theirs {reference.get(key, "none")})')
+    report.line(f'beats: {len(ours)} (theirs {len(reference["beats"])}). Our first beat is their beat index '
+                f'{nearest[0]}, our last is their {nearest[-1]}.')
+    if round(float(np.median(np.diff(nearest)))) == 2:
+        even = int((nearest % 2 == 0).sum())
+        report.line(f'We write half their tempo: {even} of our {len(ours)} beats are their beats of even index, '
+                    f'{len(ours) - even} of odd index.')
+
+    our_bar_starts = nearest[manifest['firstDownbeat']::manifest['beatsPerBar']]
+    on_theirs = (our_bar_starts - reference['firstDownbeat']) % reference['beatsPerBar'] == 0
+    report.line(f'Bar starts: {int(on_theirs.sum())} of our {len(our_bar_starts)} fall on bar starts of theirs.')
 
     def row(label: str, values: np.ndarray) -> None:
         """Prints the count, mean, RMS and largest difference of one group of beats."""
@@ -1611,43 +2096,159 @@ def report_comparison(report: Report, manifest: dict, reference: dict, reference
         report.line(f'  {label}   {len(values):5d}   {values.mean():+8.1f}   {np.sqrt((values ** 2).mean()):8.1f}'
                     f'   {largest:+10.1f}')
 
-    for start_sec in np.arange(0, theirs[shared - 1] + 1e-9, REPORT_SECTION_SEC):
-        in_section = (theirs[:shared] >= start_sec) & (theirs[:shared] < start_sec + REPORT_SECTION_SEC)
+    report.line('Our beat time minus the nearest of theirs:')
+    report.line('  section          beats    mean ms     RMS ms   largest ms')
+    for start_sec in np.arange(0, ours[-1], REPORT_SECTION_SEC):
+        in_section = (ours >= start_sec) & (ours < start_sec + REPORT_SECTION_SEC)
         if in_section.any():
             row(f'{start_sec:4.0f} to {start_sec + REPORT_SECTION_SEC:4.0f} s', difference_ms[in_section])
     row('whole song    ', difference_ms)
 
-    their_intensity = reference.get('intensity')
-    if isinstance(their_intensity, list) and len(their_intensity) >= shared:
-        gap = np.abs(np.array(manifest['intensity'][:shared]) - np.array(their_intensity[:shared], dtype=float))
-        report.line(f'Intensity: largest difference {gap.max():.3f}, mean {gap.mean():.3f}.')
+    shares, their_shares = pace_shares(manifest_bars(manifest)[1]), pace_shares(manifest_bars(reference)[1])
+    report.line('Bars that play slow, medium and full: '
+                + ', '.join(f'{share:.0%}' for share in shares)
+                + ' (theirs ' + ', '.join(f'{share:.0%}' for share in their_shares) + ').')
 
 
-# --- The whole pipeline ---
+# --- The beat grid: the method that suits the song ---
 
 
-def find_beat_grid(report: Report, envelopes: Envelopes, tempo: TempoEstimate,
-                   duration_sec: float) -> tuple[np.ndarray, str]:
-    """Returns beat times that cover the whole file, and the name of the method that made them.
+@dataclass(frozen=True)
+class BeatGrid:
+    """Beat times that cover the whole file, and how they were made."""
 
-    A constant grid is more exact than tracking, so it is used whenever the tempo is constant.
+    beats: np.ndarray
+    method: str
+    # Where the beat stops being clear before the end of the file, or None when it does not.
+    clear_to_sec: float | None
+
+
+def tracker_beats(report: Report, envelopes: Envelopes, blocks: list[BlockPhase], about_bpm: float,
+                  duration_sec: float) -> np.ndarray | None:
+    """Returns the beat tracker's beats over the whole file, or None when the tracker cannot be used.
+
+    The tracker reads the kick, so it needs a clear kick in most of the song, and it must keep
+    most of its beats on one smooth tempo curve.
+    """
+    clear_blocks = sum(block.clear for block in blocks)
+    if clear_blocks < TRACKER_MIN_KICK_SHARE * len(blocks):
+        report.line(f'Beat tracker: not tried. The kick is clear in {clear_blocks} of {len(blocks)} blocks only.')
+        return None
+    tracked = track_beats(envelopes, about_bpm)
+    smoothed = smooth_beats(tracked)
+    report_tracking(report, tracked, smoothed)
+    if smoothed.kept.mean() < TRACKER_MIN_KEPT_SHARE:
+        report.line('The tracker misplaced too many beats to be used.')
+        return None
+    return extend_beats(smoothed.times, duration_sec)
+
+
+def tracker_follows_anchors(report: Report, tracked: np.ndarray, anchors: AnchorGrid) -> bool:
+    """Returns True when every tracked beat lies near a beat of the window anchors.
+
+    The two methods read different envelopes, so one fixed offset between them is normal and
+    is taken out first. A tracker that slips to the pulses between the beats, as it does on a
+    song with a pulse at twice the tempo, strays by half a beat and fails this test.
+    Only the part of the song that the anchors' curve was fitted to is compared.
+    """
+    fitted = (tracked >= anchors.fitted_from_sec) & (tracked <= anchors.fitted_to_sec)
+    _, distance = nearest_beats(tracked[fitted], anchors.beats)
+    stray_sec = float(np.abs(distance - np.median(distance)).max())
+
+    limit_ms = TRACKER_MAX_FROM_ANCHORS_SEC * 1000
+    if stray_sec <= TRACKER_MAX_FROM_ANCHORS_SEC:
+        report.line(f'The tracked beats stay within {stray_sec * 1000:.0f} ms of the window anchors\' beats '
+                    f'(limit {limit_ms:.0f} ms).')
+        return True
+    report.line(f'The tracked beats stray up to {stray_sec * 1000:.0f} ms from the window anchors\' beats '
+                f'(limit {limit_ms:.0f} ms): the tracker slipped to other pulses. Its beats are not used.')
+    return False
+
+
+def tracker_is_closer(report: Report, amplitude: np.ndarray, tracked: np.ndarray, anchored: np.ndarray) -> bool:
+    """Returns True when the tracked beats follow the kick better than the window anchors do.
+
+    On Todo Bueno the kick strays 6 ms RMS from the tracked beats and 8 ms from the anchors.
+    """
+    tracked_blocks, tracked_sec = kick_scatter(amplitude, tracked)
+    anchored_blocks, anchored_sec = kick_scatter(amplitude, anchored)
+    report.line(f'Kick against the beats, per {KICK_COMPARE_SEC:.0f} s. Tracked beats: {tracked_sec * 1000:.1f} ms RMS '
+                f'from its usual place, in {tracked_blocks} blocks with a clear kick. Window anchors: '
+                f'{anchored_sec * 1000:.1f} ms, in {anchored_blocks} blocks.')
+    return tracked_blocks >= anchored_blocks and tracked_sec < anchored_sec
+
+
+def find_beat_grid(report: Report, envelopes: Envelopes, amplitude: np.ndarray, tempo: TempoEstimate,
+                   duration_sec: float) -> BeatGrid:
+    """Returns beat times that cover the whole file, made by the most exact method the song allows.
+
+    One constant grid is the most exact, so it is used whenever the tempo is constant. For a
+    tempo that drifts, window anchors follow any percussion, also soft, and the beat tracker
+    follows a clear kick more closely. The tracker's beats are used only when they stay near
+    the anchors' beats and keep the kick in place better. `amplitude` is the kick band's amplitude.
+    Whatever the method, the windows of the song then tell where it holds a clear beat.
     """
     grid = fit_constant_grid(envelopes, duration_sec, tempo.bpm)
     blocks = kick_phase_by_block(envelopes.kick, grid, duration_sec)
     drift_sec = kick_drift_sec(blocks)
     report_grid_test(report, grid, blocks, drift_sec)
+    # Soft percussion shows in these two envelopes, with or without a kick.
+    percussion = envelopes.percussive + envelopes.full
+
     if drift_sec is not None and drift_sec <= MAX_KICK_DRIFT_SEC:
-        return grid_beats(grid, duration_sec), 'constant grid'
+        beats, method = grid_beats(grid, duration_sec), 'constant grid'
+        clarity = constant_grid_clarity(percussion, grid, duration_sec)
+        report.line(f'Method: one constant grid, {grid.bpm:.3f} BPM.')
+    else:
+        anchors = join_windows(fit_windows(percussion, duration_sec, grid.bpm), duration_sec)
+        report_anchors(report, anchors)
+        beats, method, clarity = anchors.beats, 'window anchors', anchors.clarity
+        tracked = tracker_beats(report, envelopes, blocks, grid.bpm, duration_sec)
+        if (tracked is not None and tracker_follows_anchors(report, tracked, anchors)
+                and tracker_is_closer(report, amplitude, tracked, anchors.beats)):
+            beats, method = tracked, 'tracked beats'
+        report.line(f'Method: {method}.')
 
-    tracked = track_beats(envelopes, grid.bpm)
-    smoothed = smooth_beats(tracked)
-    report_tracking(report, tracked, smoothed)
-    return extend_beats(smoothed.times, duration_sec), 'tracked beats'
+    clear = find_clear_beat(clarity, duration_sec)
+    report_clear_beat(report, clear)
+    return BeatGrid(beats=beats, method=method, clear_to_sec=clear.to_sec)
 
 
-def align_to_kick(report: Report, samples: np.ndarray, beats: np.ndarray) -> tuple[np.ndarray, list[KickSection]]:
+# --- The whole pipeline ---
+
+
+def settle_half_beat(report: Report, envelopes: Envelopes, harmony: tuple[np.ndarray, np.ndarray],
+                     beats: np.ndarray, duration_sec: float) -> np.ndarray:
+    """Returns the beats, or the pulses halfway between them when those carry the bars.
+
+    A fast song with a half-time feel has a pulse at twice the tempo the tool writes. The comb
+    can then sit on either half of the pulses. The beats belong where the kick hits and the
+    chords change: beats 1 and 3 of the fast bars, not 2 and 4.
+    """
+    pulses = np.sort(np.concatenate((beats, (beats[:-1] + beats[1:]) / 2)))
+    kick = beat_onset_strength(envelopes.kick, pulses)
+    change = harmony_change(harmony, pulses)
+    kick_on, kick_between = float(kick[0::2].mean()), float(kick[1::2].mean())
+    change_on, change_between = float(change[0::2].mean()), float(change[1::2].mean())
+
+    on_share = (kick_on / (kick_on + kick_between) + change_on / (change_on + change_between)) / 2
+
+    report.section('Beats, or the pulses between them')
+    report.line(f'Kick hits: {kick_on:.2f} on the beats, {kick_between:.2f} between them. '
+                f'Chord and bass changes: {change_on:.2f} on the beats, {change_between:.2f} between them.')
+    if kick_between > kick_on and change_between > change_on:
+        report.line('Both are stronger between the beats: the beats move by half a beat, onto those pulses.')
+        return extend_beats(pulses[1::2], duration_sec)
+    if on_share < 0.5:
+        report.warn('The kick hits and the chord changes do not agree on which pulses are the beats. '
+                    'The beats stay. Check the click clips.')
+    else:
+        report.line(f'The beats stay: they carry {on_share:.0%} of the two together.')
+    return beats
+
+
+def align_to_kick(report: Report, amplitude: np.ndarray, beats: np.ndarray) -> tuple[np.ndarray, list[KickSection]]:
     """Returns the beats moved onto the kick's onset, and the alignment per section after the move."""
-    amplitude = kick_amplitude(samples)
     shift_sec = kick_shift_sec(measure_kick(amplitude, beats))
     aligned = beats + (shift_sec or 0.0)
     sections = measure_kick(amplitude, aligned)
@@ -1655,16 +2256,11 @@ def align_to_kick(report: Report, samples: np.ndarray, beats: np.ndarray) -> tup
     return aligned, sections
 
 
-def choose_bars(report: Report, job: Job, samples: np.ndarray, harmonic: np.ndarray, envelopes: Envelopes,
-                sounding: np.ndarray, final_hit: int | None) -> int:
+def choose_bars(report: Report, job: Job, samples: np.ndarray, harmony: tuple[np.ndarray, np.ndarray],
+                envelopes: Envelopes, sounding: np.ndarray) -> int:
     """Returns firstDownbeat for the beats with sound: the tool's choice, or the user's."""
     rises = level_rises(beat_level_db(samples, sounding))
-    clues = [
-        start_clue(),
-        rises_clue(rises),
-        final_hit_clue(final_hit),
-        chords_clue(samples, harmonic, sounding),
-    ]
+    clues = [start_clue(), rises_clue(rises), chords_clue(harmony, sounding)]
     choice = choose_bar_start(clues)
     report_bars(report, rises, clues, choice, job.first_downbeat, meter_repeat_scores(envelopes, sounding))
     return choice.first_downbeat if job.first_downbeat is None else job.first_downbeat
@@ -1703,28 +2299,36 @@ def add_song(job: Job, work_dir: Path, report: Report) -> None:
     tempo = estimate_tempo(envelopes, audio.duration_sec)
     report_tempo(report, tempo)
 
-    file_beats, method = find_beat_grid(report, envelopes, tempo, audio.duration_sec)
-    file_beats, kick_sections = align_to_kick(report, audio.samples, file_beats)
+    amplitude = kick_amplitude(audio.samples)
+    grid = find_beat_grid(report, envelopes, amplitude, tempo, audio.duration_sec)
+    harmony = harmony_chroma(audio.samples, harmonic)
+    file_beats = settle_half_beat(report, envelopes, harmony, grid.beats, audio.duration_sec)
+    file_beats, kick_sections = align_to_kick(report, amplitude, file_beats)
 
     file_onsets = beat_onset_strength(envelopes.full, file_beats)
     span = find_music_span(audio.samples, file_beats, file_onsets, earliest_sec=max(0.0, -chrome.offset_sec))
     sounding = file_beats[span.first:span.last + 1]
     onset_strength = file_onsets[span.first:span.last + 1]
-    final_hit = find_final_hit(onset_strength)
-    report_music(report, sounding, span, onset_strength, final_hit)
+    clear_beats = clear_beat_count(sounding, grid.clear_to_sec)
+    report_music(report, sounding, span, clear_beats)
+    if clear_beats is not None:
+        sounding, onset_strength = sounding[:clear_beats], onset_strength[:clear_beats]
 
-    first_downbeat = choose_bars(report, job, audio.samples, harmonic, envelopes, sounding, final_hit)
-    last = last_listed_beat(len(sounding), first_downbeat, final_hit)
+    first_downbeat = choose_bars(report, job, audio.samples, harmony, envelopes, sounding)
+    last, stops_at = last_listed_beat(onset_strength, first_downbeat, music_goes_on=clear_beats is not None)
     if last + 1 - first_downbeat < BEATS_PER_BAR or last + 1 < MIN_BEATS:
         raise SongError(f'firstDownbeat {first_downbeat} leaves too few beats: the list would have {last + 1}.')
     beats = sounding[:last + 1]
 
     per_bar = bar_intensity(beat_level_db(audio.samples, beats),
                             percussive_density(envelopes.percussive, beats), first_downbeat)
+    if job.pacing == 'rank':
+        per_bar = pace_by_rank(per_bar)
     manifest = build_manifest(job, beats, beat_intensity(per_bar, len(beats), first_downbeat),
                               first_downbeat, chrome)
-    report_beats(report, manifest, method, len(sounding), final_hit)
-    report_intensity(report, per_bar)
+    report_beats(report, manifest, grid.method, stops_at)
+    report_intensity(report, per_bar, job.pacing)
+    manifest = with_short_start(manifest, short_start_sec(report, job, manifest))
     check_manifest(manifest)
 
     # For --keep-work: the envelopes and beat times, in ffmpeg's decode, to look at by hand.

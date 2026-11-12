@@ -30,8 +30,13 @@ npm run add-song -- "/path/to/Song Name.mp3"
 | `--title "Song Name"` | The title. The default is the file name without its extension. |
 | `--id song-name` | The id and file name. The default is the title in lower case with hyphens. |
 | `--first-downbeat N` | The index of the first bar start. Overrules the tool. |
+| `--pacing rank` | The default. The quietest 12% of the bars play slow, the next 18% medium, the rest full. |
+| `--pacing level` | The pace follows the level of each bar alone. A song with a wide dynamic range then plays slow for long. |
+| `--short-start auto` | The default. The Short round starts at the best 90 s, if they beat the first 90 s by 0.1. |
+| `--short-start none` | The Short round starts with the song. Use it when the build-up is worth playing. |
+| `--short-start 60` | The Short round starts at the bar start nearest to 60 s. |
 | `--out-dir DIR` | Write the manifest and the audio copy to `DIR`, for a trial run. |
-| `--compare MANIFEST.json` | Print how the new beat times differ from an existing manifest. |
+| `--compare MANIFEST.json` | Print how the new manifest differs from an existing one: beats, bar starts, Short round and pace. |
 | `--keep-work` | Keep the intermediate files. The tool prints where they are. |
 
 ### What it writes
@@ -57,13 +62,32 @@ Then run `npm test`. It checks every song in `SONGS`.
 | --- | --- |
 | Decode | The Chrome decode offset. The first two songs give 0 ms (MP3) and -6.5 ms (Opus in M4A). |
 | Tempo | One peak that is clearly higher than the rest. |
-| Beat grid | The method: one constant grid, or tracked beats when the tempo drifts. |
+| Beat grid | The method, and why. See the table below. |
+| Beats, or the pulses between them | Kick hits and chord changes must be stronger on the beats. If not, the tool moves the beats by half a beat. |
 | Kick alignment | Each 30 s section reads about +5 ms. A section with no clear kick is less certain. |
-| Music | Where the sound starts and ends, and the final hit. |
+| Music | Where the sound starts and ends, and where the beat stops being clear. |
 | Bars | `firstDownbeat`, the clues for it, and the confidence. |
-| Beats | The beat count, where the list stops, and the tempo at the start, middle and end. |
-| Intensity per bar | Quiet parts are low and loud parts are high. The game sets its pace from this. |
+| Beats | The beat count, where the list stops and why, and the tempo at the start, middle and end. |
+| Intensity per bar | The pace of each bar, and the share of slow, medium and full bars. |
+| Short round | The mean intensity of the first 90 s and of the best 90 s, and `shortStartSec`. |
 | Warnings | Every warning again, in one place. |
+
+The tool picks one of three methods for the beat grid:
+
+| Method | When |
+| --- | --- |
+| Constant grid | The kick stays within 15 ms of one grid for the whole song. |
+| Window anchors | The tempo drifts. Tempo and phase are fitted in 12 s windows and joined. This follows soft percussion. |
+| Tracked beats | The tempo drifts and the kick is clear in most of the song. Used only when the tracked beats stay near the anchors and follow the kick more closely. |
+
+Three cases to know:
+
+- A fast song with a half-time feel is written at half its tempo, for example 90 BPM for 180.
+  The game puts a cue on every second beat of a fast song anyway.
+- When the song ends with a long part that has no clear beat, the beat list stops on the last
+  bar start before it. The report warns. `durationSec` stays the full length, so the round
+  ends with music and no cues.
+- A beat before the start of the audio is dropped. `firstDownbeat` counts from the beats that remain.
 
 The tool exits with code 1 and one error line when it cannot make a manifest it trusts.
 It then writes no manifest.
