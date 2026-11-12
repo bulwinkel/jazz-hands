@@ -54,6 +54,11 @@ describe('URL parameters', () => {
     });
   });
 
+  it('accept every level from 1 to 4', () => {
+    expect(parseSettings(null, '?p0=4&p1=1').settings.levels).toEqual([4, 1]);
+    expect(parseSettings(null, '?p0=5').settings.levels).toEqual(defaultSettings().levels);
+  });
+
   it('set the one-off options', () => {
     const options = parseSettings(null, '?tracker=pose&input=bot&start=185&seed=42&botAccuracy=0.5&autostart=1');
     expect(options).toMatchObject({

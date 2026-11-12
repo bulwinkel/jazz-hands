@@ -1,5 +1,5 @@
 import type { GestureName, TrackerMode } from '../tracking/types';
-import type { Level, PlayerCount } from './types';
+import type { Level, PlayerCount, SlideSpeed } from './types';
 
 /**
  * Two players each own half the frame, and split tracking gives each half twice the resolution.
@@ -34,6 +34,10 @@ export interface LevelRules {
   doublesOnBarStartsOnly: boolean;
   /** Share of busy cue beats that start a slide. */
   slideChance: number;
+  /** How the slides split by speed. The three shares add up to 1. */
+  slideSpeeds: Record<SlideSpeed, number>;
+  /** Share of busy taps that are followed by an extra tap halfway to the next cue beat. */
+  offbeatChance: number;
   /** How long a cue is on screen before it is due. */
   approachSec: number;
   perfectMs: WindowMs;
@@ -48,6 +52,8 @@ export const LEVELS: Record<Level, LevelRules> = {
     doubleChance: 0,
     doublesOnBarStartsOnly: false,
     slideChance: 0,
+    slideSpeeds: { fast: 0, normal: 1, slow: 0 },
+    offbeatChance: 0,
     approachSec: 1.4,
     perfectMs: [-150, 200],
     goodMs: [-350, 450],
@@ -59,6 +65,8 @@ export const LEVELS: Record<Level, LevelRules> = {
     doubleChance: 0.3,
     doublesOnBarStartsOnly: true,
     slideChance: 0,
+    slideSpeeds: { fast: 0, normal: 1, slow: 0 },
+    offbeatChance: 0,
     approachSec: 1,
     perfectMs: [-120, 160],
     goodMs: [-280, 350],
@@ -70,6 +78,21 @@ export const LEVELS: Record<Level, LevelRules> = {
     doubleChance: 0.45,
     doublesOnBarStartsOnly: false,
     slideChance: 0.22,
+    slideSpeeds: { fast: 0, normal: 0.7, slow: 0.3 },
+    offbeatChance: 0,
+    approachSec: 1,
+    perfectMs: [-120, 160],
+    goodMs: [-280, 350],
+  },
+  4: {
+    name: 'Fast hands',
+    fastFromIntensity: 0.35,
+    sparseBelowIntensity: 0,
+    doubleChance: 0.4,
+    doublesOnBarStartsOnly: false,
+    slideChance: 0.3,
+    slideSpeeds: { fast: 0.4, normal: 0.3, slow: 0.3 },
+    offbeatChance: 0.3,
     approachSec: 1,
     perfectMs: [-120, 160],
     goodMs: [-280, 350],

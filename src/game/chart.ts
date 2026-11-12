@@ -1,6 +1,6 @@
 import { CHART, LEVELS } from './config';
 import { isBarStart, leadInEndSec, medianBeatInterval, tailStartSec } from './manifest';
-import type { Cue, Level, Manifest } from './types';
+import type { Cue, Level, Manifest, SlideSpeed } from './types';
 
 export interface ChartOptions {
   level: Level;
@@ -86,6 +86,24 @@ export function slideTargets(from: number): number[] {
   });
 }
 
+/**
+ * The cell a slow slide passes through: halfway between two cells that are two steps apart.
+ * In a 3x3 grid numbered row by row, that cell's number is the mean of the two ends.
+ */
+export function middleCell(from: number, to: number): number {
+  return (from + to) / 2;
+}
+
+/** Splits one roll by the level's speed shares. A slow slide needs a middle cell; without one it is normal. */
+function pickSlideSpeed(shares: Record<SlideSpeed, number>, roll: number, slowPossible: boolean): SlideSpeed {
+  if (roll < shares.fast) return 'fast';
+  if (roll < shares.fast + shares.slow && slowPossible) return 'slow';
+  return 'normal';
+}
+
+/** How many cue intervals after its start a slide ends on a cue beat. A fast slide ends between two. */
+const SLIDE_END_STRIDES: Record<SlideSpeed, number> = { fast: 0, normal: 1, slow: 2 };
+
 /** The cue list for one player. The same manifest and options always give the same list. */
 export function generateChart(manifest: Manifest, options: ChartOptions): Cue[] {
   const rules = LEVELS[options.level];
@@ -96,6 +114,7 @@ export function generateChart(manifest: Manifest, options: ChartOptions): Cue[] 
   const firstCueSec = leadInEndSec(manifest);
   const tailSec = tailStartSec(manifest, options.endSec);
 
+  /** Beats from one cue to the next around this beat: 1 where cues come on every beat. */
   const strideAt = (beat: number): number => {
     const fast = intensity[beat] >= rules.fastFromIntensity;
     const stride = selectStride(beatIntervalSec, fast ? CHART.fastIntervalSec : CHART.slowIntervalSec);
@@ -108,6 +127,7 @@ export function generateChart(manifest: Manifest, options: ChartOptions): Cue[] 
     (beat - manifest.firstDownbeat) % strideAt(beat) === 0;
 
   const cues: Cue[] = [];
+  /** The last beat the previous cue occupies, and when that cue ends. */
   let previousEndBeat = -Infinity;
   let previousEndSec = -Infinity;
 
@@ -116,38 +136,47 @@ export function generateChart(manifest: Manifest, options: ChartOptions): Cue[] 
     // another beat's, and all levels read the same sequence.
     const roll = {
       kind: random(),
+      slideSpeed: random(),
       slideTarget: random(),
       side: random(),
       partnerRow: random(),
       gesture: random(),
       shape: random(),
+      offbeat: random(),
+      offbeatCell: random(),
     };
-    // The second test also skips the beat on which a slide ends, and keeps the spacing
-    // when the music changes intensity between two cues.
-    if (!isCueBeat(beat) || beat - previousEndBeat < strideAt(beat)) continue;
+    const stride = strideAt(beat);
+    // Skip beats that hold no cue, beats a slide still occupies, and a beat that would come
+    // too soon after the previous cue where the music changes intensity.
+    if (!isCueBeat(beat) || beat - previousEndBeat < stride) continue;
 
     const timeSec = beats[beat];
+    const nextCueBeat = beat + stride;
+    const hasNextCue = isCueBeat(nextCueBeat);
     const busy = intensity[beat] >= CHART.busyIntensity;
-    // One roll picks the kind of cue: the first share of it is a slide, the next share a
-    // double, the rest a single tap. Each share is then exactly the chance in the level rules.
-    // A slide runs from this cue beat to the next cue beat: one beat on in a song with a cue
-    // on every beat, two or more beats on in a faster song.
-    const slideEndBeat = beat + strideAt(beat);
-    const slideShare = busy && isCueBeat(slideEndBeat) ? rules.slideChance : 0;
+
+    // One roll picks the kind of cue: the first share is a slide, the next share a double,
+    // the rest a single tap. Each share is then exactly the chance in the level rules.
+    // Every slide needs a next cue beat: it sets how long the slide takes.
+    const slideShare = busy && hasNextCue ? rules.slideChance : 0;
     const doubleAllowed = busy && (!rules.doublesOnBarStartsOnly || isBarStart(manifest, beat));
     const doubleShare = doubleAllowed ? rules.doubleChance : 0;
     let cue: Cue;
 
     if (roll.kind < slideShare) {
-      const targets = slideTargets(master[beat]);
+      const from = master[beat];
+      const targets = slideTargets(from);
       const to = targets[Math.floor(roll.slideTarget * targets.length)];
-      cue = {
-        kind: 'slide',
-        timeSec,
-        beatIndex: beat,
-        cells: [master[beat], to],
-        times: [timeSec, beats[slideEndBeat]],
-      };
+      const slowPossible = from !== CENTRE && isCueBeat(beat + 2 * stride);
+      const speed = pickSlideSpeed(rules.slideSpeeds, roll.slideSpeed, slowPossible);
+      const nextCueSec = beats[nextCueBeat];
+      cue = { kind: 'slide', speed, timeSec, beatIndex: beat, cells: [from, to], times: [timeSec, nextCueSec] };
+      if (speed === 'fast') {
+        cue.times = [timeSec, (timeSec + nextCueSec) / 2];
+      } else if (speed === 'slow') {
+        cue.cells = [from, middleCell(from, to), to];
+        cue.times = [timeSec, nextCueSec, beats[beat + 2 * stride]];
+      }
     } else if (roll.kind < slideShare + doubleShare) {
       cue = {
         kind: 'tap',
@@ -163,10 +192,20 @@ export function generateChart(manifest: Manifest, options: ChartOptions): Cue[] 
         cue.gesture = CHART.gesturePool[Math.floor(roll.shape * CHART.gesturePool.length)];
       }
     }
-
     cues.push(cue);
-    previousEndBeat = cue.kind === 'slide' ? slideEndBeat : beat;
+    const stridesToEnd = cue.kind === 'slide' && cue.speed ? SLIDE_END_STRIDES[cue.speed] : 0;
+    previousEndBeat = beat + stridesToEnd * stride;
     previousEndSec = cue.times[cue.times.length - 1];
+
+    // An off-beat tap: one extra cell halfway to the next cue beat. It follows taps only,
+    // and it avoids the cells just used and the cell that is likely to come next.
+    if (cue.kind === 'tap' && busy && hasNextCue && roll.offbeat < rules.offbeatChance) {
+      const taken = [...cue.cells, master[nextCueBeat]];
+      const cell = pickWeighted(CHART.cellWeights, roll.offbeatCell, (c) => !taken.includes(c));
+      const offbeatSec = (timeSec + beats[nextCueBeat]) / 2;
+      cues.push({ kind: 'tap', timeSec: offbeatSec, beatIndex: beat + stride / 2, cells: [cell], times: [offbeatSec] });
+      previousEndSec = offbeatSec;
+    }
   }
   return cues;
 }

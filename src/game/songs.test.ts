@@ -23,7 +23,7 @@ describe.each(SONGS)('song "$title"', (song) => {
     }
   });
 
-  it.each([1, 2, 3] as Level[])('gives level %i a chart at both lengths', (level) => {
+  it.each([1, 2, 3, 4] as Level[])('gives level %i a chart at both lengths', (level) => {
     for (const length of ['short', 'full'] as const) {
       const endSec = playLengthSec(manifest, length);
       const cues = generateChart(manifest, { level, shapes: true, seed: DEFAULT_SEED, endSec });

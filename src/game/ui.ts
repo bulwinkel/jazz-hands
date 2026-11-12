@@ -4,7 +4,7 @@ import { accuracy, stars } from './scoring';
 import type { Settings } from './settings';
 import type { Level, PlayerCount, PlayerIndex, SongLength } from './types';
 
-const ALL_LEVELS: Level[] = [1, 2, 3];
+const ALL_LEVELS: Level[] = [1, 2, 3, 4];
 
 const SHELL_HTML = `
   <main id="stage" aria-label="Dance game">
