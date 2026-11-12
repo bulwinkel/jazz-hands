@@ -143,6 +143,7 @@ export function generateChart(manifest: Manifest, options: ChartOptions): Cue[] 
   /** The last beat the previous cue occupies, and when that cue ends. */
   let previousEndBeat = -Infinity;
   let previousEndSec = -Infinity;
+  let previousWasOffbeat = false;
 
   // A player has two hands, and a hand needs time to travel. The chart keeps a budget:
   // when each hand finished its last move. A cue takes one hand, a double takes both,
@@ -183,8 +184,10 @@ export function generateChart(manifest: Manifest, options: ChartOptions): Cue[] 
 
     // One roll picks the kind of cue: the first share is a slide, the next share a double,
     // the rest a single tap. Each share is then exactly the chance in the level rules.
-    // Every slide needs a next cue beat: it sets how long the slide takes.
-    const slideShare = busy && hasNextCue ? rules.slideChance : 0;
+    // Every slide needs a next cue beat: it sets how long the slide takes. And a slide never
+    // starts straight after an off-beat tap: a slide takes a player's whole attention, so it
+    // gets a clear moment before it and after it.
+    const slideShare = busy && hasNextCue && !previousWasOffbeat ? rules.slideChance : 0;
     const doubleAllowed =
       busy && freeHands === 2 && (!rules.doublesOnBarStartsOnly || isBarStart(manifest, beat));
     const doubleShare = doubleAllowed ? rules.doubleChance : 0;
@@ -232,7 +235,8 @@ export function generateChart(manifest: Manifest, options: ChartOptions): Cue[] 
     // that is likely to come next.
     const offbeatSec = hasNextCue ? (timeSec + beats[nextCueBeat]) / 2 : Infinity;
     const offbeatFits = cue.kind === 'tap' && busy && hasNextCue && freeHandsAt(offbeatSec) > 0;
-    if (offbeatFits && roll.offbeat < rules.offbeatChance) {
+    previousWasOffbeat = offbeatFits && roll.offbeat < rules.offbeatChance;
+    if (previousWasOffbeat) {
       const taken = [...cue.cells, master[nextCueBeat]];
       const cell = pickWeighted(CHART.cellWeights, roll.offbeatCell, (c) => !taken.includes(c));
       cues.push({ kind: 'tap', timeSec: offbeatSec, beatIndex: beat + stride / 2, cells: [cell], times: [offbeatSec] });
