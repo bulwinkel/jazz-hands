@@ -192,19 +192,46 @@ export class DanceGame {
     this.setPhase('menu');
     this.ui.showMenu(this.options.settings, (byHand) => void this.start(byHand), this.onMenuChange);
     this.previewChosenSong();
-    // The menu tracks hands, so players can point at its items. If tracking cannot start,
-    // the menu still works with the mouse and the keyboard.
-    void this.openInput()
-      .then(() => this.input?.setMode(MENU_TRACKER))
-      .catch(() => {});
+    this.syncMenuInput();
   };
 
   /** A choice in the menu changed. */
   private onMenuChange = (): void => {
     this.saveSettings();
     this.previewChosenSong();
-    if (!this.options.settings.handControl) this.clearHandPointer();
+    this.syncMenuInput();
   };
+
+  /**
+   * In the menu, the camera runs only while hands can point at the menu. With hand control
+   * off it is released: the camera light goes out, the picture behind the menu goes, and no
+   * tracking runs. The round opens the camera again when it starts.
+   */
+  private syncMenuInput(): void {
+    if (this.phase !== 'menu') return;
+    if (!this.options.settings.handControl) {
+      this.closeInput();
+      return;
+    }
+    // If tracking cannot start, the menu still works with the mouse and the keyboard.
+    void this.openInput()
+      .then(() => {
+        // While the camera opened, the player may have started a round or turned hand control off.
+        if (this.phase !== 'menu') return undefined;
+        if (this.options.settings.handControl) return this.input?.setMode(MENU_TRACKER);
+        this.closeInput();
+        return undefined;
+      })
+      .catch(() => {});
+  }
+
+  /** Releases the camera and its trackers. */
+  private closeInput(): void {
+    this.input?.dispose();
+    this.input = undefined;
+    this.frame = undefined;
+    this.clearHandPointer();
+  }
 
   /** Takes the hand rings and the highlight off the panel, and forgets a hold in progress. */
   private clearHandPointer(): void {
@@ -213,8 +240,9 @@ export class DanceGame {
   }
 
   /**
-   * Opens the camera (or a test input) and starts tracking. The input then stays open for the
-   * whole visit: the menu uses it for pointing, and a round starts with no camera delay.
+   * Opens the camera (or a test input) and starts tracking. The input then stays open: the
+   * menu uses it for pointing, and a round starts with no camera delay. Only a menu with hand
+   * control off closes it (see `syncMenuInput`).
    * Resolves when tracking runs, and also when it could not start: `inputError` then says why.
    */
   private openInput(): Promise<void> {
@@ -226,7 +254,9 @@ export class DanceGame {
   }
 
   private async connectInput(): Promise<void> {
-    const input = createInput(this.options, MENU_TRACKER, this.ui.stage);
+    // Opened by a round, the input loads that round's tracker at once, not the menu's first.
+    const mode = this.phase === 'menu' ? MENU_TRACKER : this.trackerMode();
+    const input = createInput(this.options, mode, this.ui.stage);
     try {
       await input.init();
     } catch (error) {
