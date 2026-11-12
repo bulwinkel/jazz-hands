@@ -71,6 +71,29 @@ let lastJson: string | undefined;
 const STORAGE_KEY = 'dance-tracker-last-result';
 try { lastJson = localStorage.getItem(STORAGE_KEY) ?? undefined; } catch { /* Storage can be disabled. */ }
 copyButton.disabled = !lastJson;
+const SAVED_KEY = 'dance-tracker-last-result-saved';
+function markSaved(saved: boolean): void {
+  try { localStorage.setItem(SAVED_KEY, saved ? '1' : '0'); } catch { /* Storage can be disabled. */ }
+}
+/** A stored result that never reached the dev server is sent again when the page loads. */
+async function resendStoredResult(): Promise<void> {
+  let saved = false;
+  try { saved = localStorage.getItem(SAVED_KEY) === '1'; } catch { /* Storage can be disabled. */ }
+  if (!lastJson || saved) return;
+  try {
+    const response = await fetch('/__tracking-results', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: lastJson,
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const body: { path: string } = await response.json();
+    markSaved(true);
+    saveStatus.textContent = `Earlier result saved: ${body.path}`;
+  } catch (error) {
+    saveStatus.textContent = `Earlier result is still only in this browser (${errorText(error)}). Use Copy JSON.`;
+  }
+}
+void resendStoredResult();
 
 function errorText(error: unknown): string { return error instanceof Error ? error.message : String(error); }
 function setActive(tracker: Tracker): void {
@@ -185,6 +208,7 @@ async function finishBenchmark(run: BenchmarkSession): Promise<void> {
   catch (error) { storageError = ` Local storage failed: ${errorText(error)}. Use Copy JSON.`; }
   renderResults(result, resultsHost);
   resultsHost.hidden = false; stage.hidden = true; backButton.hidden = false;
+  markSaved(false);
   saveStatus.textContent = `Saving results…${storageError}`;
   try {
     const response = await fetch('/__tracking-results', {
@@ -194,6 +218,7 @@ async function finishBenchmark(run: BenchmarkSession): Promise<void> {
     if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
     const saved: { path: string } = await response.json();
     if (typeof saved.path !== 'string') throw new Error('The server did not return a file path.');
+    markSaved(true);
     saveStatus.textContent = `Saved: ${saved.path}${storageError}`;
   } catch (error) {
     saveStatus.textContent = `File save failed: ${errorText(error)}. Use Copy JSON. ${storageError || 'The last result is also stored in this browser.'}`;
