@@ -2,12 +2,15 @@
 //
 // Usage:
 //   node scripts/smoke.mjs <url> [--seconds=90] [--press=<phase>] [--until=<phase>]
-//                                [--shot=<phase>:<file>[:<delayMs>]]
+//                                [--shot=<phase>:<file>[:<delayMs>]] [--size=<width>x<height>]
 //
 //   --seconds  Give up after this long. Default 90.
 //   --press    Press Space once when the game reaches this phase (for example `ready`).
 //   --until    Stop when the game reaches this phase. Default `results`.
 //   --shot     Save a screenshot when the game reaches a phase, after an optional delay.
+//   --size     Browser window size as <width>x<height>. Default 1440x900.
+//   --hover    Move the mouse pointer onto the element with this CSS selector, in the menu,
+//              and leave it there. With `input=mouse` the pointer is a hand, so this tests pointing.
 //
 // The camera is always Chrome's fake camera, never the real one. Sound is muted.
 // The game needs a dev server, for example: npx vite --port 5174 --strictPort
@@ -36,6 +39,8 @@ const maxSeconds = Number(flag('seconds') ?? 90);
 const pressAtPhase = flag('press');
 const untilPhase = flag('until') ?? 'results';
 const [shotPhase, shotFile, shotDelayMs] = flag('shot')?.split(':') ?? [];
+const windowSize = (flag('size') ?? '1440x900').replace('x', ',');
+const hoverSelector = flag('hover');
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -51,7 +56,7 @@ const chrome = spawn(
     '--autoplay-policy=no-user-gesture-required',
     '--use-fake-ui-for-media-stream',
     '--use-fake-device-for-media-stream',
-    '--window-size=1440,900',
+    `--window-size=${windowSize}`,
     '--no-first-run',
     '--mute-audio',
     'about:blank',
@@ -116,6 +121,15 @@ async function pressSpace() {
   await send('Input.dispatchKeyEvent', { type: 'keyUp', ...key });
 }
 
+async function movePointerOnto(selector) {
+  const centre = await evaluate(`(() => {
+    const box = document.querySelector(${JSON.stringify(selector)})?.getBoundingClientRect();
+    return box ? JSON.stringify({ x: box.left + box.width / 2, y: box.top + box.height / 2 }) : null;
+  })()`);
+  if (!centre) throw new Error(`No element matches ${selector}`);
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...JSON.parse(centre) });
+}
+
 async function saveScreenshot(file) {
   const { data } = await send('Page.captureScreenshot', { format: 'png' });
   writeFileSync(file, Buffer.from(data, 'base64'));
@@ -129,6 +143,7 @@ await send('Page.navigate', { url });
 
 const phasesSeen = [];
 let pressed = false;
+let hovered = false;
 let shotTaken = false;
 let reached = false;
 const startedMs = Date.now();
@@ -140,6 +155,10 @@ while (elapsedSec() < maxSeconds) {
   if (!phase) continue;
   if (phasesSeen.at(-1)?.phase !== phase) phasesSeen.push({ phase, atSec: elapsedSec().toFixed(1) });
 
+  if (hoverSelector && phase === 'menu' && !hovered) {
+    hovered = true;
+    await movePointerOnto(hoverSelector);
+  }
   if (phase === pressAtPhase && !pressed) {
     pressed = true;
     await pressSpace();
@@ -157,7 +176,8 @@ while (elapsedSec() < maxSeconds) {
 }
 
 console.log('phases:', phasesSeen.map((seen) => `${seen.atSec}s ${seen.phase}`).join(' | '));
-console.log('final:', await evaluate('JSON.stringify(window.__dance)'));
+// The run report is large: print the state without it. It is saved to test-results/ anyway.
+console.log('final:', await evaluate('JSON.stringify({ ...window.__dance, report: undefined })'));
 console.log('errors:', pageErrors.length ? pageErrors : 'none');
 
 socket.close();

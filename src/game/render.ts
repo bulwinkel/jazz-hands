@@ -3,7 +3,7 @@ import { GESTURE_EMOJI, HANDS_UP_CELL, LEVELS, PLAYER_COLORS, TIMING } from './c
 import { cellRect, containRect } from './geometry';
 import type { CueState } from './judgment';
 import type { PlayerRun } from './player';
-import type { Manifest, Phase, PlayerIndex, Point, Rating, Rect } from './types';
+import type { Manifest, Phase, PlayerIndex, Point, Rating, Rect, SlideSpeed } from './types';
 
 /** A short flash that tells a player how a cue went. */
 export interface Feedback {
@@ -20,6 +20,8 @@ export interface RenderView {
   frame?: TrackingFrame;
   songTimeSec: number;
   manifest?: Manifest;
+  /** The round plays the song from `startSec` to `endSec`. */
+  startSec: number;
   endSec: number;
   feedback: readonly Feedback[];
 }
@@ -31,6 +33,8 @@ const WHITE = '#ffffff';
 const BEAT_PULSE_SEC = 0.22;
 /** A cue's closing outline starts this many times larger than its cell. */
 const OUTLINE_START_SCALE = 2.2;
+/** Arrowheads on a slide's path, so a player sees its speed before it starts. */
+const SLIDE_CHEVRONS: Record<SlideSpeed, number> = { slow: 1, normal: 2, fast: 3 };
 
 const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
 const centreOf = (rect: Rect): Point => ({ x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 });
@@ -38,6 +42,15 @@ const lerp = (from: Point, to: Point, t: number): Point => ({
   x: from.x + (to.x - from.x) * t,
   y: from.y + (to.y - from.y) * t,
 });
+
+/** Where the slide dot is: in each cell of the path at that cell's due time, moving evenly between. */
+function pointOnPath(path: readonly Point[], times: readonly number[], nowSec: number): Point {
+  const last = path.length - 1;
+  if (nowSec <= times[0]) return path[0];
+  if (nowSec >= times[last]) return path[last];
+  const leg = times.findIndex((_, k) => k < last && nowSec < times[k + 1]);
+  return lerp(path[leg], path[leg + 1], (nowSec - times[leg]) / (times[leg + 1] - times[leg]));
+}
 
 /** A `#rrggbb` colour with an alpha from 0 to 1, as `#rrggbbaa`. */
 function withAlpha(hex: string, alpha: number): string {
@@ -98,7 +111,9 @@ export class GameRenderer {
       this.drawHands(player, view.frame, color);
     }
     this.drawFeedback(view);
-    if (view.phase === 'play') this.drawProgress(view.songTimeSec / view.endSec);
+    if (view.phase === 'play') {
+      this.drawProgress((view.songTimeSec - view.startSec) / (view.endSec - view.startSec));
+    }
   }
 
   /** Matches the canvas to its on-screen size and clears it. */
@@ -170,34 +185,40 @@ export class GameRenderer {
 
   private drawSlide(state: CueState, player: PlayerRun, nowSec: number, color: string, isNext: boolean): void {
     const { cue, marks } = state;
-    const [fromRect, toRect] = cue.cells.map((cell) => this.toScreen(cellRect(player.grid, cell)));
-    const [startSec, endSec] = cue.times;
-    const from = centreOf(fromRect);
-    const to = centreOf(toRect);
-    const cellSize = Math.min(fromRect.width, fromRect.height);
+    const rects = cue.cells.map((cell) => this.toScreen(cellRect(player.grid, cell)));
+    const path = rects.map(centreOf);
+    const last = rects.length - 1;
+    const startSec = cue.times[0];
+    const endSec = cue.times[last];
+    const cellSize = Math.min(rects[0].width, rects[0].height);
     const strength = isNext ? 1 : 0.45;
-    /** 0 until the slide starts, 1 when the hand is due in the far cell. */
+    /** 0 until the slide starts, 1 when the hand is due in the last cell. */
     const progress = clamp01((nowSec - startSec) / (endSec - startSec));
 
-    // The path: a wide band from the first cell to the far cell, with an arrowhead.
-    this.line(from, to, withAlpha(color, 0.32 * strength), cellSize * 0.35);
-    this.drawArrowHead(from, to, cellSize * 0.26, withAlpha(WHITE, 0.8 * strength));
+    // The path: a wide band from the first cell to the last. Chevrons at its end show the
+    // speed before the slide starts: one for slow, two for normal, three for fast.
+    this.line(path[0], path[last], withAlpha(color, 0.32 * strength), cellSize * 0.35);
+    const chevrons = SLIDE_CHEVRONS[cue.speed ?? 'normal'];
+    this.drawChevrons(path[0], path[last], chevrons, cellSize * 0.24, withAlpha(WHITE, 0.8 * strength));
 
     // The first cell works like a tap: its outline closes when the slide starts.
-    this.drawTargetCell(fromRect, color, isNext, marks[0] === 'perfect');
-    this.drawClosingOutline(fromRect, (startSec - nowSec) / LEVELS[player.level].approachSec, color, isNext);
+    this.drawTargetCell(rects[0], color, isNext, marks[0] === 'perfect');
+    this.drawClosingOutline(rects[0], (startSec - nowSec) / LEVELS[player.level].approachSec, color, isNext);
 
-    // The far cell lights up as the dot arrives.
-    if (marks[1] === 'perfect') {
-      this.drawTargetCell(toRect, color, isNext, true);
+    // A slow slide passes through a middle cell, which is judged on its own beat.
+    for (let k = 1; k < last; k++) this.drawTargetCell(rects[k], color, false, marks[k] === 'perfect');
+
+    // The last cell lights up as the dot arrives.
+    if (marks[last] === 'perfect') {
+      this.drawTargetCell(rects[last], color, isNext, true);
     } else {
       const border = withAlpha(color, (0.5 + 0.5 * progress) * strength);
       const fill = withAlpha(color, (0.1 + 0.3 * progress) * strength);
-      this.outline(toRect, border, 2 + 3 * progress, fill);
+      this.outline(rects[last], border, 2 + 3 * progress, fill);
     }
 
-    // The dot to follow. It waits on the first cell, then travels with the beat.
-    const dot = lerp(from, to, progress);
+    // The dot to follow. It waits on the first cell, then is in each cell at that cell's due time.
+    const dot = pointOnPath(path, cue.times, nowSec);
     const ctx = this.ctx;
     ctx.save();
     ctx.globalAlpha = strength;
@@ -238,20 +259,24 @@ export class GameRenderer {
     this.ctx.fill();
   }
 
-  private drawArrowHead(from: Point, to: Point, size: number, color: string): void {
+  /** Arrowheads that point from `from` to `to`, stacked back from the end of the path. */
+  private drawChevrons(from: Point, to: Point, count: number, size: number, color: string): void {
     const angle = Math.atan2(to.y - from.y, to.x - from.x);
-    // The tip stops short of the cell centre so the dot does not hide it on arrival.
-    const tip = { x: to.x - Math.cos(angle) * size * 0.6, y: to.y - Math.sin(angle) * size * 0.6 };
     const ctx = this.ctx;
     ctx.strokeStyle = color;
     ctx.lineWidth = Math.max(4, size * 0.22);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.beginPath();
-    for (const side of [-1, 1]) {
-      const wing = angle + Math.PI + side * 0.6;
-      ctx.moveTo(tip.x + Math.cos(wing) * size, tip.y + Math.sin(wing) * size);
-      ctx.lineTo(tip.x, tip.y);
+    for (let chevron = 0; chevron < count; chevron++) {
+      // The first tip stops short of the cell centre, so the dot does not hide it on arrival.
+      const back = size * (0.6 + chevron * 0.75);
+      const tip = { x: to.x - Math.cos(angle) * back, y: to.y - Math.sin(angle) * back };
+      for (const side of [-1, 1]) {
+        const wing = angle + Math.PI + side * 0.6;
+        ctx.moveTo(tip.x + Math.cos(wing) * size, tip.y + Math.sin(wing) * size);
+        ctx.lineTo(tip.x, tip.y);
+      }
     }
     ctx.stroke();
   }

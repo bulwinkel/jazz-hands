@@ -1,3 +1,4 @@
+import type { CueObservation } from './diagnostics';
 import { defaultGrid } from './geometry';
 import type { CueState } from './judgment';
 import { freshScore } from './scoring';
@@ -17,6 +18,8 @@ export interface PlayerRun {
   cues: Cue[];
   /** Judging state of each cue, parallel to `cues`. */
   states: CueState[];
+  /** What the tracker showed around each cue, parallel to `cues`. For the run report. */
+  observations: CueObservation[];
   score: Score;
   /** When the current hands-up hold began, in tracking-frame time. */
   holdStartMs: number | null;
@@ -34,6 +37,7 @@ export function createPlayers(settings: Settings): PlayerRun[] {
     reachSamples: [],
     cues: [],
     states: [],
+    observations: [],
     score: freshScore(),
     holdStartMs: null,
     hold: 0,

@@ -54,7 +54,10 @@ export class SongAudio {
     await this.context.resume();
   }
 
-  /** Plays from `offsetSec` to `endSec`. With `fadeOut`, the last seconds fade to silence. */
+  /**
+   * Plays from `offsetSec` to `endSec`. With `fadeOut`, the last seconds fade to silence.
+   * A start inside the song fades in.
+   */
   play(offsetSec: number, endSec: number, fadeOut: boolean): void {
     if (!this.buffer) throw new Error('The song is not loaded.');
     if (this.buffer.duration + 0.1 < endSec) throw new Error('The audio is shorter than the song manifest.');
@@ -72,7 +75,12 @@ export class SongAudio {
     const durationSec = endSec - offsetSec;
     this.endCtxTime = this.startCtxTime + durationSec;
 
-    gain.gain.setValueAtTime(1, this.startCtxTime);
+    if (offsetSec > 0) {
+      gain.gain.setValueAtTime(0, this.startCtxTime);
+      gain.gain.linearRampToValueAtTime(1, this.startCtxTime + TIMING.fadeInSec);
+    } else {
+      gain.gain.setValueAtTime(1, this.startCtxTime);
+    }
     if (fadeOut) {
       gain.gain.setValueAtTime(1, Math.max(this.startCtxTime, this.endCtxTime - TIMING.fadeSec));
       gain.gain.linearRampToValueAtTime(0, this.endCtxTime);

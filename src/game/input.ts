@@ -34,6 +34,8 @@ export interface GameInput {
 export class CameraInput implements GameInput {
   video?: HTMLVideoElement;
   private tracker: Tracker;
+  /** Trackers that are loaded, by mode. The menu and the rounds switch between them often. */
+  private readonly loaded = new Map<TrackerMode, Tracker>();
   private running = false;
   private disposed = false;
   private videoCallbackId = 0;
@@ -42,6 +44,7 @@ export class CameraInput implements GameInput {
 
   constructor(mode: TrackerMode) {
     this.tracker = createTracker(mode);
+    this.loaded.set(mode, this.tracker);
   }
 
   get mode(): string {
@@ -107,18 +110,28 @@ export class CameraInput implements GameInput {
     this.animationId = requestAnimationFrame(onAnimationFrame);
   }
 
-  /** Swaps the tracker only after the new one has loaded, so tracking never stops on a failure. */
+  /**
+   * Switches the tracker. A mode loads once and is then kept, so switching back is instant.
+   * The switch happens only after the new tracker has loaded, so tracking never stops on a failure.
+   */
   async setMode(mode: TrackerMode): Promise<void> {
-    const replacement = createTracker(mode);
-    try {
-      await replacement.init();
-    } catch (error) {
-      replacement.dispose();
-      throw error;
+    if (mode === this.tracker.mode) return;
+    let next = this.loaded.get(mode);
+    if (!next) {
+      next = createTracker(mode);
+      try {
+        await next.init();
+      } catch (error) {
+        next.dispose();
+        throw error;
+      }
+      if (this.disposed) {
+        next.dispose(); // The input was closed while this tracker loaded.
+        return;
+      }
+      this.loaded.set(mode, next);
     }
-    const old = this.tracker;
-    this.tracker = replacement;
-    old.dispose();
+    this.tracker = next;
   }
 
   dispose(): void {
@@ -126,7 +139,7 @@ export class CameraInput implements GameInput {
     this.disposed = true;
     if (this.videoCallbackId) this.video?.cancelVideoFrameCallback(this.videoCallbackId);
     cancelAnimationFrame(this.animationId);
-    this.tracker.dispose();
+    for (const tracker of this.loaded.values()) tracker.dispose();
     this.stopCamera();
   }
 

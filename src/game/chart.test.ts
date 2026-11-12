@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { doubleCells, generateChart, masterCells, selectStride, slideTargets } from './chart';
+import { cuesFrom, doubleCells, generateChart, masterCells, middleCell, selectStride, slideTargets } from './chart';
 import { CHART, LEVELS } from './config';
 import { synthetic } from './fixtures';
-import { medianBeatInterval, playLengthSec, tailStartSec } from './manifest';
+import { medianBeatInterval, playEndSec, tailStartSec } from './manifest';
 import type { Cue, Level, Manifest } from './types';
 
-const ALL_LEVELS: Level[] = [1, 2, 3];
+const ALL_LEVELS: Level[] = [1, 2, 3, 4];
 const column = (cell: number): number => cell % 3;
 const isDouble = (cue: Cue): boolean => cue.kind === 'tap' && cue.cells.length === 2;
 const isSlide = (cue: Cue): boolean => cue.kind === 'slide';
+/** An extra tap between two cue beats. Its beat index is fractional. */
+const isOffbeat = (cue: Cue): boolean => !Number.isInteger(cue.beatIndex);
+const lastTime = (cue: Cue): number => cue.times[cue.times.length - 1];
 
 function chart(
   manifest: Manifest,
@@ -51,7 +54,9 @@ describe('chart for every level', () => {
     const song = synthetic();
     const master = masterCells(song, 7);
     for (const level of ALL_LEVELS) {
-      const singles = chart(song, level, 7).filter((cue) => cue.kind === 'tap' && cue.cells.length === 1);
+      const singles = chart(song, level, 7).filter(
+        (cue) => cue.kind === 'tap' && cue.cells.length === 1 && !isOffbeat(cue),
+      );
       expect(singles.length).toBeGreaterThan(10);
       for (const cue of singles) expect(cue.cells[0]).toBe(master[cue.beatIndex]);
     }
@@ -84,7 +89,7 @@ describe('chart for every level', () => {
     const song = synthetic();
     song.firstDownbeat = 3;
     const twoBarsIn = song.beats[3 + 2 * 4];
-    for (const endSec of [song.durationSec, playLengthSec(song, 'short')]) {
+    for (const endSec of [song.durationSec, playEndSec(song, 'short')]) {
       const cues = chart(song, 2, 22, { endSec });
       expect(cues.length).toBeGreaterThan(10);
       for (const cue of cues) {
@@ -92,6 +97,22 @@ describe('chart for every level', () => {
         expect(cue.timeSec).toBeLessThan(tailStartSec(song, endSec));
       }
     }
+  });
+});
+
+describe('a round that starts inside the song', () => {
+  const cues = chart(synthetic(100, 300), 3, 9);
+
+  it('keeps every cue when it starts at the song start', () => {
+    expect(cuesFrom(cues, 0)).toBe(cues);
+  });
+
+  it('leaves out the cues of the first seconds, so players can find the beat', () => {
+    const late = cuesFrom(cues, 120);
+    expect(late.length).toBeGreaterThan(50);
+    expect(late[0].timeSec).toBeGreaterThanOrEqual(120 + CHART.leadSec);
+    // The rest of the song is unchanged: the same cues as in a round from the start.
+    expect(late).toEqual(cues.filter((cue) => cue.timeSec >= 120 + CHART.leadSec));
   });
 });
 
@@ -146,13 +167,31 @@ describe('level 3', () => {
     for (const cue of doubles) expect(cue.cells.map(column).sort()).toEqual([0, 2]);
   });
 
-  it('runs each slide across the grid from one beat to the next', () => {
-    const slides = cues.filter(isSlide);
+  it('has normal and slow slides, and no fast ones', () => {
+    const speeds = new Set(cues.filter(isSlide).map((cue) => cue.speed));
+    expect(speeds).toEqual(new Set(['normal', 'slow']));
+  });
+
+  it('runs a normal slide across the grid from one beat to the next', () => {
+    const slides = cues.filter((cue) => cue.speed === 'normal');
     expect(slides.length).toBeGreaterThan(50);
     for (const cue of slides) {
       const [from, to] = cue.cells;
+      expect(cue.cells).toHaveLength(2);
       expect(slideTargets(from)).toContain(to);
       expect(cue.times).toEqual([song.beats[cue.beatIndex], song.beats[cue.beatIndex + 1]]);
+    }
+  });
+
+  it('runs a slow slide through the middle cell, one cell per beat', () => {
+    const slides = cues.filter((cue) => cue.speed === 'slow');
+    expect(slides.length).toBeGreaterThan(20);
+    for (const cue of slides) {
+      const [from, middle, to] = cue.cells;
+      expect(cue.cells).toHaveLength(3);
+      expect(slideTargets(from)).toContain(to);
+      expect(middle).toBe(middleCell(from, to));
+      expect(cue.times).toEqual([0, 1, 2].map((step) => song.beats[cue.beatIndex + step]));
     }
   });
 
@@ -165,23 +204,114 @@ describe('level 3', () => {
   });
 
   it('runs each slide to the next cue beat in a song too fast for a cue on every beat', () => {
-    // At 128 BPM a beat is 0.47 s, so cues sit on every second beat and a slide spans two beats.
+    // At 128 BPM a beat is 0.47 s, so cues sit on every second beat and a normal slide spans two beats.
     const fastSong = synthetic(128, 600);
-    const fast = chart(fastSong, 3, 42);
-    const slides = fast.filter(isSlide);
+    const slides = chart(fastSong, 3, 42).filter(isSlide);
     expect(slides.length).toBeGreaterThan(30);
     for (const cue of slides) {
-      expect(cue.times).toEqual([fastSong.beats[cue.beatIndex], fastSong.beats[cue.beatIndex + 2]]);
+      const steps = cue.speed === 'slow' ? [0, 2, 4] : [0, 2];
+      expect(cue.times).toEqual(steps.map((step) => fastSong.beats[cue.beatIndex + step]));
     }
-    fast.forEach((cue, i) => {
-      if (isSlide(cue) && i < fast.length - 1) expect(fast[i + 1].beatIndex).toBeGreaterThanOrEqual(cue.beatIndex + 4);
+  });
+
+  it.each([100, 128])('at %i BPM, starts the next cue only after a slide has ended', (bpm) => {
+    const all = chart(synthetic(bpm, 600), 3, 42);
+    all.forEach((cue, i) => {
+      if (isSlide(cue) && i < all.length - 1) expect(all[i + 1].timeSec).toBeGreaterThan(lastTime(cue));
+    });
+  });
+});
+
+describe('level 4', () => {
+  const song = synthetic(100, 600);
+  const cues = chart(song, 4, 42);
+  const beatSec = 0.6;
+
+  it('has slides at all three speeds', () => {
+    const speeds = new Set(cues.filter(isSlide).map((cue) => cue.speed));
+    expect(speeds).toEqual(new Set(['fast', 'normal', 'slow']));
+  });
+
+  it('runs a fast slide in half a beat and keeps the next beat for the next cue', () => {
+    const fast = cues.filter((cue) => cue.speed === 'fast');
+    expect(fast.length).toBeGreaterThan(30);
+    for (const cue of fast) {
+      expect(cue.cells).toHaveLength(2);
+      expect(cue.times[1] - cue.times[0]).toBeCloseTo(beatSec / 2);
+    }
+    cues.forEach((cue, i) => {
+      if (cue.speed === 'fast' && i < cues.length - 1) expect(cues[i + 1].beatIndex).toBe(cue.beatIndex + 1);
     });
   });
 
-  it('leaves the beat a slide ends on free, so no slide starts where another ends', () => {
+  it('adds off-beat taps halfway between two cue beats, after taps only', () => {
+    const offbeats = cues.filter(isOffbeat);
+    expect(offbeats.length).toBeGreaterThan(50);
     cues.forEach((cue, i) => {
-      if (!isSlide(cue) || i === cues.length - 1) return;
-      expect(cues[i + 1].beatIndex).toBeGreaterThanOrEqual(cue.beatIndex + 2);
+      if (!isOffbeat(cue)) return;
+      const before = cues[i - 1];
+      expect(cue.kind).toBe('tap');
+      expect(cue.cells).toHaveLength(1);
+      expect(cue.gesture).toBeUndefined();
+      expect(before.kind).toBe('tap');
+      expect(cue.timeSec - before.timeSec).toBeCloseTo(beatSec / 2);
+      expect(before.cells).not.toContain(cue.cells[0]);
+    });
+  });
+
+  it('follows its single taps with an off-beat tap as often as the level rules say', () => {
+    // Only a single tap leaves a hand free for an off-beat tap: a double uses both hands.
+    const many = chart(synthetic(100, 1800), 4, 42);
+    const singles = many.filter((cue) => cue.kind === 'tap' && cue.cells.length === 1 && !isOffbeat(cue));
+    expect(many.filter(isOffbeat).length / singles.length).toBeCloseTo(LEVELS[4].offbeatChance, 1);
+  });
+
+  it('keeps cues in time order', () => {
+    cues.slice(1).forEach((cue, i) => expect(cue.timeSec).toBeGreaterThan(cues[i].timeSec));
+  });
+});
+
+/**
+ * Checks a chart against two hands, with its own bookkeeping: every cue cell must find a hand
+ * that has had `CHART.handRestSec` since its last target. A slide is one hand's move.
+ * Returns the cues that do not fit.
+ */
+function cuesBeyondTwoHands(cues: Cue[]): Cue[] {
+  const lastTargetSec = [-Infinity, -Infinity];
+  const takeFreeHand = (atSec: number, untilSec: number): boolean => {
+    const hand = lastTargetSec.findIndex((last) => atSec - last >= CHART.handRestSec - 1e-8);
+    if (hand === -1) return false;
+    lastTargetSec[hand] = untilSec;
+    return true;
+  };
+  return cues.filter((cue) => {
+    if (cue.kind === 'slide') return !takeFreeHand(cue.timeSec, lastTime(cue));
+    const fits = cue.cells.map(() => takeFreeHand(cue.timeSec, cue.timeSec));
+    return fits.includes(false);
+  });
+}
+
+describe('two hands', () => {
+  it.each([95, 100, 109, 130, 180])('are enough for every level at %i BPM', (bpm) => {
+    for (const level of ALL_LEVELS) {
+      const cues = chart(synthetic(bpm, 600), level, 42, { shapes: true });
+      expect(cuesBeyondTwoHands(cues)).toEqual([]);
+    }
+  });
+
+  it('are not asked for a double straight after a fast slide', () => {
+    const cues = chart(synthetic(100, 1800), 4, 42);
+    const afterFastSlides = cues.filter((_, i) => i > 0 && cues[i - 1].speed === 'fast');
+    expect(afterFastSlides.length).toBeGreaterThan(50);
+    expect(afterFastSlides.some(isDouble)).toBe(false);
+  });
+
+  it('are not asked for an off-beat tap straight after a double, or a double after an off-beat tap', () => {
+    const cues = chart(synthetic(100, 1800), 4, 42);
+    cues.forEach((cue, i) => {
+      if (!isOffbeat(cue)) return;
+      expect(isDouble(cues[i - 1])).toBe(false);
+      if (i < cues.length - 1) expect(isDouble(cues[i + 1])).toBe(false);
     });
   });
 });
@@ -196,6 +326,13 @@ describe('slide and double geometry', () => {
 
   it('lets a slide from the centre end on any other cell', () => {
     expect(slideTargets(4)).toEqual([0, 1, 2, 3, 5, 6, 7, 8]);
+  });
+
+  it('finds the cell a slow slide passes through', () => {
+    expect(middleCell(0, 2)).toBe(1);
+    expect(middleCell(0, 8)).toBe(4);
+    expect(middleCell(1, 7)).toBe(4);
+    expect(middleCell(6, 8)).toBe(7);
   });
 
   it('moves a centre-column double to a side and puts the partner on the other side', () => {

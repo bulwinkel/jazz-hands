@@ -1,5 +1,5 @@
 import type { GestureName, TrackerMode } from '../tracking/types';
-import type { Level, PlayerCount } from './types';
+import type { Level, PlayerCount, SlideSpeed } from './types';
 
 /**
  * Two players each own half the frame, and split tracking gives each half twice the resolution.
@@ -11,14 +11,33 @@ export const DEFAULT_TRACKER: Record<PlayerCount, TrackerMode> = {
   2: 'hands-split',
 };
 
+/** The menu tracks hands over the whole frame: a player may stand anywhere to point at it. */
+export const MENU_TRACKER: TrackerMode = 'hands-full';
+
+/** Pointing at menu items: a hand held on an item presses it. */
+export const HAND_MENU = {
+  dwellSec: 1,
+  /** Items that start or leave a round take longer, so they are not pressed by accident. */
+  slowDwellSec: 1.5,
+  /** Hands below this height in the frame (0 = top, 1 = bottom) are resting, not pointing. */
+  lowestY: 0.9,
+} as const;
+
 /** Add a song with one line here. */
 export const SONGS = [
   { manifest: '/songs/blessed-on-the-hillside.json', title: 'Blessed on the Hillside' },
   { manifest: '/songs/todo-bueno.json', title: 'Todo Bueno' },
+  { manifest: '/songs/from-the-garden-to-the-cross.json', title: 'From the Garden to the Cross' },
+  { manifest: '/songs/drum-and-bass-violins.json', title: 'Drum and Bass Violins' },
 ] as const;
 
-/** The chart is the same every run unless the URL gives another seed. */
-export const DEFAULT_SEED = 20261112;
+/**
+ * The chart is the same every run unless the URL gives another seed.
+ * This seed was picked from 400 candidates: its charts for both songs, at levels 3 and 4,
+ * come closest to the shares of slides and doubles that the level rules ask for.
+ * A random seed can be off by 15 points, which makes a level feel unlike its rules.
+ */
+export const DEFAULT_SEED = 20261315;
 
 /** Milliseconds around a cue's due time, as [early, late]. Early is negative. */
 export type WindowMs = readonly [number, number];
@@ -34,6 +53,13 @@ export interface LevelRules {
   doublesOnBarStartsOnly: boolean;
   /** Share of busy cue beats that start a slide. */
   slideChance: number;
+  /** How the slides split by speed. The three shares add up to 1. */
+  slideSpeeds: Record<SlideSpeed, number>;
+  /**
+   * Share of busy single taps that are followed by an extra tap halfway to the next cue beat.
+   * A double is never followed by one: it leaves no hand free.
+   */
+  offbeatChance: number;
   /** How long a cue is on screen before it is due. */
   approachSec: number;
   perfectMs: WindowMs;
@@ -48,6 +74,8 @@ export const LEVELS: Record<Level, LevelRules> = {
     doubleChance: 0,
     doublesOnBarStartsOnly: false,
     slideChance: 0,
+    slideSpeeds: { fast: 0, normal: 1, slow: 0 },
+    offbeatChance: 0,
     approachSec: 1.4,
     perfectMs: [-150, 200],
     goodMs: [-350, 450],
@@ -59,6 +87,8 @@ export const LEVELS: Record<Level, LevelRules> = {
     doubleChance: 0.3,
     doublesOnBarStartsOnly: true,
     slideChance: 0,
+    slideSpeeds: { fast: 0, normal: 1, slow: 0 },
+    offbeatChance: 0,
     approachSec: 1,
     perfectMs: [-120, 160],
     goodMs: [-280, 350],
@@ -70,6 +100,21 @@ export const LEVELS: Record<Level, LevelRules> = {
     doubleChance: 0.45,
     doublesOnBarStartsOnly: false,
     slideChance: 0.22,
+    slideSpeeds: { fast: 0, normal: 0.7, slow: 0.3 },
+    offbeatChance: 0,
+    approachSec: 1,
+    perfectMs: [-120, 160],
+    goodMs: [-280, 350],
+  },
+  4: {
+    name: 'Fast hands',
+    fastFromIntensity: 0.35,
+    sparseBelowIntensity: 0,
+    doubleChance: 0.4,
+    doublesOnBarStartsOnly: false,
+    slideChance: 0.3,
+    slideSpeeds: { fast: 0.4, normal: 0.3, slow: 0.3 },
+    offbeatChance: 0.6,
     approachSec: 1,
     perfectMs: [-120, 160],
     goodMs: [-280, 350],
@@ -96,6 +141,12 @@ export const CHART = {
   gestureChance: 0.35,
   /** A hand needs this long after the previous cue to change shape. */
   gestureGapSec: 0.55,
+  /**
+   * A hand needs this long to travel from one target to the next. The chart never asks a
+   * player's two hands for more: a cue that would is made smaller or left out.
+   * The two ends of a fast slide are one continuous move, so they are exempt.
+   */
+  handRestSec: 0.45,
   gesturePool: ['fist', 'open', 'point', 'peace'] satisfies GestureName[],
 } as const;
 
@@ -125,9 +176,11 @@ export const TIMING = {
   inputLatencyMs: 100,
   /** Extra delay between sound and picture. Tuned with , and . */
   avOffsetMs: 0,
-  /** The Short length ends at the first bar start at or after this time. */
+  /** The Short length ends at the first bar start this long after its start. */
   shortSec: 90,
   fadeSec: 2,
+  /** A round that starts inside the song fades in, so the music does not jump in. */
+  fadeInSec: 0.3,
   /** Time to get from the laptop to the play spot before the reach fit. */
   walkBackSec: 8,
   fitSec: 6,

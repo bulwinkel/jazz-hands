@@ -34,6 +34,8 @@ describe('the bot plays every cue Perfect', () => {
     [2, true],
     [3, false],
     [3, true],
+    [4, false],
+    [4, true],
   ];
 
   it.each(cases)('at level %i with shapes %s', (level, shapes) => {
@@ -51,6 +53,16 @@ describe('the bot plays every cue Perfect', () => {
     const { cues } = playThrough(synthetic(bpm, 90), 3, false);
     expect(cues.some((cue) => cue.kind === 'slide')).toBe(true);
     expect(cues.some((cue) => cue.kind === 'tap' && cue.cells.length === 2)).toBe(true);
+  });
+});
+
+describe('the bot at level 4', () => {
+  it('plays fast slides, slow slides and off-beat taps Perfect', () => {
+    const { cues, results } = playThrough(synthetic(100, 180), 4, false);
+    expect(cues.some((cue) => cue.speed === 'fast')).toBe(true);
+    expect(cues.some((cue) => cue.speed === 'slow')).toBe(true);
+    expect(cues.some((cue) => !Number.isInteger(cue.beatIndex))).toBe(true);
+    expect(results.every((result) => result === 'perfect')).toBe(true);
   });
 });
 

@@ -1,13 +1,16 @@
 import type { TrackerMode, TrackingFrame } from '../tracking/types';
 import { SongAudio } from './audio';
-import { generateChart } from './chart';
-import { DEFAULT_TRACKER, HANDS_UP_CELL, LEVELS, SONGS, TIMING } from './config';
-import { cellRect, defaultGrid, fitGrid, insideCell } from './geometry';
+import { cuesFrom, generateChart } from './chart';
+import { DEFAULT_TRACKER, HAND_MENU, HANDS_UP_CELL, LEVELS, MENU_TRACKER, SONGS, TIMING } from './config';
+import { buildRunReport, newObservation, newTrackingStats, observeFrame } from './diagnostics';
+import type { RunReport, TrackingStats } from './diagnostics';
+import { cellRect, containRect, defaultGrid, fitGrid, insideCell } from './geometry';
+import { newHandMenuState, stepHandMenu } from './handMenu';
 import { createInput } from './input';
 import type { GameInput, InputView } from './input';
 import { frameSongTime, judgeFrame, newCueState } from './judgment';
 import type { CueState } from './judgment';
-import { playLengthSec, validateManifest } from './manifest';
+import { playEndSec, playStartSec, validateManifest } from './manifest';
 import { createPlayers, summariseChart } from './player';
 import type { ChartSummary, PlayerRun } from './player';
 import { GameRenderer } from './render';
@@ -16,7 +19,7 @@ import { award, freshScore } from './scoring';
 import { parseSettings, STORAGE_KEY } from './settings';
 import type { Options } from './settings';
 import { mergeForSolo } from './solo';
-import type { Manifest, Phase, PlayerIndex, Score } from './types';
+import type { Manifest, Phase, PlayerIndex, Point, Score } from './types';
 import { GameUI } from './ui';
 
 /** Live state for automated checks, at `window.__dance`. Always two player entries. */
@@ -29,6 +32,8 @@ interface PublicState {
   phase: Phase;
   songTime: number;
   players: PublicPlayer[];
+  /** The diagnostics of the last finished run. */
+  report?: RunReport;
 }
 declare global {
   interface Window {
@@ -65,7 +70,16 @@ export class DanceGame {
   private session = 0;
 
   private audio?: SongAudio;
+  /** The camera, or a test input. Open for the whole visit once it has started. */
   private input?: GameInput;
+  /** Set while the input is starting, so two callers share one start. */
+  private inputOpening?: Promise<void>;
+  /** Why the input could not start, when it could not. */
+  private inputError?: unknown;
+  /** True when a pointing hand started the round: the players are then already at their spots. */
+  private startedByHand = false;
+  /** Where the hold of a pointing hand stands, in the menu and on the results screen. */
+  private handMenu = newHandMenuState();
   private manifest?: Manifest;
   private players: PlayerRun[] = [];
   /** The latest tracking frame, after the one-player merge. */
@@ -74,6 +88,10 @@ export class DanceGame {
   private startSec = 0;
   private endSec = 0;
   private paused = false;
+
+  /** Totals about tracking during the current run, and the report of the last finished run. */
+  private trackingStats: TrackingStats = newTrackingStats(0);
+  private report?: RunReport;
 
   /** Tracker picked with the M key. It lasts until the page reloads. */
   private pickedTracker?: TrackerMode;
@@ -109,14 +127,14 @@ export class DanceGame {
       player.hold = 0;
     }
     this.ui.pauseButton.hidden = phase !== 'play';
+    this.handMenu = newHandMenuState();
+    this.ui.showHands([], null, 0);
     document.body.dataset.phase = phase; // The stylesheet places messages by phase.
     this.expose();
   }
 
   private showMenu = (): void => {
     this.session++;
-    this.input?.dispose();
-    this.input = undefined;
     this.audio?.close();
     this.audio = undefined;
     this.players = [];
@@ -125,16 +143,65 @@ export class DanceGame {
     this.switchingTracker = false;
     this.ui.resumeButton.hidden = true;
     this.setPhase('menu');
-    this.ui.showMenu(this.options.settings, () => void this.start(), this.saveSettings);
+    this.ui.showMenu(this.options.settings, (byHand) => void this.start(byHand), this.saveSettings);
+    // The menu tracks hands, so players can point at its items. If tracking cannot start,
+    // the menu still works with the mouse and the keyboard.
+    void this.openInput()
+      .then(() => this.input?.setMode(MENU_TRACKER))
+      .catch(() => {});
   };
 
-  /** Loads the song, the camera and the hand models, then begins the reach fit. */
-  private async start(): Promise<void> {
+  /**
+   * Opens the camera (or a test input) and starts tracking. The input then stays open for the
+   * whole visit: the menu uses it for pointing, and a round starts with no camera delay.
+   * Resolves when tracking runs, and also when it could not start: `inputError` then says why.
+   */
+  private openInput(): Promise<void> {
+    if (this.input) return Promise.resolve();
+    this.inputOpening ??= this.connectInput().finally(() => {
+      this.inputOpening = undefined;
+    });
+    return this.inputOpening;
+  }
+
+  private async connectInput(): Promise<void> {
+    const input = createInput(this.options, MENU_TRACKER, this.ui.stage);
+    try {
+      await input.init();
+    } catch (error) {
+      input.dispose();
+      this.inputError = error;
+      return;
+    }
+    this.inputError = undefined;
+    this.input = input;
+    if (input.video) this.ui.stage.prepend(input.video);
+    input.start(this.inputView, this.onTrackingFrame, this.onTrackingFailure);
+  }
+
+  /** Makes sure tracking runs, with the tracker that suits the number of players. */
+  private async prepareTracking(): Promise<void> {
+    await this.openInput();
+    if (!this.input) throw this.inputError ?? new Error('The camera did not start.');
+    await this.input.setMode(this.trackerMode());
+  }
+
+  /** Tracking broke while running. In the menu that only ends pointing; in a round it ends the round. */
+  private onTrackingFailure = (error: unknown): void => {
+    this.input?.dispose();
+    this.input = undefined;
+    this.inputError = error;
+    if (this.phase !== 'menu') this.fail(error);
+  };
+
+  /** Loads the song and the tracker for this round, then begins the reach fit. */
+  private async start(byHand = false): Promise<void> {
     if (this.phase !== 'menu') return;
+    this.startedByHand = byHand;
     this.saveSettings();
     this.setPhase('loading');
     this.ui.hidePanel();
-    this.ui.showMessage('Getting the dance floor ready…', 'Loading the song, camera and hand models');
+    this.ui.showMessage('Getting the dance floor ready…', 'Loading the song and the hand models');
 
     const session = this.session;
     const { settings } = this.options;
@@ -145,22 +212,17 @@ export class DanceGame {
     // gesture, before the first await. If it fails, the "Click to start" button retries.
     void audio.resume().catch(() => {});
 
-    const input = createInput(this.options, this.trackerMode(), this.ui.stage);
-    this.input = input;
-
     try {
-      const [song, inputReady] = await Promise.allSettled([this.loadSong(audio), input.init()]);
-      if (session !== this.session) {
-        input.dispose(); // The player left for the menu while this loaded.
-        return;
-      }
+      const [song, tracking] = await Promise.allSettled([this.loadSong(audio), this.prepareTracking()]);
+      if (session !== this.session) return; // The player left for the menu while this loaded.
       if (song.status === 'rejected') throw song.reason;
-      if (inputReady.status === 'rejected') throw inputReady.reason;
+      if (tracking.status === 'rejected') throw tracking.reason;
 
       const manifest = song.value;
       this.manifest = manifest;
-      this.endSec = playLengthSec(manifest, settings.length);
-      this.startSec = this.options.startSec;
+      this.endSec = playEndSec(manifest, settings.length);
+      // The URL can start the song anywhere, for tests. Otherwise the song sets its own start.
+      this.startSec = this.options.startSec > 0 ? this.options.startSec : playStartSec(manifest, settings.length);
       if (this.startSec >= this.endSec) {
         throw new Error(`The start offset must be below the play length (${this.endSec.toFixed(1)} seconds).`);
       }
@@ -173,11 +235,8 @@ export class DanceGame {
           seed: this.options.seed,
           endSec: this.endSec,
         });
-        player.cues = chart.filter((cue) => cue.timeSec >= this.startSec);
+        player.cues = cuesFrom(chart, this.startSec);
       }
-
-      if (input.video) this.ui.stage.prepend(input.video);
-      input.start(this.inputView, this.onTrackingFrame, (error) => this.fail(error));
 
       if (audio.context.state === 'suspended') {
         this.askForClick('Your browser needs a click to turn on the music.');
@@ -224,6 +283,7 @@ export class DanceGame {
     for (const player of this.players) {
       player.score = freshScore();
       player.states = player.cues.map(newCueState);
+      player.observations = player.cues.map(newObservation);
     }
     this.ui.hidePanel();
     this.setPhase('countdown');
@@ -231,11 +291,15 @@ export class DanceGame {
 
   private beginPlay(): void {
     try {
-      this.audio?.play(this.startSec, this.endSec, this.options.settings.length === 'short');
+      // Fade out only when the round stops inside the song. A round that reaches the end of
+      // the song ends with the song's own ending.
+      const stopsInsideSong = this.manifest !== undefined && this.endSec < this.manifest.durationSec - 0.5;
+      this.audio?.play(this.startSec, this.endSec, stopsInsideSong);
     } catch (error) {
       this.fail(error);
       return;
     }
+    this.trackingStats = newTrackingStats(performance.now());
     this.setPhase('play');
     this.ui.pauseButton.textContent = 'Ⅱ Pause';
     this.ui.showMessage();
@@ -243,14 +307,61 @@ export class DanceGame {
 
   private finish(): void {
     this.judge(this.endSec + 1); // Closes every cue that is still open.
+    this.report = this.buildReport();
     this.audio?.stop();
     this.setPhase('results');
     this.ui.showResults(this.players, this.beginCountdown, this.showMenu);
+    if (import.meta.env.DEV) void this.saveReport(this.report);
+  }
+
+  private buildReport(): RunReport {
+    const { settings } = this.options;
+    return buildRunReport({
+      song: {
+        id: this.manifest?.id ?? '',
+        title: this.manifest?.title ?? '',
+        length: settings.length,
+        startSec: this.startSec,
+        endSec: this.endSec,
+      },
+      settings: {
+        playerCount: settings.playerCount,
+        input: this.options.input,
+        seed: this.options.seed,
+        inputLatencyMs: settings.inputLatencyMs,
+        avOffsetMs: settings.avOffsetMs,
+        audioOutputLatencyMs: Math.round((this.audio?.outputLatencySec ?? 0) * 1000),
+      },
+      trackerMode: this.input?.mode ?? this.trackerMode(),
+      trackerDelegate: this.input?.delegate ?? '',
+      players: this.players,
+      stats: this.trackingStats,
+      nowMs: performance.now(),
+    });
+  }
+
+  /**
+   * Dev server only: saves the run report to `test-results/` on disk and offers it for copying,
+   * so a run can be studied afterwards without reading numbers off the screen.
+   */
+  private async saveReport(report: RunReport): Promise<void> {
+    const json = JSON.stringify(report);
+    this.ui.showDiagnostics(json, 'Saving diagnostics…');
+    try {
+      const response = await fetch('/__run-diagnostics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: json,
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const saved: { path: string } = await response.json();
+      this.ui.showDiagnostics(json, `Diagnostics saved: ${saved.path}`);
+    } catch (error) {
+      this.ui.showDiagnostics(json, `Diagnostics not saved (${errorText(error)}). Copy them instead.`);
+    }
   }
 
   private fail(error: unknown): void {
-    this.input?.dispose();
-    this.input = undefined;
     this.audio?.stop();
     this.setPhase('error');
     this.ui.hidePanel();
@@ -273,15 +384,40 @@ export class DanceGame {
     const previous = this.frame;
     this.frame = frame;
 
+    if (this.phase === 'menu' || this.phase === 'results') this.pointAtPanel(frame);
+
     if (this.phase === 'fit') {
       this.collectReach(frame);
     } else if (this.phase === 'ready' || this.phase === 'results') {
       this.trackHandsUp(frame, previous);
     } else if (this.phase === 'play' && !this.paused && this.audio?.context.state === 'running') {
+      this.countFrame(frame);
       const { inputLatencyMs } = this.options.settings;
       this.judge(frameSongTime(this.songTime(), performance.now(), frame.timeMs, inputLatencyMs), frame);
     }
   };
+
+  /** Menu and results: a hand held on an item of the panel presses it. */
+  private pointAtPanel(frame: TrackingFrame): void {
+    const hands = frame.players
+      .flatMap((player) => player.hands)
+      .filter((hand) => hand.y <= HAND_MENU.lowestY)
+      .map((hand) => this.toScreen(hand));
+    const step = stepHandMenu(this.handMenu, this.ui.handTargets(), hands, frame.timeMs);
+    this.handMenu = step.state;
+    this.ui.showHands(hands, step.state.hoveredId, step.progress);
+    if (step.pressId) this.ui.pressHandTarget(step.pressId);
+  }
+
+  /** A point in the camera frame, as a position on the screen in pixels. */
+  private toScreen(point: Point): Point {
+    const bounds = this.ui.stage.getBoundingClientRect();
+    const frame = containRect(bounds.width, bounds.height, this.videoAspect());
+    return {
+      x: bounds.left + frame.x + point.x * frame.width,
+      y: bounds.top + frame.y + point.y * frame.height,
+    };
+  }
 
   /** Reach fit: grows each player's grid around the hand positions seen so far. */
   private collectReach(frame: TrackingFrame): void {
@@ -310,6 +446,16 @@ export class DanceGame {
     if (this.players.every((player) => player.hold >= 1)) this.beginCountdown();
   }
 
+  private countFrame(frame: TrackingFrame): void {
+    const stats = this.trackingStats;
+    stats.frames++;
+    stats.inferenceMs.push(frame.inferenceMs);
+    for (const player of this.players) {
+      const handCount = Math.min(2, frame.players[player.index].hands.length);
+      stats.handCounts[player.index][handCount]++;
+    }
+  }
+
   /** Judges every open cue at `timeSec`. With no frame, it only closes cues whose time has passed. */
   private judge(timeSec: number, frame?: TrackingFrame): void {
     for (const player of this.players) {
@@ -318,6 +464,7 @@ export class DanceGame {
       for (let i = 0; i < player.states.length; i++) {
         const state = player.states[i];
         if (state.cue.timeSec - opensAheadSec > timeSec) break; // This cue and all later ones are not open yet.
+        if (frame) observeFrame(player.observations[i], state.cue, player.level, player.grid, hands, timeSec);
         if (state.result) continue;
         const next = judgeFrame(state, player.level, player.grid, hands, timeSec);
         player.states[i] = next;
@@ -402,10 +549,7 @@ export class DanceGame {
       }
       this.ui.showMessage('Changing hand tracker…');
       await input.setMode(next);
-      if (session !== this.session) {
-        input.dispose(); // Releases the tracker that loaded after the input was disposed.
-        return;
-      }
+      if (session !== this.session) return;
       this.pickedTracker = next;
       this.ui.showMessage();
       if (wasPlaying) {
@@ -492,7 +636,6 @@ export class DanceGame {
     if (this.phase === 'results') this.ui.updateHold(this.players);
 
     this.feedback = this.feedback.filter((item) => nowMs - item.atMs < TIMING.feedbackSec * 1000);
-    const video = this.input?.video;
     this.renderer.draw(
       {
         phase: this.phase,
@@ -500,10 +643,11 @@ export class DanceGame {
         frame: this.frame,
         songTimeSec: this.songTime(),
         manifest: this.manifest,
+        startSec: this.startSec,
         endSec: this.endSec,
         feedback: this.feedback,
       },
-      video ? video.videoWidth / video.videoHeight : 16 / 9,
+      this.videoAspect(),
     );
     this.updateDebug();
     this.expose();
@@ -565,13 +709,22 @@ export class DanceGame {
     return this.phase === 'results' ? this.endSec : this.startSec;
   }
 
+  /** Width over height of the camera picture. Test inputs have no camera and use 16:9. */
+  private videoAspect(): number {
+    const video = this.input?.video;
+    return video && video.videoHeight > 0 ? video.videoWidth / video.videoHeight : 16 / 9;
+  }
+
   private trackerMode(): TrackerMode {
     return this.pickedTracker ?? this.options.tracker ?? DEFAULT_TRACKER[this.options.settings.playerCount];
   }
 
-  /** The test inputs need no walk from the laptop to the play spot. */
+  /**
+   * Time to walk from the laptop to the play spot. Not needed when a pointing hand started
+   * the round, and not for the test inputs.
+   */
   private walkBackSec(): number {
-    return this.options.input === 'camera' ? TIMING.walkBackSec : 0;
+    return this.options.input === 'camera' && !this.startedByHand ? TIMING.walkBackSec : 0;
   }
 
   private inputView = (): InputView => ({
@@ -593,6 +746,7 @@ export class DanceGame {
     window.__dance = {
       phase: this.phase,
       songTime: this.songTime(),
+      report: this.report,
       players: PLAYER_SLOTS.map((index) => {
         const player = this.players.find((p) => p.index === index);
         if (!player) return { ...freshScore(), level: 0, chart: summariseChart([]) };
