@@ -1,5 +1,7 @@
 import { carouselOffset, stepRing } from './carousel';
 import { HAND_MENU, LEVELS, PLAYER_COLORS, SONGS } from './config';
+import { CUE_STYLE_NAMES, nextCueStyle, SHRINK_START_SCALE } from './cueStyle';
+import type { CueStyle } from './cueStyle';
 import type { HandTarget, MenuHand } from './handMenu';
 import type { PlayerRun } from './player';
 import { sizeText } from './recording';
@@ -9,6 +11,8 @@ import type { Settings } from './settings';
 import type { Level, PlayerCount, PlayerIndex, SongLength } from './types';
 
 const ALL_LEVELS: Level[] = [1, 2, 3, 4, 5];
+/** A short note stays on screen this long. */
+const TOAST_MS = 1600;
 /** The song carousel shows this many cards on each side of the chosen song. */
 const CAROUSEL_REACH = 2;
 
@@ -31,6 +35,7 @@ const SHELL_HTML = `
   <button id="resume" hidden>Click to start</button>
   <button id="pause" hidden aria-label="Pause game">Ⅱ Pause</button>
   <div id="rec" hidden aria-label="Recording">● REC</div>
+  <div id="toast" hidden role="status"></div>
   <div id="player" hidden>
     <video playsinline controls></video>
     <div class="player-bar">
@@ -86,6 +91,7 @@ const MENU_SWITCHES_HTML = `
     <button type="button" id="previews-switch" data-hand="previews"></button>
     <button type="button" id="hands-switch" data-hand="hand-control"></button>
     <button type="button" id="record-switch" data-hand="record"></button>
+    <button type="button" id="cues-switch" data-hand="cues"></button>
   </div>`;
 
 
@@ -219,6 +225,8 @@ export class GameUI {
   private readonly cursors: HTMLElement;
   private readonly messageBox: HTMLElement;
   private readonly recordingMark: HTMLElement;
+  private readonly toast: HTMLElement;
+  private toastTimer = 0;
   private readonly messageTitle: HTMLElement;
   private readonly messageDetail: HTMLElement;
   private readonly fitObserver = new ResizeObserver(() => this.fitPanel());
@@ -242,6 +250,7 @@ export class GameUI {
     this.cursors = find(root, '#cursors');
     this.messageBox = find(root, '#message');
     this.recordingMark = find(root, '#rec');
+    this.toast = find(root, '#toast');
     this.messageTitle = find(this.messageBox, 'h1');
     this.messageDetail = find(this.messageBox, 'p');
     this.debug = find(root, '#debug');
@@ -267,6 +276,24 @@ export class GameUI {
   hidePanel(): void {
     this.panel.hidden = true;
     this.stepCarousel = undefined;
+  }
+
+  /**
+   * Makes the page follow the cue style: the fist hold on a menu item shows its progress with
+   * the same mark as a cue of a round (see the stylesheet), and the menu's switch names the style.
+   */
+  showCueStyle(style: CueStyle): void {
+    document.body.dataset.cues = style;
+    const button = this.panel.querySelector<HTMLElement>('#cues-switch');
+    if (button) button.textContent = `◎ Cues: ${CUE_STYLE_NAMES[style].toLowerCase()}`;
+  }
+
+  /** Shows a short note at the top of the screen, which goes away by itself. */
+  showToast(text: string): void {
+    this.toast.textContent = text;
+    this.toast.hidden = false;
+    window.clearTimeout(this.toastTimer);
+    this.toastTimer = window.setTimeout(() => (this.toast.hidden = true), TOAST_MS);
   }
 
   /** The large message on screen now, or undefined when none shows. */
@@ -451,6 +478,12 @@ export class GameUI {
     bindSwitch('#previews-switch', 'previews', 'Previews', ['🔊', '🔇']);
     bindSwitch('#hands-switch', 'handControl', 'Hand control', ['✋', '🚫']);
     bindSwitch('#record-switch', 'record', 'Recording', ['🔴', '⚪']);
+    // The cue style has more than two values: each choice steps to the next one.
+    find(this.panel, '#cues-switch').addEventListener('click', () => {
+      settings.cueStyle = nextCueStyle(settings.cueStyle);
+      onChange();
+    });
+    this.showCueStyle(settings.cueStyle);
 
     // The songs are a carousel of covers: the chosen song in the middle, its neighbours beside
     // it, the rest out of sight. It takes the same room for six songs as for sixty.
@@ -609,8 +642,12 @@ export class GameUI {
       if (element.dataset.hand !== hoveredId) element.classList.remove('hand-hover');
     }
     const hovered = hoveredId ? this.root.querySelector<HTMLElement>(`[data-hand="${hoveredId}"]`) : null;
-    hovered?.classList.add('hand-hover');
-    hovered?.style.setProperty('--hold', progress.toFixed(3));
+    if (!hovered) return;
+    hovered.classList.add('hand-hover');
+    hovered.style.setProperty('--hold', progress.toFixed(3));
+    // The shrink mark starts this far outside the item: as far as a cue's outline starts
+    // outside its cell, measured on the item's height.
+    hovered.style.setProperty('--outset', `${(hovered.offsetHeight * (SHRINK_START_SCALE - 1)) / 2}px`);
   }
 
   /**

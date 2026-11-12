@@ -22,6 +22,7 @@ describe('kept settings', () => {
       previews: false,
       handControl: false,
       record: true,
+      cueStyle: 'grow',
     };
     expect(parseSettings(kept, '').settings).toEqual(kept);
   });
@@ -113,6 +114,14 @@ describe('URL parameters', () => {
     expect(parseSettings({ record: 'yes' }, '').settings.record).toBe(false);
     expect(parseSettings(null, '?record=1').settings.record).toBe(true);
     expect(parseSettings({ record: true }, '?record=0').settings.record).toBe(false);
+  });
+
+  it('keep the shrink cue style until a player picks another', () => {
+    expect(parseSettings(null, '').settings.cueStyle).toBe('shrink');
+    expect(parseSettings({ cueStyle: 'huge' }, '').settings.cueStyle).toBe('shrink');
+    expect(parseSettings(null, '?cues=grow').settings.cueStyle).toBe('grow');
+    expect(parseSettings({ cueStyle: 'grow' }, '?cues=shrink').settings.cueStyle).toBe('shrink');
+    expect(parseSettings({ cueStyle: 'grow' }, '?cues=other').settings.cueStyle).toBe('grow');
   });
 
   it('set the one-off options', () => {

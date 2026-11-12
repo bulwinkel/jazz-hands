@@ -235,14 +235,31 @@ body[data-phase="countdown"] #message h1{font-size:clamp(140px,20vw,300px);line-
   outline-offset: 4px;
   border-radius: 16px;
 }
+/* The mark of the fist hold. It works as the timing mark of a cue in a round does (see
+   cueStyle.ts), so the menu teaches how a round reads: the item is chosen when the mark is
+   exactly the size of the item, and its colour has reached yellow.
+   `--hold` goes from 0 to 1, and `--outset` is a length; ui.ts sets both. */
 .hand-hover::after {
+  --mark: color-mix(in srgb, #fde047 calc(var(--hold, 0) * 100%), #ffffff);
   content: "";
   position: absolute;
-  inset: 0 auto 0 0;
-  width: calc(var(--hold, 0) * 100%);
-  border-radius: 14px;
-  background: #fde04766;
   pointer-events: none;
+  /* Nothing shows under an open hand: the mark starts with the fist. */
+  opacity: clamp(0, calc(var(--hold, 0) * 1000), 1);
+}
+/* Shrink: an outline starts well outside the item and meets its edge. */
+body[data-cues="shrink"] .hand-hover::after {
+  inset: calc(var(--outset, 40px) * (var(--hold, 0) - 1));
+  border: 4px solid var(--mark);
+  border-radius: 18px;
+}
+/* Grow: a block starts small in the middle of the item and fills it. */
+body[data-cues="grow"] .hand-hover::after {
+  inset: 0;
+  border: 3px solid var(--mark);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--mark) 50%, transparent);
+  transform: scale(calc(0.15 + 0.85 * var(--hold, 0)));
 }
 
 /* The song carousel: the chosen song's cover in the middle, two neighbours on each side,
@@ -367,6 +384,10 @@ body[data-phase="countdown"] #message h1{font-size:clamp(140px,20vw,300px);line-
   box-shadow: 0 0 34px #ffffffb3;
 }
 .primary.hand-hover::after {
+  --mark: #ffffff;
+}
+body[data-cues="grow"] .primary.hand-hover::after {
+  border-color: #181627;
   background: #18162766;
 }
 
@@ -474,15 +495,16 @@ body[data-phase="countdown"] #message h1{font-size:clamp(140px,20vw,300px);line-
   aspect-ratio: 16 / 9;
   margin: 0 auto 12px;
   padding: 0;
-  overflow: hidden;
   border: 3px solid #ffffff35;
   border-radius: 14px;
   background: #000;
 }
+/* The picture has the round corners, not the button: the mark of a fist hold may reach outside the button. */
 .preview video {
   display: block;
   width: 100%;
   height: 100%;
+  border-radius: 11px;
   object-fit: cover;
   pointer-events: none;
 }
@@ -539,4 +561,21 @@ body[data-phase="countdown"] #message h1{font-size:clamp(140px,20vw,300px);line-
 .player-bar [aria-pressed="true"] {
   border-color: #fde047;
   color: #fde047;
+}
+
+/* A short note at the top of the screen, for example the name of the cue style after the V key. */
+#toast {
+  position: absolute;
+  z-index: 7;
+  top: 12%;
+  left: 50%;
+  padding: 10px 22px;
+  border-radius: 14px;
+  background: #0b1024e6;
+  border: 2px solid #fde047;
+  color: #fde047;
+  font-size: 24px;
+  font-weight: 800;
+  transform: translateX(-50%);
+  pointer-events: none;
 }

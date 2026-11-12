@@ -1,6 +1,7 @@
 import type { FaceExpression, FaceRegions, TrackerMode, TrackingFrame } from '../tracking/types';
 import { SongAudio } from './audio';
 import { cuesFrom, generateChart } from './chart';
+import { CUE_STYLE_NAMES, nextCueStyle } from './cueStyle';
 import {
   DEFAULT_TRACKER,
   FACE_EMOJI,
@@ -170,6 +171,7 @@ export class DanceGame {
     // A choice made by hand is a click made by the page, which the browser marks as not trusted.
     this.ui.refitButton.addEventListener('click', (event) => this.refit(!event.isTrusted));
     this.ui.onPlayerChange = this.onPlayerChange;
+    this.ui.showCueStyle(this.options.settings.cueStyle);
     window.addEventListener('keydown', this.onKey);
     window.addEventListener('pagehide', () => this.dispose(), { once: true });
 
@@ -220,6 +222,7 @@ export class DanceGame {
   /** A choice in the menu changed. */
   private onMenuChange = (): void => {
     this.saveSettings();
+    this.ui.showCueStyle(this.options.settings.cueStyle);
     this.previewChosenSong();
     this.syncMenuInput();
   };
@@ -935,6 +938,13 @@ export class DanceGame {
       case 'c':
         this.refit();
         return;
+      case 'v':
+        // Steps to the next cue style, in the menu and in a round, to compare them.
+        settings.cueStyle = nextCueStyle(settings.cueStyle);
+        this.saveSettings();
+        this.ui.showCueStyle(settings.cueStyle);
+        this.ui.showToast(`Cues: ${CUE_STYLE_NAMES[settings.cueStyle].toLowerCase()}`);
+        return;
       case 'arrowleft':
       case 'arrowright':
         // In the menu, the arrow keys step through the songs. A focused control keeps its own arrows.
@@ -999,6 +1009,7 @@ export class DanceGame {
         endSec: this.endSec,
         feedback: this.feedback,
         recording: this.recorder?.active,
+        cueStyle: this.options.settings.cueStyle,
       },
       this.videoAspect(),
     );

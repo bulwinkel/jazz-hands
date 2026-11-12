@@ -1,5 +1,7 @@
 import type { GestureName, TrackingFrame } from '../tracking/types';
 import { cueColor, withAlpha } from './colors';
+import { markScale } from './cueStyle';
+import type { CueStyle } from './cueStyle';
 import { FACE_EMOJI, GESTURE_EMOJI, HANDS_UP_CELL, LEVELS, PLAYER_COLORS, TIMING } from './config';
 import { openFaceCue } from './faceJudgment';
 import { cellRect, containRect } from './geometry';
@@ -29,6 +31,8 @@ export interface RenderView {
   feedback: readonly Feedback[];
   /** True while the round is recorded as video. The key hints then stay out of the picture. */
   recording?: boolean;
+  /** How a cue shows when its beat comes. Unset means the shrink style. */
+  cueStyle?: CueStyle;
 }
 
 const HIDDEN_PHASES: readonly Phase[] = ['menu', 'loading', 'error'];
@@ -36,8 +40,6 @@ const RATING_COLORS: Record<Rating, string> = { perfect: '#fde047', good: '#86ef
 const WHITE = '#ffffff';
 /** The grid border glows for this long after each beat. */
 const BEAT_PULSE_SEC = 0.22;
-/** A cue's closing outline starts this many times larger than its cell. */
-const OUTLINE_START_SCALE = 2.2;
 /** Arrowheads on a slide's path, so a player sees its speed before it starts. */
 const SLIDE_CHEVRONS: Record<SlideSpeed, number> = { slow: 1, normal: 2, fast: 3 };
 /** A face cue's emoji, as a share of the shorter side of a grid cell. Large, to read from 2.5 m. */
@@ -94,6 +96,8 @@ export class GameRenderer {
   private pixelRatio = 0;
   /** Base text size, scaled with the screen so it reads from across a room. */
   private textSize = 24;
+  /** The cue style of the frame that is drawn now. */
+  private cueStyle: CueStyle = 'shrink';
 
   constructor(canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');
@@ -105,6 +109,7 @@ export class GameRenderer {
   draw(view: RenderView, videoAspect: number): void {
     this.resize(videoAspect);
     if (HIDDEN_PHASES.includes(view.phase)) return;
+    this.cueStyle = view.cueStyle ?? 'shrink';
 
     const pulse = beatPulse(view.manifest, view.songTimeSec);
     for (const player of view.players) {
@@ -177,11 +182,15 @@ export class GameRenderer {
       const lastDueSec = state.cue.times[state.cue.times.length - 1];
       return nowSec >= state.cue.timeSec - approachSec && nowSec <= lastDueSec + goodMs[1] / 1000;
     });
-    // Draw later cues first, faint. The next cue due goes on top at full strength, and so does
-    // every cue due while it still runs: a tap for the other hand during a slow slide belongs
-    // to the same moment.
+    // The next cue due is drawn at full strength, and so is every cue due while it still runs:
+    // a tap for the other hand during a slow slide belongs to the same moment. Later cues are faint.
     const currentEndsSec = onScreen.length > 0 ? Math.max(...onScreen[0].cue.times) : 0;
-    for (let i = onScreen.length - 1; i >= 0; i--) {
+    // Shrink style: later cues first, so the next cue is on top.
+    // Grow style: earlier cues first. Two cues for one cell then nest: the later, smaller block
+    // lies on the earlier, larger one, and both show.
+    const order = onScreen.map((_, i) => i);
+    if (this.cueStyle === 'shrink') order.reverse();
+    for (const i of order) {
       const isNext = i === 0 || onScreen[i].cue.timeSec <= currentEndsSec;
       if (onScreen[i].cue.kind === 'slide') this.drawSlide(onScreen[i], player, nowSec, color, isNext);
       else this.drawTap(onScreen[i], player, nowSec, color, isNext);
@@ -200,8 +209,7 @@ export class GameRenderer {
       this.line(centreOf(rects[0]), centreOf(rects[1]), withAlpha(color, isNext ? 0.6 : 0.25), 5);
     }
     rects.forEach((rect, k) => {
-      this.drawTargetCell(rect, color, isNext, marks[k] === 'perfect');
-      this.drawClosingOutline(rect, remaining, color, isNext);
+      this.drawCueCell(rect, remaining, color, isNext, marks[k] === 'perfect');
       this.drawCellMarker(rect, color, cue.gesture);
     });
   }
@@ -229,20 +237,27 @@ export class GameRenderer {
     const chevrons = SLIDE_CHEVRONS[cue.speed ?? 'normal'];
     this.drawChevrons(path[0], path[last], chevrons, cellSize * 0.24, withAlpha(WHITE, 0.8 * strength));
 
-    // The first cell works like a tap: its outline closes when the slide starts.
-    this.drawTargetCell(rects[0], colors[0], isNext, marks[0] === 'perfect');
-    this.drawClosingOutline(rects[0], (startSec - nowSec) / approachSec, colors[0], isNext);
+    // The first cell works like a tap: its timing mark is complete when the slide starts.
+    const remainingOf = (k: number): number => (cue.times[k] - nowSec) / approachSec;
+    this.drawCueCell(rects[0], remainingOf(0), colors[0], isNext, marks[0] === 'perfect');
 
-    // A slow slide passes through a middle cell, which is judged on its own beat.
-    for (let k = 1; k < last; k++) this.drawTargetCell(rects[k], colors[k], false, marks[k] === 'perfect');
-
-    // The last cell lights up as the dot arrives.
-    if (marks[last] === 'perfect') {
-      this.drawTargetCell(rects[last], colors[last], isNext, true);
+    if (this.cueStyle === 'grow') {
+      // Every further cell has its own block, which fills the cell when the dot is due in it.
+      for (let k = 1; k <= last; k++) {
+        this.drawCueCell(rects[k], remainingOf(k), colors[k], isNext && k === last, marks[k] === 'perfect');
+      }
     } else {
-      const border = withAlpha(colors[last], (0.5 + 0.5 * progress) * strength);
-      const fill = withAlpha(colors[last], (0.1 + 0.3 * progress) * strength);
-      this.outline(rects[last], border, 2 + 3 * progress, fill);
+      // A slow slide passes through a middle cell, which is judged on its own beat.
+      for (let k = 1; k < last; k++) this.drawTargetCell(rects[k], colors[k], false, marks[k] === 'perfect');
+
+      // The last cell lights up as the dot arrives.
+      if (marks[last] === 'perfect') {
+        this.drawTargetCell(rects[last], colors[last], isNext, true);
+      } else {
+        const border = withAlpha(colors[last], (0.5 + 0.5 * progress) * strength);
+        const fill = withAlpha(colors[last], (0.1 + 0.3 * progress) * strength);
+        this.outline(rects[last], border, 2 + 3 * progress, fill);
+      }
     }
 
     // The dot to follow. It waits on the first cell, then is in each cell at that cell's due time.
@@ -265,6 +280,26 @@ export class GameRenderer {
     ctx.restore();
   }
 
+  /**
+   * One cell of a cue, with the mark that shows when to be in it. `remaining` is the share of
+   * the approach time still to go.
+   * Shrink style: the cell lights up, and an outline shrinks onto its border.
+   * Grow style: the cell has a thin border, and a block grows from its middle until it fills it.
+   */
+  private drawCueCell(rect: Rect, remaining: number, color: string, isNext: boolean, done: boolean): void {
+    if (this.cueStyle === 'shrink') {
+      this.drawTargetCell(rect, color, isNext, done);
+      this.drawClosingOutline(rect, remaining, color, isNext);
+    } else if (done) {
+      this.drawTargetCell(rect, color, isNext, true);
+    } else {
+      this.outline(rect, withAlpha(color, isNext ? 0.7 : 0.35), 2);
+      const block = scaleAboutCentre(rect, markScale('grow', remaining));
+      // Solid enough that a small block shows on the larger block of an earlier cue.
+      this.outline(block, color, isNext ? 3 : 2, withAlpha(color, isNext ? 0.62 : 0.4));
+    }
+  }
+
   /** A cell the player must reach. A cell that is already hit fills in, so the hit is visible. */
   private drawTargetCell(rect: Rect, color: string, isNext: boolean, done: boolean): void {
     const fillAlpha = done ? 0.72 : isNext ? 0.31 : 0.13;
@@ -273,7 +308,7 @@ export class GameRenderer {
 
   /** The timing cue: an outline that shrinks onto the cell border and meets it on the beat. */
   private drawClosingOutline(rect: Rect, remaining: number, color: string, isNext: boolean): void {
-    const scale = 1 + (OUTLINE_START_SCALE - 1) * clamp01(remaining);
+    const scale = markScale('shrink', remaining);
     this.ctx.save();
     this.ctx.globalAlpha = isNext ? 0.9 : 0.35;
     this.outline(scaleAboutCentre(rect, scale), color, 4);
@@ -287,6 +322,8 @@ export class GameRenderer {
       this.text(GESTURE_EMOJI[gesture] ?? '✋', centre.x, centre.y, Math.min(rect.width, rect.height) * 0.5);
       return;
     }
+    // In the grow style the block itself marks the middle of the cell.
+    if (this.cueStyle === 'grow') return;
     this.ctx.fillStyle = color;
     this.ctx.beginPath();
     this.ctx.arc(centre.x, centre.y, Math.max(5, this.textSize * 0.18), 0, Math.PI * 2);
@@ -330,7 +367,7 @@ export class GameRenderer {
     const radius = emojiSize * FACE_RING_SCALE;
     const remaining = (state.cue.timeSec - nowSec) / LEVELS[player.level].approachSec;
     const color = cueColor(playerColor, remaining);
-    const closingScale = 1 + (OUTLINE_START_SCALE - 1) * clamp01(remaining);
+    const markRadius = radius * markScale(this.cueStyle, remaining);
     const ctx = this.ctx;
 
     ctx.save();
@@ -341,7 +378,7 @@ export class GameRenderer {
     this.ring(centre, radius, color, 4);
     ctx.save();
     ctx.globalAlpha = 0.9;
-    this.ring(centre, radius * closingScale, color, 4);
+    this.ring(centre, markRadius, color, 4);
     ctx.restore();
   }
 

@@ -1,5 +1,7 @@
 import type { TrackerMode } from '../tracking/types';
 import { DEFAULT_SEED, SONGS, TIMING } from './config';
+import { isCueStyle } from './cueStyle';
+import type { CueStyle } from './cueStyle';
 import type { Level, PlayerCount, SongLength } from './types';
 
 /** Choices kept between visits. */
@@ -21,6 +23,8 @@ export interface Settings {
   handControl: boolean;
   /** Whether each round is recorded as video. */
   record: boolean;
+  /** How a cue shows when its beat comes. */
+  cueStyle: CueStyle;
 }
 
 export type InputSource = 'camera' | 'mouse' | 'bot';
@@ -55,6 +59,7 @@ export function defaultSettings(): Settings {
     previews: true,
     handControl: true,
     record: false,
+    cueStyle: 'shrink',
   };
 }
 
@@ -99,6 +104,7 @@ function readStored(stored: unknown): Settings {
   if (typeof saved.previews === 'boolean') settings.previews = saved.previews;
   if (typeof saved.handControl === 'boolean') settings.handControl = saved.handControl;
   if (typeof saved.record === 'boolean') settings.record = saved.record;
+  if (isCueStyle(saved.cueStyle)) settings.cueStyle = saved.cueStyle;
   settings.inputLatencyMs = finiteOr(saved.inputLatencyMs, settings.inputLatencyMs, -1000, 2000);
   settings.avOffsetMs = finiteOr(saved.avOffsetMs, settings.avOffsetMs, -2000, 2000);
   return settings;
@@ -108,6 +114,7 @@ function readStored(stored: unknown): Settings {
  * URL parameters, all optional:
  *   players=1|2   p0, p1=1..5   shapes0, shapes1=1|0   faces0, faces1=1|0
  *   length=short|full   song=<index from 0>   previews=1|0   hands=1|0   record=1|0
+ *   cues=shrink|grow
  *   tracker=hands-full|hands-split|pose   input=camera|mouse|bot
  *   start=<seconds>   autostart=1   seed=<integer>   botAccuracy=<0..1>
  */
@@ -132,6 +139,8 @@ export function parseSettings(stored: unknown, query: string): Options {
   if (params.has('previews')) settings.previews = params.get('previews') === '1';
   if (params.has('hands')) settings.handControl = params.get('hands') === '1';
   if (params.has('record')) settings.record = params.get('record') === '1';
+  const cues = params.get('cues');
+  if (isCueStyle(cues)) settings.cueStyle = cues;
 
   const tracker = params.get('tracker');
   const input = params.get('input');
