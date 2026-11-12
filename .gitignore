@@ -27,3 +27,6 @@ dist-ssr
 public/models
 public/vendor
 test-results/
+
+# Created by `npm run setup-songs`
+tools/songs/.venv

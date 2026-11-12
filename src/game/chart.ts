@@ -1,5 +1,6 @@
 import { CHART, LEVELS } from './config';
 import { isBarStart, leadInEndSec, medianBeatInterval, tailStartSec } from './manifest';
+import type { GestureName } from '../tracking/types';
 import type { Cue, Level, Manifest, SlideSpeed } from './types';
 
 export interface ChartOptions {
@@ -109,6 +110,31 @@ function pickSlideSpeed(shares: Record<SlideSpeed, number>, roll: number, slowPo
 const SLIDE_INTERVALS: Record<SlideSpeed, number> = { fast: 1, normal: 1, slow: 2 };
 
 /**
+ * The hand shape for every beat, for a level that asks for a shape on every cue.
+ * One shape lasts a few seconds, from a bar start to a later bar start, and the next one is
+ * always different. A new shape on every cue could not be read at this speed.
+ */
+export function phraseShapes(manifest: Manifest, seed: number): GestureName[] {
+  const random = seededRandom(seed ^ 0x5a9e);
+  const pool: readonly GestureName[] = CHART.gesturePool;
+  const pickOther = (current?: GestureName): GestureName => {
+    const others = pool.filter((shape) => shape !== current);
+    return others[Math.floor(random() * others.length)];
+  };
+
+  let shape = pickOther();
+  let phraseStartedSec = manifest.beats[0];
+  return manifest.beats.map((timeSec, beat) => {
+    const longEnough = timeSec - phraseStartedSec >= CHART.shapePhraseSec - EPSILON;
+    if (isBarStart(manifest, beat) && longEnough) {
+      shape = pickOther(shape);
+      phraseStartedSec = timeSec;
+    }
+    return shape;
+  });
+}
+
+/**
  * The cues of a round that starts partway into the song. Players need a moment to find the
  * beat, so cues in the first seconds after the start are left out.
  */
@@ -123,6 +149,9 @@ export function generateChart(manifest: Manifest, options: ChartOptions): Cue[] 
   const { beats, intensity } = manifest;
   const master = masterCells(manifest, options.seed);
   const random = seededRandom(options.seed ^ 0xa519);
+  // Newer rules roll on a stream of their own, so adding them did not change older charts.
+  const companionRandom = seededRandom(options.seed ^ 0xc0de);
+  const phraseShape = rules.shapeOnEveryCue ? phraseShapes(manifest, options.seed) : undefined;
   const beatIntervalSec = medianBeatInterval(manifest);
   const firstCueSec = leadInEndSec(manifest);
   const tailSec = tailStartSec(manifest, options.endSec);
@@ -169,6 +198,8 @@ export function generateChart(manifest: Manifest, options: ChartOptions): Cue[] 
       shape: random(),
       offbeat: random(),
       offbeatCell: random(),
+      companion: companionRandom(),
+      companionCell: companionRandom(),
     };
     const stride = strideAt(beat);
     // Skip beats that hold no cue, beats a slide still occupies, and a beat that would come
@@ -222,6 +253,7 @@ export function generateChart(manifest: Manifest, options: ChartOptions): Cue[] 
         cue.gesture = CHART.gesturePool[Math.floor(roll.shape * CHART.gesturePool.length)];
       }
     }
+    if (phraseShape) cue.gesture = phraseShape[beat];
     cues.push(cue);
     const intervalsTaken = cue.kind === 'slide' && cue.speed ? SLIDE_INTERVALS[cue.speed] : 0;
     previousEndBeat = beat + intervalsTaken * stride;
@@ -229,6 +261,16 @@ export function generateChart(manifest: Manifest, options: ChartOptions): Cue[] 
     // A slide is one hand's move from its first cell to its last. A tap uses one hand per cell.
     if (cue.kind === 'slide') useHand(previousEndSec);
     else cue.cells.forEach(() => useHand(timeSec));
+
+    // A slow slide leaves the other hand free. That hand gets a tap on the slide's middle beat,
+    // in a cell the slide does not pass through.
+    if (cue.speed === 'slow' && roll.companion < rules.companionTapChance && freeHandsAt(cue.times[1]) > 0) {
+      const midSec = cue.times[1];
+      const cell = pickWeighted(CHART.cellWeights, roll.companionCell, (c) => !cue.cells.includes(c));
+      cues.push({ kind: 'tap', timeSec: midSec, beatIndex: nextCueBeat, cells: [cell], times: [midSec] });
+      if (phraseShape) cues[cues.length - 1].gesture = phraseShape[beat];
+      useHand(midSec);
+    }
 
     // An off-beat tap: one extra cell halfway to the next cue beat. It follows taps only,
     // it needs a hand that is free by then, and it avoids the cells just used and the cell
@@ -240,6 +282,7 @@ export function generateChart(manifest: Manifest, options: ChartOptions): Cue[] 
       const taken = [...cue.cells, master[nextCueBeat]];
       const cell = pickWeighted(CHART.cellWeights, roll.offbeatCell, (c) => !taken.includes(c));
       cues.push({ kind: 'tap', timeSec: offbeatSec, beatIndex: beat + stride / 2, cells: [cell], times: [offbeatSec] });
+      if (phraseShape) cues[cues.length - 1].gesture = phraseShape[beat];
       previousEndSec = offbeatSec;
       useHand(offbeatSec);
     }

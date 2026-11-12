@@ -5,7 +5,7 @@ import { judgeFaceFrame, needsFace, newFaceCueState, openFaceCue } from './faceJ
 import type { FaceCueState } from './faceJudgment';
 import type { FaceCue, Level, Rating } from './types';
 
-const ALL_LEVELS: Level[] = [1, 2, 3, 4];
+const ALL_LEVELS: Level[] = [1, 2, 3, 4, 5];
 const ALL_EXPRESSIONS: FaceExpression[] = ['smile', 'openMouth', 'pucker'];
 
 function face(expression: FaceExpression, strength = 1): TrackedFace {

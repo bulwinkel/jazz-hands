@@ -5,7 +5,7 @@ import { accuracy, stars } from './scoring';
 import type { Settings } from './settings';
 import type { Level, PlayerCount, PlayerIndex, SongLength } from './types';
 
-const ALL_LEVELS: Level[] = [1, 2, 3, 4];
+const ALL_LEVELS: Level[] = [1, 2, 3, 4, 5];
 
 const SHELL_HTML = `
   <main id="stage" aria-label="Dance game">
@@ -64,22 +64,6 @@ function bindRadios(root: ParentNode, name: string, current: string, onPick: (va
   }
 }
 
-/** Ties a checkbox to one player's entry in a pair of switches. */
-function bindSwitch(
-  root: ParentNode,
-  selector: string,
-  switches: [boolean, boolean],
-  player: PlayerIndex,
-  onChange: () => void,
-): void {
-  const input = find<HTMLInputElement>(root, selector);
-  input.checked = switches[player];
-  input.addEventListener('change', () => {
-    switches[player] = input.checked;
-    onChange();
-  });
-}
-
 /** One player's choices: level, hand shapes and faces. */
 function playerCard(player: PlayerIndex, settings: Settings, onChange: () => void): HTMLElement {
   const side = player === 0 ? 'Left' : 'Right';
@@ -102,12 +86,30 @@ function playerCard(player: PlayerIndex, settings: Settings, onChange: () => voi
       <label class="faces" data-hand="faces-${player}"><input type="checkbox"><span>Faces 😀 😮 😗</span></label>
     </div>`;
 
+  const shapes = find<HTMLInputElement>(card, '.shapes input');
+  /** A level with a shape on every cue has no use for the switch: it shows as on, and locked. */
+  const showShapes = (): void => {
+    const always = LEVELS[settings.levels[player]].shapeOnEveryCue;
+    shapes.checked = always || settings.shapes[player];
+    shapes.disabled = always;
+  };
+  showShapes();
   bindRadios(card, `level${player}`, String(settings.levels[player]), (value) => {
     settings.levels[player] = Number(value) as Level;
+    showShapes();
     onChange();
   });
-  bindSwitch(card, '.shapes input', settings.shapes, player, onChange);
-  bindSwitch(card, '.faces input', settings.faces, player, onChange);
+  shapes.addEventListener('change', () => {
+    settings.shapes[player] = shapes.checked;
+    onChange();
+  });
+
+  const faces = find<HTMLInputElement>(card, '.faces input');
+  faces.checked = settings.faces[player];
+  faces.addEventListener('change', () => {
+    settings.faces[player] = faces.checked;
+    onChange();
+  });
   return card;
 }
 

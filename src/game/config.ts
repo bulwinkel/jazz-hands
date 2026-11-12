@@ -63,6 +63,10 @@ export interface LevelRules {
    * A double is never followed by one: it leaves no hand free.
    */
   offbeatChance: number;
+  /** Share of slow slides during which the other hand gets a tap, on the slide's middle beat. */
+  companionTapChance: number;
+  /** Every cue asks for a hand shape. One shape lasts a few seconds, then it changes. */
+  shapeOnEveryCue: boolean;
   /** How long a cue is on screen before it is due. */
   approachSec: number;
   perfectMs: WindowMs;
@@ -79,6 +83,8 @@ export const LEVELS: Record<Level, LevelRules> = {
     slideChance: 0,
     slideSpeeds: { fast: 0, normal: 1, slow: 0 },
     offbeatChance: 0,
+    companionTapChance: 0,
+    shapeOnEveryCue: false,
     approachSec: 1.4,
     perfectMs: [-150, 200],
     goodMs: [-350, 450],
@@ -92,6 +98,8 @@ export const LEVELS: Record<Level, LevelRules> = {
     slideChance: 0,
     slideSpeeds: { fast: 0, normal: 1, slow: 0 },
     offbeatChance: 0,
+    companionTapChance: 0,
+    shapeOnEveryCue: false,
     approachSec: 1,
     perfectMs: [-120, 160],
     goodMs: [-280, 350],
@@ -105,6 +113,8 @@ export const LEVELS: Record<Level, LevelRules> = {
     slideChance: 0.22,
     slideSpeeds: { fast: 0, normal: 0.7, slow: 0.3 },
     offbeatChance: 0,
+    companionTapChance: 0,
+    shapeOnEveryCue: false,
     approachSec: 1,
     perfectMs: [-120, 160],
     goodMs: [-280, 350],
@@ -116,8 +126,25 @@ export const LEVELS: Record<Level, LevelRules> = {
     doubleChance: 0.4,
     doublesOnBarStartsOnly: false,
     slideChance: 0.3,
-    slideSpeeds: { fast: 0.4, normal: 0.3, slow: 0.3 },
+    slideSpeeds: { fast: 0.3, normal: 0.25, slow: 0.45 },
     offbeatChance: 0.6,
+    companionTapChance: 0.8,
+    shapeOnEveryCue: false,
+    approachSec: 1,
+    perfectMs: [-120, 160],
+    goodMs: [-280, 350],
+  },
+  5: {
+    name: 'All signs',
+    fastFromIntensity: 0.35,
+    sparseBelowIntensity: 0,
+    doubleChance: 0.4,
+    doublesOnBarStartsOnly: false,
+    slideChance: 0.3,
+    slideSpeeds: { fast: 0.3, normal: 0.25, slow: 0.45 },
+    offbeatChance: 0.6,
+    companionTapChance: 0.8,
+    shapeOnEveryCue: true,
     approachSec: 1,
     perfectMs: [-120, 160],
     goodMs: [-280, 350],
@@ -151,6 +178,11 @@ export const CHART = {
    */
   handRestSec: 0.45,
   gesturePool: ['fist', 'open', 'point', 'peace'] satisfies GestureName[],
+  /**
+   * At a level with a shape on every cue, one shape lasts at least this long, and changes on
+   * a bar start. A player holds the shape through a run of cues and changes it with the music.
+   */
+  shapePhraseSec: 4,
 } as const;
 
 /** Face cues, for a player who switches faces on. They do not depend on the level. */

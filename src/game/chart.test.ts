@@ -1,17 +1,31 @@
 import { describe, expect, it } from 'vitest';
-import { cuesFrom, doubleCells, generateChart, masterCells, middleCell, selectStride, slideTargets } from './chart';
+import {
+  cuesFrom,
+  doubleCells,
+  generateChart,
+  masterCells,
+  middleCell,
+  phraseShapes,
+  selectStride,
+  slideTargets,
+} from './chart';
 import { CHART, LEVELS } from './config';
 import { synthetic } from './fixtures';
 import { medianBeatInterval, playEndSec, tailStartSec } from './manifest';
 import type { Cue, Level, Manifest } from './types';
 
-const ALL_LEVELS: Level[] = [1, 2, 3, 4];
+const ALL_LEVELS: Level[] = [1, 2, 3, 4, 5];
+/** Levels where hand shapes come from the player's switch, not from the level itself. */
+const SWITCH_LEVELS: Level[] = [1, 2, 3, 4];
 const column = (cell: number): number => cell % 3;
 const isDouble = (cue: Cue): boolean => cue.kind === 'tap' && cue.cells.length === 2;
 const isSlide = (cue: Cue): boolean => cue.kind === 'slide';
 /** An extra tap between two cue beats. Its beat index is fractional. */
 const isOffbeat = (cue: Cue): boolean => !Number.isInteger(cue.beatIndex);
 const lastTime = (cue: Cue): number => cue.times[cue.times.length - 1];
+/** A tap for the other hand during a slow slide: it is due before the slide before it ends. */
+const isCompanion = (cue: Cue, i: number, cues: Cue[]): boolean =>
+  i > 0 && cues[i - 1].speed === 'slow' && cue.timeSec < lastTime(cues[i - 1]);
 
 function chart(
   manifest: Manifest,
@@ -55,7 +69,7 @@ describe('chart for every level', () => {
     const master = masterCells(song, 7);
     for (const level of ALL_LEVELS) {
       const singles = chart(song, level, 7).filter(
-        (cue) => cue.kind === 'tap' && cue.cells.length === 1 && !isOffbeat(cue),
+        (cue, i, cues) => cue.kind === 'tap' && cue.cells.length === 1 && !isOffbeat(cue) && !isCompanion(cue, i, cues),
       );
       expect(singles.length).toBeGreaterThan(10);
       for (const cue of singles) expect(cue.cells[0]).toBe(master[cue.beatIndex]);
@@ -262,18 +276,42 @@ describe('level 4', () => {
 
   it('gives every slide a clear moment: no cue within a cue interval before it or after it', () => {
     // A real round showed that a tap 0.3 s after a fast slide, or an off-beat tap 0.3 s before
-    // a slide, cannot be played.
-    cues.forEach((cue, i) => {
+    // a slide, cannot be played. The tap for the other hand during a slow slide is not such a
+    // cue: it sits on the slide's own middle beat.
+    const apart = cues.filter((cue, i) => !isCompanion(cue, i, cues));
+    apart.forEach((cue, i) => {
       if (!isSlide(cue)) return;
-      if (i > 0) expect(cue.timeSec - lastTime(cues[i - 1])).toBeGreaterThan(0.9 * beatSec);
-      if (i < cues.length - 1) expect(cues[i + 1].timeSec - lastTime(cue)).toBeGreaterThan(0.9 * beatSec);
+      if (i > 0) expect(cue.timeSec - lastTime(apart[i - 1])).toBeGreaterThan(0.9 * beatSec);
+      if (i < apart.length - 1) expect(apart[i + 1].timeSec - lastTime(cue)).toBeGreaterThan(0.9 * beatSec);
     });
+  });
+
+  it('gives the other hand a tap during most slow slides, on the middle beat, off the slide', () => {
+    const many = chart(synthetic(100, 1800), 4, 42);
+    const slow = many.filter((cue) => cue.speed === 'slow');
+    const companions = many.filter((cue, i) => isCompanion(cue, i, many));
+    expect(companions.length / slow.length).toBeCloseTo(LEVELS[4].companionTapChance, 1);
+    many.forEach((cue, i) => {
+      if (!isCompanion(cue, i, many)) return;
+      const slide = many[i - 1];
+      expect(cue.kind).toBe('tap');
+      expect(cue.cells).toHaveLength(1);
+      expect(cue.timeSec).toBe(slide.times[1]);
+      expect(slide.cells).not.toContain(cue.cells[0]);
+    });
+  });
+
+  it('leaves level 3 without taps during slides', () => {
+    const level3 = chart(synthetic(100, 600), 3, 42);
+    expect(level3.some((cue, i) => isCompanion(cue, i, level3))).toBe(false);
   });
 
   it('follows its single taps with an off-beat tap as often as the level rules say', () => {
     // Only a single tap leaves a hand free for an off-beat tap: a double uses both hands.
     const many = chart(synthetic(100, 1800), 4, 42);
-    const singles = many.filter((cue) => cue.kind === 'tap' && cue.cells.length === 1 && !isOffbeat(cue));
+    const singles = many.filter(
+      (cue, i) => cue.kind === 'tap' && cue.cells.length === 1 && !isOffbeat(cue) && !isCompanion(cue, i, many),
+    );
     expect(many.filter(isOffbeat).length / singles.length).toBeCloseTo(LEVELS[4].offbeatChance, 1);
   });
 
@@ -320,6 +358,37 @@ describe('two hands', () => {
   });
 });
 
+describe('level 5', () => {
+  const song = synthetic(100, 600);
+  const cues = chart(song, 5, 42);
+
+  it('asks for a hand shape on every cue, whatever the switch says', () => {
+    expect(cues.length).toBeGreaterThan(500);
+    for (const cue of cues) expect(CHART.gesturePool).toContain(cue.gesture);
+    expect(chart(song, 5, 42, { shapes: true })).toEqual(cues);
+  });
+
+  it('has the same cues as level 4, plus the shapes', () => {
+    const withoutShapes = cues.map(({ gesture: _shape, ...cue }) => cue);
+    expect(withoutShapes).toEqual(chart(song, 4, 42));
+  });
+
+  it('keeps one shape for at least 4 seconds, changes it on a bar start, and never repeats it', () => {
+    const shapes = phraseShapes(song, 42);
+    const changes = shapes.flatMap((shape, beat) => (beat > 0 && shape !== shapes[beat - 1] ? [beat] : []));
+    expect(changes.length).toBeGreaterThan(50);
+    changes.forEach((beat, i) => {
+      expect(beat % song.beatsPerBar).toBe(0);
+      const previousChange = i > 0 ? changes[i - 1] : 0;
+      expect(song.beats[beat] - song.beats[previousChange]).toBeGreaterThanOrEqual(CHART.shapePhraseSec - 1e-8);
+    });
+  });
+
+  it('uses every shape of the pool', () => {
+    expect(new Set(cues.map((cue) => cue.gesture))).toEqual(new Set(CHART.gesturePool));
+  });
+});
+
 describe('slide and double geometry', () => {
   it('lets a slide end two steps away along a row, column or diagonal', () => {
     expect(slideTargets(0)).toEqual([2, 6, 8]);
@@ -347,14 +416,14 @@ describe('slide and double geometry', () => {
 });
 
 describe('hand shapes', () => {
-  it('appear at no level when switched off', () => {
-    for (const level of ALL_LEVELS) {
+  it('appear at no level with a switch when it is off', () => {
+    for (const level of SWITCH_LEVELS) {
       expect(chart(synthetic(100, 600), level, 7).some((cue) => cue.gesture)).toBe(false);
     }
   });
 
-  it('appear at every level when switched on, only on single taps, from the pool', () => {
-    for (const level of ALL_LEVELS) {
+  it('appear at every level with a switch when it is on, only on single taps, from the pool', () => {
+    for (const level of SWITCH_LEVELS) {
       const shaped = chart(synthetic(100, 600), level, 7, { shapes: true }).filter((cue) => cue.gesture);
       expect(shaped.length).toBeGreaterThan(20);
       for (const cue of shaped) {

@@ -125,7 +125,7 @@ describe('face cues', () => {
 describe('hand charts', () => {
   it('are the same whether or not face cues are made from the same seed', () => {
     const song = synthetic(100, 120);
-    for (const level of [1, 2, 3, 4] as Level[]) {
+    for (const level of [1, 2, 3, 4, 5] as Level[]) {
       const options = { level, shapes: true, seed: 42, endSec: song.durationSec };
       const before = generateChart(song, options);
       faces(song, 42);

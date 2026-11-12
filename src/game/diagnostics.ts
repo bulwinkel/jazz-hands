@@ -208,7 +208,7 @@ export interface PlayerReport {
     hit: number;
     /** Over all frames with a hand in a shape cue's cell: the share read as the asked-for shape. */
     readAsAsked: number;
-    /** A hit where under a quarter of the in-cell frames showed the right shape: it may have passed by luck. */
+    /** A hit where, in one of its cells, under a quarter of the in-cell frames showed the right shape: it may have passed by luck. */
     hitOnFewFrames: number;
     readings: ShapeReadings;
   };
@@ -296,10 +296,13 @@ function playerReport(player: PlayerRun, stats: TrackingStats): PlayerReport {
     asked++;
     const wasHit = player.states[i]?.result === 'perfect' || player.states[i]?.result === 'good';
     if (wasHit) hit++;
-    const [cell] = observation.cells;
-    shapeFramesInCell += cell.framesInCell;
-    shapeFramesMatching += cell.framesMatching;
-    if (wasHit && cell.framesMatching < cell.framesInCell / 4) hitOnFewFrames++;
+    // A shape cue may have several cells: both hands of a double, or the cells of a slide.
+    for (const cell of observation.cells) {
+      shapeFramesInCell += cell.framesInCell;
+      shapeFramesMatching += cell.framesMatching;
+    }
+    const onFewFrames = observation.cells.some((cell) => cell.framesMatching < cell.framesInCell / 4);
+    if (wasHit && onFewFrames) hitOnFewFrames++;
 
     const forAsked = (readings[cue.gesture] ??= {});
     for (const [read, frames] of Object.entries(observation.shapesRead)) {

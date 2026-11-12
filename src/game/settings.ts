@@ -54,7 +54,8 @@ export function usesFaces(settings: Settings): boolean {
   return settings.faces.slice(0, settings.playerCount).some((isOn) => isOn);
 }
 
-const isLevel = (value: unknown): value is Level => value === 1 || value === 2 || value === 3 || value === 4;
+const isLevel = (value: unknown): value is Level =>
+  value === 1 || value === 2 || value === 3 || value === 4 || value === 5;
 const isPlayerCount = (value: unknown): value is PlayerCount => value === 1 || value === 2;
 const isLength = (value: unknown): value is SongLength => value === 'short' || value === 'full';
 const isSongIndex = (value: unknown): value is number =>
@@ -93,7 +94,7 @@ function readStored(stored: unknown): Settings {
 
 /**
  * URL parameters, all optional:
- *   players=1|2   p0, p1=1..4   shapes0, shapes1=1|0   faces0, faces1=1|0
+ *   players=1|2   p0, p1=1..5   shapes0, shapes1=1|0   faces0, faces1=1|0
  *   length=short|full   song=<index from 0>
  *   tracker=hands-full|hands-split|pose   input=camera|mouse|bot
  *   start=<seconds>   autostart=1   seed=<integer>   botAccuracy=<0..1>

@@ -11,7 +11,9 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "typecheck": "tsc",
-    "test": "vitest run"
+    "test": "vitest run",
+    "setup-songs": "python3.13 -m venv tools/songs/.venv && tools/songs/.venv/bin/python -m pip install --requirement tools/songs/requirements.txt",
+    "add-song": "tools/songs/.venv/bin/python -I tools/songs/add_song.py"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "^1.2.3"

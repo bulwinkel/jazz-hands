@@ -75,9 +75,9 @@ describe('URL parameters', () => {
     });
   });
 
-  it('accept every level from 1 to 4', () => {
-    expect(parseSettings(null, '?p0=4&p1=1').settings.levels).toEqual([4, 1]);
-    expect(parseSettings(null, '?p0=5').settings.levels).toEqual(defaultSettings().levels);
+  it('accept every level from 1 to 5', () => {
+    expect(parseSettings(null, '?p0=5&p1=1').settings.levels).toEqual([5, 1]);
+    expect(parseSettings(null, '?p0=6').settings.levels).toEqual(defaultSettings().levels);
   });
 
   it('switch faces on and off for each player', () => {

@@ -173,9 +173,12 @@ export class GameRenderer {
       const lastDueSec = state.cue.times[state.cue.times.length - 1];
       return nowSec >= state.cue.timeSec - approachSec && nowSec <= lastDueSec + goodMs[1] / 1000;
     });
-    // Draw later cues first, faint. The next cue due goes on top at full strength.
+    // Draw later cues first, faint. The next cue due goes on top at full strength, and so does
+    // every cue due while it still runs: a tap for the other hand during a slow slide belongs
+    // to the same moment.
+    const currentEndsSec = onScreen.length > 0 ? Math.max(...onScreen[0].cue.times) : 0;
     for (let i = onScreen.length - 1; i >= 0; i--) {
-      const isNext = i === 0;
+      const isNext = i === 0 || onScreen[i].cue.timeSec <= currentEndsSec;
       if (onScreen[i].cue.kind === 'slide') this.drawSlide(onScreen[i], player, nowSec, color, isNext);
       else this.drawTap(onScreen[i], player, nowSec, color, isNext);
     }
@@ -232,16 +235,21 @@ export class GameRenderer {
     }
 
     // The dot to follow. It waits on the first cell, then is in each cell at that cell's due time.
+    // When the slide asks for a hand shape, the shape itself is the dot.
     const dot = pointOnPath(path, cue.times, nowSec);
     const ctx = this.ctx;
     ctx.save();
     ctx.globalAlpha = strength;
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 18;
-    ctx.fillStyle = WHITE;
-    ctx.beginPath();
-    ctx.arc(dot.x, dot.y, cellSize * 0.11, 0, Math.PI * 2);
-    ctx.fill();
+    if (cue.gesture) {
+      this.text(GESTURE_EMOJI[cue.gesture] ?? '✋', dot.x, dot.y, cellSize * 0.42);
+    } else {
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 18;
+      ctx.fillStyle = WHITE;
+      ctx.beginPath();
+      ctx.arc(dot.x, dot.y, cellSize * 0.11, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.restore();
   }
 
