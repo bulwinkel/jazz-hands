@@ -30,7 +30,7 @@ legend{font-size:24px;font-weight:800;color:var(--player,#fff);padding:0 12px}
 .level-options small{display:block;font-size:14px;margin-top:8px;color:#cbd5e1;font-weight:500}
 .level-options input:checked+span{border-color:var(--player);background:color-mix(in srgb,var(--player) 18%,transparent);color:var(--player)}
 .primary{background:#fde047;border-color:#fde047;color:#181627;font-size:28px;padding:17px 52px;box-shadow:0 6px 35px #fde04720}
-.menu>.primary{margin-top:20px}
+.menu .primary{margin-top:20px}
 .keys{font-size:16px;line-height:1.7;color:#94a3b8;margin:18px 0 0}
 
 #message{position:absolute;z-index:5;top:38%;left:5%;right:5%;text-align:center;pointer-events:none;text-shadow:0 3px 20px #000}
@@ -65,37 +65,6 @@ body[data-phase="countdown"] #message h1{font-size:clamp(140px,20vw,300px);line-
 .result-actions{display:flex;justify-content:center;gap:20px}
 .result-actions .primary{font-size:22px;padding:12px 28px}
 
-@media(max-width:850px){#panel{padding:22px}
-.players{gap:12px;margin:20px auto}
-fieldset{padding:12px 8px}
-legend{font-size:20px}
-.level-options{gap:4px}
-.level-options span{font-size:17px;padding:8px 2px}
-.level-options small{font-size:11px}
-.subtitle{font-size:20px}
-.result-players{gap:14px}
-.result-players section{padding:12px}
-.stars{font-size:30px}
-.result-score{font-size:40px}
-.counts{font-size:13px}
-.primary{font-size:24px}
-}
-@media(max-height:760px){#panel{padding-top:20px}
-h1{font-size:48px;margin:10px 0}
-.players{margin:18px auto 14px}
-.level-options span{min-height:72px}
-.menu>.primary{margin-top:10px;padding:12px 50px}
-.keys{margin-top:10px}
-.result-players{margin:14px auto}
-.result-players section{padding:12px}
-.result-score{font-size:44px}
-.replay-prompt{margin-top:12px}
-.results h1{font-size:44px}
-}
-
-
-
-
 .replay-hold{height:14px;background:#ffffff20;border-radius:20px;margin-top:18px;overflow:hidden}
 .replay-hold span{display:block;width:0;height:100%;background:var(--player);border-radius:inherit}
 
@@ -122,11 +91,6 @@ h1{font-size:48px;margin:10px 0}
   accent-color: var(--player);
 }
 
-@media (max-height: 820px) {
-    .shapes { margin-top: 8px; font-size: 17px; }
-  .subtitle { margin-bottom: 10px; }
-}
-
 /* Level buttons keep one height when a level name wraps onto two lines. */
 .level-options label {
   display: flex;
@@ -151,15 +115,25 @@ h1{font-size:48px;margin:10px 0}
   border-radius: 10px;
 }
 
-/* Menu and results fill the screen and centre their content. With too little room the
-   content starts at the top and scrolls. */
+/* Menu and results: the content has one design size. It sits in the middle of the screen,
+   and when the window is too small for it the game scales it down as one piece (see
+   `fitPanel` in ui.ts), so it never scrolls and never reflows. */
 #panel {
   display: grid;
-  align-content: safe center;
-  justify-items: center;
+  /* Centre the content even while it is larger than the panel: it then overflows evenly on
+     all sides, and the scale shrinks it around the middle. */
+  place-content: center;
+  overflow: hidden;
+  padding: 24px;
 }
-#panel > .players,
-#panel > .result-players {
+.fit {
+  display: grid;
+  justify-items: center;
+  width: 1200px;
+  transform-origin: center;
+}
+.fit > .players,
+.fit > .result-players {
   width: 100%;
 }
 
@@ -255,11 +229,5 @@ h1{font-size:48px;margin:10px 0}
   height: 6px;
   border-radius: 3px;
   background: #fde047;
-}
-
-@media (max-height: 820px) {
-  .choices { margin-top: 8px; }
-  .choices span { padding: 8px 18px; font-size: 18px; }
-  .choices legend { margin-bottom: 4px; font-size: 16px; }
 }
 
