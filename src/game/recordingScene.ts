@@ -25,8 +25,8 @@ export interface RecordingScene {
 }
 
 const BACKGROUND = '#080d20';
-/** The same veil the screen puts over the camera picture, so the cues stand out. */
-const VEIL = 'rgba(5, 7, 27, 0.4)';
+/** The veil over the camera picture, so the cues stand out. The screen has the same one (see ui.ts). */
+export const VEIL = 'rgba(5, 7, 27, 0.4)';
 const RESULT_VEIL = 'rgba(8, 12, 32, 0.84)';
 const FONT = 'system-ui, sans-serif';
 

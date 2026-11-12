@@ -8,7 +8,12 @@ import type { Settings } from './settings';
 import type { Level, PlayerCount, PlayerIndex, SongLength } from './types';
 
 const ALL_LEVELS: Level[] = [1, 2, 3, 4, 5];
-/** The song carousel shows this many cards on each side of the chosen song. */
+/**
+ * The song carousel shows this many cards on each side of the chosen song. The stylesheet
+ * assumes 2: it has a `.song-card[data-offset="…"]` rule for each offset from -3 to 3, the
+ * cards on show and the place where the cards out of sight wait. Another reach needs rules
+ * for its own offsets.
+ */
 const CAROUSEL_REACH = 2;
 
 /**

@@ -1,5 +1,6 @@
+import { DUE_COLOR } from './colors';
 import { HAND_MENU, PLAYER_COLORS } from './config';
-import { SHRINK_START_SCALE } from './cueStyle';
+import { GROW_START_SCALE, SHRINK_START_SCALE } from './cueStyle';
 import type { CueStyle } from './cueStyle';
 import { find, isHandClick } from './dom';
 import type { HandTarget, MenuHand } from './handMenu';
@@ -8,6 +9,7 @@ import type { MenuControls } from './menuView';
 import type { PlayerRun } from './player';
 import { RECORDINGS_HTML, removePreview, showRecordings } from './recordingsView';
 import type { RecordingsList } from './recordingsView';
+import { VEIL } from './recordingScene';
 import { playerHeading, RESULTS_HEADING } from './resultText';
 import { accuracy, stars } from './scoring';
 import type { Settings } from './settings';
@@ -87,6 +89,13 @@ export class GameUI {
   private hovered?: HTMLElement;
 
   constructor(root: HTMLElement) {
+    // The stylesheet takes these values from the game's code, so one change reaches the page
+    // and the canvas: the menu's hold mark must look like a cue, and the game view copies the veil.
+    const page = root.ownerDocument.documentElement.style;
+    page.setProperty('--due-color', DUE_COLOR);
+    page.setProperty('--grow-start', String(GROW_START_SCALE));
+    page.setProperty('--veil', VEIL);
+
     root.innerHTML = SHELL_HTML;
     this.root = root;
     this.stage = find(root, '#stage');
@@ -191,7 +200,7 @@ export class GameUI {
       <div class="result-players"></div>
       ${team}
       <p class="replay-prompt">Hands up to play again 🙌</p>
-      <p>Raise a hand above your head and hold</p>
+      <p class="replay-hint">Raise a hand above your head and hold</p>
       <div class="result-actions">
         <button id="replay" class="primary" data-hand="replay" data-hand-hold="${HAND_MENU.slowHoldSec}">Play again · Space</button>
         <button id="menu" data-hand="menu" data-hand-hold="${HAND_MENU.slowHoldSec}">Menu · Esc</button>
