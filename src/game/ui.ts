@@ -152,6 +152,7 @@ export class GameUI {
   private readonly message: HTMLElement;
   private readonly messageTitle: HTMLElement;
   private readonly messageDetail: HTMLElement;
+  private readonly fitObserver = new ResizeObserver(() => this.fitPanel());
 
   constructor(root: HTMLElement) {
     root.innerHTML = SHELL_HTML;
@@ -336,8 +337,29 @@ export class GameUI {
 
   private openPanel(className: string, html: string): void {
     this.panel.className = className;
-    this.panel.innerHTML = html;
+    this.panel.innerHTML = `<div class="fit">${html}</div>`;
     this.panel.hidden = false;
     this.message.hidden = true;
+
+    // Fit again whenever the window or the content changes size.
+    this.fitObserver.disconnect();
+    this.fitObserver.observe(this.panel);
+    this.fitObserver.observe(find(this.panel, '.fit'));
+    this.fitPanel();
   }
+
+  /**
+   * Scales the panel's content down when the window is too small for it, so nothing scrolls.
+   * In a large window the content keeps its design size and sits in the middle.
+   */
+  private fitPanel = (): void => {
+    const content = this.panel.querySelector<HTMLElement>('.fit');
+    if (!content || this.panel.hidden) return;
+    const style = getComputedStyle(this.panel);
+    const roomWidth = this.panel.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    const roomHeight = this.panel.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+    // offsetWidth and offsetHeight are the design size: a transform does not change them.
+    const scale = Math.min(1, roomWidth / content.offsetWidth, roomHeight / content.offsetHeight);
+    content.style.transform = scale < 1 ? `scale(${scale})` : '';
+  };
 }
