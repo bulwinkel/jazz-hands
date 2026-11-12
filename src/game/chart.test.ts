@@ -243,14 +243,60 @@ describe('level 4', () => {
     });
   });
 
-  it('follows about 30% of its taps with an off-beat tap', () => {
+  it('follows its single taps with an off-beat tap as often as the level rules say', () => {
+    // Only a single tap leaves a hand free for an off-beat tap: a double uses both hands.
     const many = chart(synthetic(100, 1800), 4, 42);
-    const taps = many.filter((cue) => cue.kind === 'tap' && !isOffbeat(cue));
-    expect(many.filter(isOffbeat).length / taps.length).toBeCloseTo(LEVELS[4].offbeatChance, 1);
+    const singles = many.filter((cue) => cue.kind === 'tap' && cue.cells.length === 1 && !isOffbeat(cue));
+    expect(many.filter(isOffbeat).length / singles.length).toBeCloseTo(LEVELS[4].offbeatChance, 1);
   });
 
   it('keeps cues in time order', () => {
     cues.slice(1).forEach((cue, i) => expect(cue.timeSec).toBeGreaterThan(cues[i].timeSec));
+  });
+});
+
+/**
+ * Checks a chart against two hands, with its own bookkeeping: every cue cell must find a hand
+ * that has had `CHART.handRestSec` since its last target. A slide is one hand's move.
+ * Returns the cues that do not fit.
+ */
+function cuesBeyondTwoHands(cues: Cue[]): Cue[] {
+  const lastTargetSec = [-Infinity, -Infinity];
+  const takeFreeHand = (atSec: number, untilSec: number): boolean => {
+    const hand = lastTargetSec.findIndex((last) => atSec - last >= CHART.handRestSec - 1e-8);
+    if (hand === -1) return false;
+    lastTargetSec[hand] = untilSec;
+    return true;
+  };
+  return cues.filter((cue) => {
+    if (cue.kind === 'slide') return !takeFreeHand(cue.timeSec, lastTime(cue));
+    const fits = cue.cells.map(() => takeFreeHand(cue.timeSec, cue.timeSec));
+    return fits.includes(false);
+  });
+}
+
+describe('two hands', () => {
+  it.each([95, 100, 109, 130, 180])('are enough for every level at %i BPM', (bpm) => {
+    for (const level of ALL_LEVELS) {
+      const cues = chart(synthetic(bpm, 600), level, 42, { shapes: true });
+      expect(cuesBeyondTwoHands(cues)).toEqual([]);
+    }
+  });
+
+  it('are not asked for a double straight after a fast slide', () => {
+    const cues = chart(synthetic(100, 1800), 4, 42);
+    const afterFastSlides = cues.filter((_, i) => i > 0 && cues[i - 1].speed === 'fast');
+    expect(afterFastSlides.length).toBeGreaterThan(50);
+    expect(afterFastSlides.some(isDouble)).toBe(false);
+  });
+
+  it('are not asked for an off-beat tap straight after a double, or a double after an off-beat tap', () => {
+    const cues = chart(synthetic(100, 1800), 4, 42);
+    cues.forEach((cue, i) => {
+      if (!isOffbeat(cue)) return;
+      expect(isDouble(cues[i - 1])).toBe(false);
+      if (i < cues.length - 1) expect(isDouble(cues[i + 1])).toBe(false);
+    });
   });
 });
 

@@ -43,7 +43,10 @@ export interface LevelRules {
   slideChance: number;
   /** How the slides split by speed. The three shares add up to 1. */
   slideSpeeds: Record<SlideSpeed, number>;
-  /** Share of busy taps that are followed by an extra tap halfway to the next cue beat. */
+  /**
+   * Share of busy single taps that are followed by an extra tap halfway to the next cue beat.
+   * A double is never followed by one: it leaves no hand free.
+   */
   offbeatChance: number;
   /** How long a cue is on screen before it is due. */
   approachSec: number;
@@ -99,7 +102,7 @@ export const LEVELS: Record<Level, LevelRules> = {
     doublesOnBarStartsOnly: false,
     slideChance: 0.3,
     slideSpeeds: { fast: 0.4, normal: 0.3, slow: 0.3 },
-    offbeatChance: 0.3,
+    offbeatChance: 0.6,
     approachSec: 1,
     perfectMs: [-120, 160],
     goodMs: [-280, 350],
@@ -126,6 +129,12 @@ export const CHART = {
   gestureChance: 0.35,
   /** A hand needs this long after the previous cue to change shape. */
   gestureGapSec: 0.55,
+  /**
+   * A hand needs this long to travel from one target to the next. The chart never asks a
+   * player's two hands for more: a cue that would is made smaller or left out.
+   * The two ends of a fast slide are one continuous move, so they are exempt.
+   */
+  handRestSec: 0.45,
   gesturePool: ['fist', 'open', 'point', 'peace'] satisfies GestureName[],
 } as const;
 

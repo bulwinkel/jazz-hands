@@ -131,6 +131,17 @@ export function generateChart(manifest: Manifest, options: ChartOptions): Cue[] 
   let previousEndBeat = -Infinity;
   let previousEndSec = -Infinity;
 
+  // A player has two hands, and a hand needs time to travel. The chart keeps a budget:
+  // when each hand finished its last move. A cue takes one hand, a double takes both,
+  // and a slide keeps its hand until the slide ends.
+  const lastMoveSec = [-Infinity, -Infinity];
+  const freeHandsAt = (timeSec: number): number =>
+    lastMoveSec.filter((last) => timeSec - last >= CHART.handRestSec - EPSILON).length;
+  /** Gives a move that ends at `untilSec` to the hand that has rested longest. */
+  const useHand = (untilSec: number): void => {
+    lastMoveSec[lastMoveSec[0] <= lastMoveSec[1] ? 0 : 1] = untilSec;
+  };
+
   for (let beat = 0; beat < beats.length; beat++) {
     // Every beat takes the same rolls, used or not. One beat's choices then never shift
     // another beat's, and all levels read the same sequence.
@@ -154,12 +165,15 @@ export function generateChart(manifest: Manifest, options: ChartOptions): Cue[] 
     const nextCueBeat = beat + stride;
     const hasNextCue = isCueBeat(nextCueBeat);
     const busy = intensity[beat] >= CHART.busyIntensity;
+    const freeHands = freeHandsAt(timeSec);
+    if (freeHands === 0) continue; // Both hands are still travelling: no cue fits on this beat.
 
     // One roll picks the kind of cue: the first share is a slide, the next share a double,
     // the rest a single tap. Each share is then exactly the chance in the level rules.
     // Every slide needs a next cue beat: it sets how long the slide takes.
     const slideShare = busy && hasNextCue ? rules.slideChance : 0;
-    const doubleAllowed = busy && (!rules.doublesOnBarStartsOnly || isBarStart(manifest, beat));
+    const doubleAllowed =
+      busy && freeHands === 2 && (!rules.doublesOnBarStartsOnly || isBarStart(manifest, beat));
     const doubleShare = doubleAllowed ? rules.doubleChance : 0;
     let cue: Cue;
 
@@ -196,15 +210,21 @@ export function generateChart(manifest: Manifest, options: ChartOptions): Cue[] 
     const stridesToEnd = cue.kind === 'slide' && cue.speed ? SLIDE_END_STRIDES[cue.speed] : 0;
     previousEndBeat = beat + stridesToEnd * stride;
     previousEndSec = cue.times[cue.times.length - 1];
+    // A slide is one hand's move from its first cell to its last. A tap uses one hand per cell.
+    if (cue.kind === 'slide') useHand(previousEndSec);
+    else cue.cells.forEach(() => useHand(timeSec));
 
     // An off-beat tap: one extra cell halfway to the next cue beat. It follows taps only,
-    // and it avoids the cells just used and the cell that is likely to come next.
-    if (cue.kind === 'tap' && busy && hasNextCue && roll.offbeat < rules.offbeatChance) {
+    // it needs a hand that is free by then, and it avoids the cells just used and the cell
+    // that is likely to come next.
+    const offbeatSec = hasNextCue ? (timeSec + beats[nextCueBeat]) / 2 : Infinity;
+    const offbeatFits = cue.kind === 'tap' && busy && hasNextCue && freeHandsAt(offbeatSec) > 0;
+    if (offbeatFits && roll.offbeat < rules.offbeatChance) {
       const taken = [...cue.cells, master[nextCueBeat]];
       const cell = pickWeighted(CHART.cellWeights, roll.offbeatCell, (c) => !taken.includes(c));
-      const offbeatSec = (timeSec + beats[nextCueBeat]) / 2;
       cues.push({ kind: 'tap', timeSec: offbeatSec, beatIndex: beat + stride / 2, cells: [cell], times: [offbeatSec] });
       previousEndSec = offbeatSec;
+      useHand(offbeatSec);
     }
   }
   return cues;
