@@ -50,6 +50,8 @@ const FACE_EMOJI_ALPHA = 0.8;
 const FACE_RING_SCALE = 0.6;
 
 const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
+/** A slide that is not next is drawn faint. */
+const slideStrength = (isNext: boolean): number => (isNext ? 1 : 0.45);
 const centreOf = (rect: Rect): Point => ({ x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 });
 const lerp = (from: Point, to: Point, t: number): Point => ({
   x: from.x + (to.x - from.x) * t,
@@ -185,21 +187,64 @@ export class GameRenderer {
     // The next cue due is drawn at full strength, and so is every cue due while it still runs:
     // a tap for the other hand during a slow slide belongs to the same moment. Later cues are faint.
     const currentEndsSec = onScreen.length > 0 ? Math.max(...onScreen[0].cue.times) : 0;
-    // Shrink style: later cues first, so the next cue is on top.
-    // Grow style: earlier cues first. Two cues for one cell then nest: the later, smaller block
-    // lies on the earlier, larger one, and both show.
-    const order = onScreen.map((_, i) => i);
-    if (this.cueStyle === 'shrink') order.reverse();
-    for (const i of order) {
-      const isNext = i === 0 || onScreen[i].cue.timeSec <= currentEndsSec;
-      if (onScreen[i].cue.kind === 'slide') this.drawSlide(onScreen[i], player, nowSec, color, isNext);
-      else this.drawTap(onScreen[i], player, nowSec, color, isNext);
+    const cues = onScreen.map((state, i) => ({ state, isNext: i === 0 || state.cue.timeSec <= currentEndsSec }));
+    const latestFirst = [...cues].reverse();
+
+    if (this.cueStyle === 'shrink') {
+      // Later cues first, so the next cue is on top.
+      for (const { state, isNext } of latestFirst) this.drawCue(state, player, nowSec, color, isNext, true);
+      return;
     }
+    // Grow style: earlier cues first. Two cues for one cell then nest: the later, smaller block
+    // lies on the earlier, larger one, and both show. The hand shapes come after all blocks,
+    // the earliest last: the shape on top is the one of the cue that is due first.
+    for (const { state, isNext } of cues) this.drawCue(state, player, nowSec, color, isNext, false);
+    for (const { state, isNext } of latestFirst) this.drawMarkers(state, player, nowSec, color, isNext);
   }
 
-  private drawTap(state: CueState, player: PlayerRun, nowSec: number, playerColor: string, isNext: boolean): void {
+  /** One cue. `withMarkers` also draws what sits in the middle of its cells: see `drawMarkers`. */
+  private drawCue(
+    state: CueState,
+    player: PlayerRun,
+    nowSec: number,
+    playerColor: string,
+    isNext: boolean,
+    withMarkers: boolean,
+  ): void {
+    if (state.cue.kind === 'tap') {
+      this.drawTap(state, player, nowSec, playerColor, isNext, withMarkers);
+      return;
+    }
+    this.drawSlide(state, player, nowSec, playerColor, isNext);
+    if (withMarkers) this.drawSlideDot(state, player, nowSec, playerColor, isNext);
+  }
+
+  /** What sits in the middle of a cue's cells: the hand shape to make, a plain dot, or the dot of a slide. */
+  private drawMarkers(state: CueState, player: PlayerRun, nowSec: number, playerColor: string, isNext: boolean): void {
+    const { cue } = state;
+    if (cue.kind === 'slide') {
+      this.drawSlideDot(state, player, nowSec, playerColor, isNext);
+      return;
+    }
+    const color = cueColor(playerColor, (cue.timeSec - nowSec) / LEVELS[player.level].approachSec);
+    for (const rect of this.cellRects(state, player)) this.drawCellMarker(rect, color, cue.gesture);
+  }
+
+  /** The cells of a cue, on the canvas. */
+  private cellRects(state: CueState, player: PlayerRun): Rect[] {
+    return state.cue.cells.map((cell) => this.toScreen(cellRect(player.grid, cell)));
+  }
+
+  private drawTap(
+    state: CueState,
+    player: PlayerRun,
+    nowSec: number,
+    playerColor: string,
+    isNext: boolean,
+    withMarkers: boolean,
+  ): void {
     const { cue, marks } = state;
-    const rects = cue.cells.map((cell) => this.toScreen(cellRect(player.grid, cell)));
+    const rects = this.cellRects(state, player);
     const remaining = (cue.timeSec - nowSec) / LEVELS[player.level].approachSec;
     // The colour says how soon the cue is due, so several cues on screen show their order.
     const color = cueColor(playerColor, remaining);
@@ -210,25 +255,24 @@ export class GameRenderer {
     }
     rects.forEach((rect, k) => {
       this.drawCueCell(rect, remaining, color, isNext, marks[k] === 'perfect');
-      this.drawCellMarker(rect, color, cue.gesture);
+      if (withMarkers) this.drawCellMarker(rect, color, cue.gesture);
     });
   }
 
+  /** The path of a slide and its cells. Its dot is drawn apart: see `drawSlideDot`. */
   private drawSlide(state: CueState, player: PlayerRun, nowSec: number, playerColor: string, isNext: boolean): void {
     const { cue, marks } = state;
     const { approachSec } = LEVELS[player.level];
-    const rects = cue.cells.map((cell) => this.toScreen(cellRect(player.grid, cell)));
+    const rects = this.cellRects(state, player);
     // Each cell has the colour of its own due time. The path fades from the colour of its first
     // cell to that of its last, so the end to start from is the one nearer the due colour.
     const colors = cue.times.map((dueSec) => cueColor(playerColor, (dueSec - nowSec) / approachSec));
     const path = rects.map(centreOf);
     const last = rects.length - 1;
-    const startSec = cue.times[0];
-    const endSec = cue.times[last];
     const cellSize = Math.min(rects[0].width, rects[0].height);
-    const strength = isNext ? 1 : 0.45;
+    const strength = slideStrength(isNext);
     /** 0 until the slide starts, 1 when the hand is due in the last cell. */
-    const progress = clamp01((nowSec - startSec) / (endSec - startSec));
+    const progress = clamp01((nowSec - cue.times[0]) / (cue.times[last] - cue.times[0]));
 
     // The path: a wide band from the first cell to the last. Chevrons at its end show the
     // speed before the slide starts: one for slow, two for normal, three for fast.
@@ -259,18 +303,25 @@ export class GameRenderer {
         this.outline(rects[last], border, 2 + 3 * progress, fill);
       }
     }
+  }
 
-    // The dot to follow. It waits on the first cell, then is in each cell at that cell's due time.
-    // When the slide asks for a hand shape, the shape itself is the dot.
-    const dot = pointOnPath(path, cue.times, nowSec);
+  /**
+   * The dot to follow. It waits on the first cell, then is in each cell at that cell's due time.
+   * When the slide asks for a hand shape, the shape itself is the dot.
+   */
+  private drawSlideDot(state: CueState, player: PlayerRun, nowSec: number, playerColor: string, isNext: boolean): void {
+    const { cue } = state;
+    const rects = this.cellRects(state, player);
+    const cellSize = Math.min(rects[0].width, rects[0].height);
+    const dot = pointOnPath(rects.map(centreOf), cue.times, nowSec);
     const ctx = this.ctx;
     ctx.save();
-    ctx.globalAlpha = strength;
+    ctx.globalAlpha = slideStrength(isNext);
     if (cue.gesture) {
       this.text(GESTURE_EMOJI[cue.gesture] ?? '✋', dot.x, dot.y, cellSize * 0.42);
     } else {
       // The dot glows in the colour of the first cell: the due colour from the start of the slide.
-      ctx.shadowColor = colors[0];
+      ctx.shadowColor = cueColor(playerColor, (cue.times[0] - nowSec) / LEVELS[player.level].approachSec);
       ctx.shadowBlur = 18;
       ctx.fillStyle = WHITE;
       ctx.beginPath();
