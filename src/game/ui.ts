@@ -6,7 +6,7 @@ import type { HandTarget, MenuHand } from './handMenu';
 import { buildMenu, MENU_HTML, MENU_SWITCHES_HTML } from './menuView';
 import type { MenuControls } from './menuView';
 import type { PlayerRun } from './player';
-import { RECORDINGS_HTML, showRecordings } from './recordingsView';
+import { RECORDINGS_HTML, removePreview, showRecordings } from './recordingsView';
 import type { RecordingsList } from './recordingsView';
 import { playerHeading, RESULTS_HEADING } from './resultText';
 import { accuracy, stars } from './scoring';
@@ -113,6 +113,7 @@ export class GameUI {
   }
 
   hidePanel(): void {
+    removePreview(this.panel);
     this.panel.hidden = true;
     this.menu = undefined;
   }
@@ -301,6 +302,7 @@ export class GameUI {
 
   /** Opens the panel with `html` as its content. `outsideHtml` sits beside the content, in the panel's own corners. */
   private openPanel(className: string, html: string, outsideHtml = ''): void {
+    removePreview(this.panel);
     this.menu = undefined;
     this.panel.className = className;
     this.panel.innerHTML = `<div class="fit">${html}</div>${outsideHtml}`;

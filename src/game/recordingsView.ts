@@ -55,6 +55,19 @@ export function showRecordings(block: HTMLElement, list: RecordingsList, onWatch
   find(block, 'ul').replaceChildren(...rows);
 }
 
+/**
+ * Stops the preview of a round inside `root` and removes it. A hidden panel keeps its content,
+ * and a looping video in it would go on decoding during the next round.
+ */
+export function removePreview(root: ParentNode): void {
+  for (const video of root.querySelectorAll<HTMLVideoElement>('.preview video')) {
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
+  }
+  for (const slot of root.querySelectorAll('.preview-slot')) slot.replaceChildren();
+}
+
 /** The small silent video of a round. A click, or a fist, plays the round in the video player. */
 function showPreview(slot: HTMLElement, round: RoundVideos | undefined, onWatch: WatchHandler): void {
   const video = round?.videos.find((candidate) => candidate.kind === 'game') ?? round?.videos[0];
