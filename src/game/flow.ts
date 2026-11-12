@@ -655,25 +655,40 @@ export class DanceGame {
 
   // --- Controls ---
 
-  private async togglePause(): Promise<void> {
-    const audio = this.audio;
-    if (this.phase !== 'play' || !audio || this.switchingTracker) return;
+  /**
+   * Pauses the round: the song stops, and with it the song clock, and the recording leaves
+   * the pause out. Every pause of a round goes through here, so the three always agree.
+   */
+  private async pauseRound(): Promise<void> {
+    this.paused = true;
+    this.recordings.pause();
+    await this.audio?.pause();
+  }
+
+  /** Plays the round on: the song, its clock and the recording go on together. */
+  private async resumeRound(): Promise<void> {
     const session = this.session;
-    const pausing = !this.paused;
+    await this.audio?.resume();
+    // The player may have left the round while the sound came back, or it may not have come back.
+    if (session !== this.session || this.audio?.context.state !== 'running') return;
+    this.paused = false;
+    this.recordings.resume();
+  }
+
+  private async togglePause(): Promise<void> {
+    if (this.phase !== 'play' || !this.audio || this.switchingTracker) return;
+    const session = this.session;
     try {
-      await (pausing ? audio.pause() : audio.resume());
+      await (this.paused ? this.resumeRound() : this.pauseRound());
     } catch (error) {
       this.failIfCurrent(session, error);
       return;
     }
     if (session !== this.session) return; // The player left for the menu while the audio switched.
 
-    this.paused = pausing;
-    if (pausing) this.recordings.pause();
-    else this.recordings.resume();
-    if (pausing) this.ui.showMessage('Paused', 'Space to keep dancing · Esc for menu');
+    if (this.paused) this.ui.showMessage('Paused', 'Space to keep dancing · Esc for menu');
     else this.ui.showMessage();
-    this.ui.pauseButton.textContent = pausing ? '▶ Resume' : 'Ⅱ Pause';
+    this.ui.pauseButton.textContent = this.paused ? '▶ Resume' : 'Ⅱ Pause';
   }
 
   /** Runs when the player clicks the "Click to start" button after the browser blocked sound. */
@@ -682,7 +697,7 @@ export class DanceGame {
     if (!audio) return;
     const session = this.session;
     try {
-      await audio.resume();
+      await (this.phase === 'play' ? this.resumeRound() : audio.resume());
     } catch (error) {
       this.failIfCurrent(session, error);
       return;
@@ -690,12 +705,8 @@ export class DanceGame {
     if (session !== this.session || audio.context.state !== 'running') return;
 
     this.ui.resumeButton.hidden = true;
-    if (this.phase === 'loading') {
-      this.beginFit();
-    } else if (this.phase === 'play') {
-      this.paused = false;
-      this.ui.showMessage();
-    }
+    if (this.phase === 'loading') this.beginFit();
+    else if (this.phase === 'play') this.ui.showMessage();
   }
 
   private askForClick(reason: string): void {
@@ -708,24 +719,18 @@ export class DanceGame {
     if (!this.inputs.input || this.switchingTracker || this.phase === 'loading') return;
     this.switchingTracker = true;
     const session = this.session;
-    const audio = this.audio;
     const wasPlaying = this.phase === 'play' && !this.paused;
     // After every wait, stop if the player has left for the menu: the session is then stale.
     try {
       if (wasPlaying) {
-        await audio?.pause();
+        await this.pauseRound();
         if (session !== this.session) return;
-        this.paused = true;
       }
       this.ui.showMessage('Changing hand tracker…');
       await this.inputs.pickNextTracker(usesFaces(this.options.settings));
       if (session !== this.session) return;
       this.ui.showMessage();
-      if (wasPlaying) {
-        await audio?.resume();
-        if (session !== this.session) return;
-        this.paused = false;
-      }
+      if (wasPlaying) await this.resumeRound();
     } catch (error) {
       this.failIfCurrent(session, error);
     } finally {
@@ -881,7 +886,8 @@ export class DanceGame {
   private updatePlay(): void {
     if (!this.paused && this.audio?.context.state === 'suspended') {
       // The browser stopped the sound, for example after the tab was hidden.
-      this.paused = true;
+      const session = this.session;
+      void this.pauseRound().catch((error: unknown) => this.failIfCurrent(session, error));
       this.askForClick('The music stopped. Click to carry on.');
     }
     if (this.paused) return;
