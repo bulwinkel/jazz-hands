@@ -1,9 +1,10 @@
 /** Colour helpers for the game picture. Every colour is a `#rrggbb` string. */
 
+import { clamp01 } from './numbers';
+
 /** A cue has this colour on its beat. Before that, it fades toward it from the player's colour. */
 export const DUE_COLOR = '#fde047';
 
-const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
 const toHexByte = (value: number): string => Math.round(value).toString(16).padStart(2, '0');
 
 /** A colour with an alpha from 0 to 1, as `#rrggbbaa`. */

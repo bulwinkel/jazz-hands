@@ -1,9 +1,10 @@
-import { PREVIEW } from './config';
+import { PREVIEW, SONGS } from './config';
+import { fetchManifest, previewStartSec } from './manifest';
+import { clamp01 } from './numbers';
+import type { Manifest } from './types';
 
 /** How often the volume is set while a preview plays. Short enough for a smooth fade. */
 const TICK_MS = 40;
-
-const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
 
 /** What a preview does right now. Automated checks read it at `window.__dance.preview`. */
 export interface PreviewState {
@@ -13,6 +14,23 @@ export interface PreviewState {
   /** Position in the song, in seconds. */
   timeSec: number;
   volume: number;
+}
+
+/**
+ * The volume of a preview `playedSec` into its part. It fades in at the start, plays at the
+ * preview volume, and fades out before the end of the part. Null once the part is over.
+ */
+export function previewVolume(playedSec: number): number | null {
+  const leftSec = PREVIEW.lengthSec - playedSec;
+  if (leftSec <= 0) return null;
+  const fade = Math.min(playedSec / PREVIEW.fadeInSec, leftSec / PREVIEW.fadeOutSec);
+  return PREVIEW.volume * clamp01(fade);
+}
+
+/** The volume `elapsedMs` into the short fade that stops a preview. Null once the fade is over. */
+export function stopFadeVolume(fromVolume: number, elapsedMs: number): number | null {
+  const left = 1 - elapsedMs / (PREVIEW.stopFadeSec * 1000);
+  return left <= 0 ? null : fromVolume * left;
 }
 
 /**
@@ -98,22 +116,86 @@ export class SongPreview {
   private shapeVolume = (): void => {
     const { audio } = this;
     if (this.stopping) {
-      const left = 1 - (performance.now() - this.stopping.sinceMs) / (PREVIEW.stopFadeSec * 1000);
-      if (left <= 0) this.halt();
-      else audio.volume = this.stopping.fromVolume * left;
+      const volume = stopFadeVolume(this.stopping.fromVolume, performance.now() - this.stopping.sinceMs);
+      if (volume === null) this.halt();
+      else audio.volume = volume;
       return;
     }
 
-    const playedSec = audio.currentTime - this.startSec;
-    const leftSec = PREVIEW.lengthSec - playedSec;
-    if (leftSec <= 0 || audio.ended) {
+    const volume = audio.ended ? null : previewVolume(audio.currentTime - this.startSec);
+    if (volume === null) {
       // The part is over: play it again from its start.
       audio.volume = 0;
       audio.currentTime = this.startSec;
       if (audio.paused) this.play();
       return;
     }
-    const fade = Math.min(playedSec / PREVIEW.fadeInSec, leftSec / PREVIEW.fadeOutSec);
-    audio.volume = PREVIEW.volume * clamp01(fade);
+    audio.volume = volume;
   };
+}
+
+/**
+ * The song preview of the menu. The game says which song to follow, or none. The preview then
+ * plays the liveliest part of that song, and moves on when the song changes.
+ */
+export class MenuPreview {
+  private readonly preview = new SongPreview();
+  /** The song whose preview plays or is about to play, as an index into SONGS. */
+  private song: number | null = null;
+  private timer = 0;
+  /**
+   * Goes up with each new song and each stop. A manifest that arrives late can tell from it that
+   * it is stale, even when the same song was chosen again meanwhile.
+   */
+  private request = 0;
+
+  get state(): PreviewState {
+    return this.preview.state;
+  }
+
+  /**
+   * Plays a part of `song`. Null stops the preview: outside the menu, with previews off, or
+   * while the video player is open. Call it after every change: it acts only when the song
+   * is a new one, or when the preview goes on or off.
+   */
+  follow(song: number | null): void {
+    if (song === null) {
+      this.stop();
+      return;
+    }
+    if (song === this.song) return;
+    this.song = song;
+    const request = ++this.request;
+    this.preview.stop();
+    // Wait a moment: a player who steps through the songs hears only the one they stop on.
+    window.clearTimeout(this.timer);
+    this.timer = window.setTimeout(() => void this.start(song, request), PREVIEW.waitSec * 1000);
+  }
+
+  /** Stops the preview at once, with no fade. For the end of the visit. */
+  dispose(): void {
+    this.request++;
+    window.clearTimeout(this.timer);
+    this.preview.halt();
+  }
+
+  private async start(song: number, request: number): Promise<void> {
+    let manifest: Manifest;
+    try {
+      manifest = await fetchManifest(SONGS[song].manifest);
+    } catch {
+      return; // No preview for a song whose data does not load. Starting the round reports the error.
+    }
+    // The player may have picked another song, or left the menu, while this loaded. A song
+    // picked again since then has a request of its own.
+    if (request !== this.request) return;
+    this.preview.start(manifest.audio, previewStartSec(manifest));
+  }
+
+  private stop(): void {
+    this.request++;
+    window.clearTimeout(this.timer);
+    this.song = null;
+    this.preview.stop();
+  }
 }

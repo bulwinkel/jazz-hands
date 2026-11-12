@@ -1,29 +1,22 @@
-import { carouselOffset, stepRing } from './carousel';
-import { HAND_MENU, LEVELS, PLAYER_COLORS, SONGS } from './config';
-import { CUE_STYLE_NAMES, nextCueStyle, SHRINK_START_SCALE } from './cueStyle';
+import { DUE_COLOR } from './colors';
+import { HAND_MENU, PLAYER_COLORS } from './config';
+import { GROW_START_SCALE, SHRINK_START_SCALE } from './cueStyle';
 import type { CueStyle } from './cueStyle';
+import { find, isHandClick } from './dom';
 import type { HandTarget, MenuHand } from './handMenu';
+import { buildMenu, MENU_HTML, MENU_SWITCHES_HTML } from './menuView';
+import type { MenuControls } from './menuView';
 import type { PlayerRun } from './player';
-import { sizeText } from './recording';
-import type { RoundVideos, VideoKind } from './recording';
+import { RECORDINGS_HTML, removePreview, showRecordings } from './recordingsView';
+import type { RecordingsList } from './recordingsView';
+import { VEIL } from './recordingScene';
+import { playerHeading, RESULTS_HEADING } from './resultText';
 import { accuracy, stars } from './scoring';
 import type { Settings } from './settings';
-import type { Level, PlayerCount, PlayerIndex, SongLength } from './types';
+import { VideoPlayer } from './videoPlayer';
 
-const ALL_LEVELS: Level[] = [1, 2, 3, 4, 5];
 /** A short note stays on screen this long. */
 const TOAST_MS = 1600;
-/** The song carousel shows this many cards on each side of the chosen song. */
-const CAROUSEL_REACH = 2;
-
-/**
- * The arrow on a step button, drawn as a picture. A "‹" letter does not sit in the middle of
- * its own line, so it looked low in the button.
- */
-const chevron = (points: string): string =>
-  `<svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="${points}" /></svg>`;
-const CHEVRON_LEFT = chevron('15.5,5 8.5,12 15.5,19');
-const CHEVRON_RIGHT = chevron('8.5,5 15.5,12 8.5,19');
 
 const SHELL_HTML = `
   <main id="stage" aria-label="Dance game">
@@ -36,151 +29,9 @@ const SHELL_HTML = `
   <button id="pause" hidden aria-label="Pause game">Ⅱ Pause</button>
   <div id="rec" hidden aria-label="Recording">● REC</div>
   <div id="toast" hidden role="status"></div>
-  <div id="player" hidden>
-    <video playsinline controls></video>
-    <div class="player-bar">
-      <button type="button" id="player-game" data-hand="player-game">🎮 Game view</button>
-      <button type="button" id="player-camera" data-hand="player-camera">🎥 Camera only</button>
-      <a id="player-download" data-hand="player-download"></a>
-      <button type="button" id="player-close" data-hand="player-close">✕ Close · Esc</button>
-    </div>
-  </div>
+  <div id="player" hidden></div>
   <button id="refit" hidden data-hand="refit" data-hand-hold="${HAND_MENU.slowHoldSec}">↺ Recalibrate · C</button>
   <pre id="debug" hidden></pre>`;
-
-/** The list of recorded rounds, with a download link for each video. Menu and results both have it. */
-const RECORDINGS_HTML =
-  '<div class="recordings" hidden><div class="preview-slot"></div><p role="status"></p><ul></ul></div>';
-const VIDEO_NAMES: Record<VideoKind, string> = { game: 'Game view', camera: 'Camera only' };
-
-const MENU_HTML = `
-  <div class="eyebrow">MOVE TOGETHER · PLAY TOGETHER</div>
-  <h1>Kitchen Disco<span>✦</span></h1>
-  <p class="subtitle">Reach for the beat. Make a little magic.</p>
-  <fieldset class="songs">
-    <legend>♫ <span id="song-title"></span><small id="song-count"></small></legend>
-    <button type="button" class="song-step" data-hand="song-previous" data-hand-repeat aria-label="Previous song">${CHEVRON_LEFT}</button>
-    <div class="song-strip"></div>
-    <button type="button" class="song-step" data-hand="song-next" data-hand-repeat aria-label="Next song">${CHEVRON_RIGHT}</button>
-  </fieldset>
-  <fieldset class="count choices">
-    <legend>Players</legend>
-    <label data-hand="count-1"><input type="radio" name="count" value="1"><span>1 player</span></label>
-    <label data-hand="count-2"><input type="radio" name="count" value="2"><span>2 players</span></label>
-  </fieldset>
-  <div class="players"></div>
-  <fieldset class="length choices">
-    <legend>How long shall we dance?</legend>
-    <label data-hand="length-short"><input type="radio" name="length" value="short"><span>Short · about 90 seconds</span></label>
-    <label data-hand="length-full"><input type="radio" name="length" value="full"><span>Full song</span></label>
-  </fieldset>
-  <button class="primary" id="start" data-hand="start" data-hand-hold="${HAND_MENU.slowHoldSec}">Let’s dance →</button>
-  <p class="keys">
-    <span id="hand-hint">Point with an open hand ✋, then make a fist ✊ to choose · </span>Space or Enter to start · F fullscreen<br>
-    <span id="stand-hint"></span>
-    <span id="sound-hint" hidden><br>Click or press a key once, so the browser lets the music play.</span>
-  </p>
-  ${RECORDINGS_HTML}`;
-
-/**
- * Two switches in a top corner of the menu. They are outside the scaled content, a little in
- * from the side: the camera tracks a hand badly at the edge of its picture.
- */
-const MENU_SWITCHES_HTML = `
-  <div class="corner">
-    <button type="button" id="previews-switch" data-hand="previews"></button>
-    <button type="button" id="hands-switch" data-hand="hand-control"></button>
-    <button type="button" id="record-switch" data-hand="record"></button>
-    <button type="button" id="cues-switch" data-hand="cues"></button>
-  </div>`;
-
-
-const STAND_HINT: Record<PlayerCount, string> = {
-  1: 'Stand in the middle of the picture.',
-  2: 'Stand side by side. Each dancer gets one half of the screen.',
-};
-
-function find<T extends HTMLElement>(root: ParentNode, selector: string): T {
-  const element = root.querySelector<T>(selector);
-  if (!element) throw new Error(`Missing element: ${selector}`);
-  return element;
-}
-
-/** Ties a group of radio inputs to one value. */
-function bindRadios(root: ParentNode, name: string, current: string, onPick: (value: string) => void): void {
-  for (const input of root.querySelectorAll<HTMLInputElement>(`input[name="${name}"]`)) {
-    input.checked = input.value === current;
-    input.addEventListener('change', () => {
-      if (input.checked) onPick(input.value);
-    });
-  }
-}
-
-/**
- * One song in the carousel: its cover picture. A song with no picture yet gets a plain cover
- * in its own colour, with its title on it.
- */
-function songCard(index: number): string {
-  const song = SONGS[index];
-  // Steps of the golden angle give neighbours in the list clearly different colours.
-  const hue = Math.round(index * 137.5) % 360;
-  const cover = song.cover
-    ? `<span class="cover"><img src="${song.cover}" alt=""></span>`
-    : `<span class="cover plain"><span>${song.title}</span></span>`;
-  return `
-    <label class="song-card" style="--hue: ${hue}">
-      <input type="radio" name="song" value="${index}" aria-label="${song.title}">${cover}
-    </label>`;
-}
-
-/** One player's choices: level, hand shapes and faces. */
-function playerCard(player: PlayerIndex, settings: Settings, onChange: () => void): HTMLElement {
-  const side = player === 0 ? 'Left' : 'Right';
-  const title = settings.playerCount === 1 ? 'Your level' : `Player ${player + 1} · ${side}`;
-  const levelOptions = ALL_LEVELS.map(
-    (level) => `
-      <label data-hand="level-${player}-${level}">
-        <input type="radio" name="level${player}" value="${level}">
-        <span>Level ${level}<small>${LEVELS[level].name}</small></span>
-      </label>`,
-  ).join('');
-
-  const card = document.createElement('fieldset');
-  card.style.setProperty('--player', PLAYER_COLORS[player]);
-  card.innerHTML = `
-    <legend>${title}</legend>
-    <div class="level-options">${levelOptions}</div>
-    <div class="switches">
-      <label class="shapes" data-hand="shapes-${player}"><input type="checkbox"><span>Hand shapes ✊ ✋ ☝️ ✌️</span></label>
-      <label class="faces" data-hand="faces-${player}"><input type="checkbox"><span>Faces 😁 😲 😘</span></label>
-    </div>`;
-
-  const shapes = find<HTMLInputElement>(card, '.shapes input');
-  /** A level with a shape on every cue has no use for the switch: it shows as on, and locked. */
-  const showShapes = (): void => {
-    const always = LEVELS[settings.levels[player]].shapeOnEveryCue;
-    shapes.checked = always || settings.shapes[player];
-    shapes.disabled = always;
-  };
-  showShapes();
-  bindRadios(card, `level${player}`, String(settings.levels[player]), (value) => {
-    settings.levels[player] = Number(value) as Level;
-    showShapes();
-    onChange();
-  });
-  shapes.addEventListener('change', () => {
-    settings.shapes[player] = shapes.checked;
-    onChange();
-  });
-
-  const faces = find<HTMLInputElement>(card, '.faces input');
-  faces.checked = settings.faces[player];
-  faces.addEventListener('change', () => {
-    settings.faces[player] = faces.checked;
-    onChange();
-  });
-  return card;
-}
 
 /** One player's result card. */
 function resultCard(player: PlayerRun): HTMLElement {
@@ -189,7 +40,7 @@ function resultCard(player: PlayerRun): HTMLElement {
   const card = document.createElement('section');
   card.style.setProperty('--player', PLAYER_COLORS[player.index]);
   card.innerHTML = `
-    <h2>Player ${player.index + 1} · Level ${player.level}</h2>
+    <h2>${playerHeading(player)}</h2>
     <div class="stars" aria-label="${starCount} out of 5 stars">
       ${'★'.repeat(starCount)}<span>${'☆'.repeat(5 - starCount)}</span>
     </div>
@@ -219,6 +70,8 @@ export class GameUI {
   readonly resumeButton: HTMLButtonElement;
   /** Starts the reach fit again. It shows in the ready check, where a hand can choose it too. */
   readonly refitButton: HTMLButtonElement;
+  /** Plays a recorded round. It lies over the panel and under the hand rings. */
+  readonly player: VideoPlayer;
   private readonly root: HTMLElement;
   private readonly panel: HTMLElement;
   /** Rings that show where the game sees pointing hands. They sit above the panel. */
@@ -230,18 +83,19 @@ export class GameUI {
   private readonly messageTitle: HTMLElement;
   private readonly messageDetail: HTMLElement;
   private readonly fitObserver = new ResizeObserver(() => this.fitPanel());
-
-  /** The video player: it fills the window and plays a recorded round with its sound. */
-  private readonly player: HTMLElement;
-  private readonly playerVideo: HTMLVideoElement;
-  /** What the player shows now. Unset while it is closed. */
-  private playing?: { round: RoundVideos; kind: VideoKind; ownsFullscreen: boolean };
-  /** Hears when the video player opens and when it closes. */
-  onPlayerChange?: (isOpen: boolean) => void;
-  /** Steps the open menu's carousel to the next or the previous song. Unset while the menu is closed. */
-  private stepCarousel?: (direction: 1 | -1) => void;
+  /** The open menu. Unset while the menu is closed. */
+  private menu?: MenuControls;
+  /** The item under a pointing hand, with its outset set for the hold mark. */
+  private hovered?: HTMLElement;
 
   constructor(root: HTMLElement) {
+    // The stylesheet takes these values from the game's code, so one change reaches the page
+    // and the canvas: the menu's hold mark must look like a cue, and the game view copies the veil.
+    const page = root.ownerDocument.documentElement.style;
+    page.setProperty('--due-color', DUE_COLOR);
+    page.setProperty('--grow-start', String(GROW_START_SCALE));
+    page.setProperty('--veil', VEIL);
+
     root.innerHTML = SHELL_HTML;
     this.root = root;
     this.stage = find(root, '#stage');
@@ -258,11 +112,7 @@ export class GameUI {
     this.resumeButton = find(root, '#resume');
     this.refitButton = find(root, '#refit');
 
-    this.player = find(root, '#player');
-    this.playerVideo = find(this.player, 'video');
-    find(this.player, '#player-game').addEventListener('click', () => this.showInPlayer('game'));
-    find(this.player, '#player-camera').addEventListener('click', () => this.showInPlayer('camera'));
-    find(this.player, '#player-close').addEventListener('click', () => this.closePlayer());
+    this.player = new VideoPlayer(find(root, '#player'));
   }
 
   /** Shows a large message over the game. With no title, hides it. */
@@ -274,8 +124,9 @@ export class GameUI {
   }
 
   hidePanel(): void {
+    removePreview(this.panel);
     this.panel.hidden = true;
-    this.stepCarousel = undefined;
+    this.menu = undefined;
   }
 
   /**
@@ -284,8 +135,7 @@ export class GameUI {
    */
   showCueStyle(style: CueStyle): void {
     document.body.dataset.cues = style;
-    const button = this.panel.querySelector<HTMLElement>('#cues-switch');
-    if (button) button.textContent = `◎ Cues: ${CUE_STYLE_NAMES[style].toLowerCase()}`;
+    this.menu?.showCueStyle(style);
   }
 
   /** Shows a short note at the top of the screen, which goes away by itself. */
@@ -308,146 +158,17 @@ export class GameUI {
   }
 
   /**
-   * Shows the recorded rounds on the open panel, newest first. Each has a button that plays
-   * it in the video player and a link that downloads each video. `status` is a line above
-   * them, for a recording that is not finished yet. `preview` is the round to show as a
-   * small silent video above the list: the round whose results are on screen.
-   * Does nothing on a panel with no place for them.
+   * Shows the recorded rounds on the open panel, newest first, with the preview of a round
+   * above them. Does nothing on a panel with no place for them.
    */
-  showRecordings(rounds: readonly RoundVideos[], status: string, preview?: RoundVideos): void {
+  showRecordings(list: RecordingsList): void {
     const block = this.panel.querySelector<HTMLElement>('.recordings');
-    if (!block) return;
-    block.hidden = rounds.length === 0 && !status;
-    find(block, 'p').textContent = status;
-    this.showPreview(find(block, '.preview-slot'), preview);
-
-    const rows = rounds.map((round, i) => {
-      const row = document.createElement('li');
-      const label = document.createElement('span');
-      label.textContent = round.label;
-      const watch = document.createElement('button');
-      watch.type = 'button';
-      watch.dataset.hand = `watch-${i}`;
-      watch.textContent = '▶ Watch';
-      // A choice made by hand is a click made by the page, which the browser marks as not trusted.
-      watch.addEventListener('click', (event) => this.openPlayer(round, !event.isTrusted));
-      row.append(label, watch);
-      for (const video of round.videos) {
-        const link = document.createElement('a');
-        link.href = video.url;
-        link.download = video.fileName;
-        link.textContent = `⬇ ${VIDEO_NAMES[video.kind]} · ${sizeText(video.sizeBytes)}`;
-        row.append(link);
-      }
-      return row;
-    });
-    find(block, 'ul').replaceChildren(...rows);
-  }
-
-  /** The small silent video of a round. A click, or a fist, plays the round in the video player. */
-  private showPreview(slot: HTMLElement, round: RoundVideos | undefined): void {
-    const video = round?.videos.find((candidate) => candidate.kind === 'game') ?? round?.videos[0];
-    if (!round || !video) {
-      slot.replaceChildren();
-      return;
-    }
-    // Keep a preview that already plays this video: a new element would start it again.
-    if (slot.querySelector('video')?.src === video.url) return;
-
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'preview';
-    button.dataset.hand = 'watch-preview';
-    button.setAttribute('aria-label', 'Watch the round');
-    const picture = document.createElement('video');
-    picture.muted = true;
-    picture.loop = true;
-    picture.autoplay = true;
-    picture.playsInline = true;
-    picture.src = video.url;
-    const label = document.createElement('span');
-    label.textContent = '▶ Watch the round';
-    button.append(picture, label);
-    button.addEventListener('click', (event) => this.openPlayer(round, !event.isTrusted));
-    slot.replaceChildren(button);
-  }
-
-  // --- The video player ---
-
-  get playerOpen(): boolean {
-    return this.playing !== undefined;
-  }
-
-  /**
-   * Plays a recorded round with its sound, in a player that fills the window.
-   * A real click also switches the browser to full screen. A choice by hand cannot: a browser
-   * goes to full screen only on a click or a key press.
-   */
-  openPlayer(round: RoundVideos, byHand: boolean): void {
-    const first = round.videos.find((video) => video.kind === 'game') ?? round.videos[0];
-    if (!first) return;
-    const ownsFullscreen = !byHand && !document.fullscreenElement;
-    // The whole page goes to full screen, not the player alone, so the hand rings still show.
-    if (ownsFullscreen) void document.documentElement.requestFullscreen().catch(() => {});
-    this.playing = { round, kind: first.kind, ownsFullscreen };
-    this.player.hidden = false;
-    this.playFrom(0);
-    this.onPlayerChange?.(true);
-  }
-
-  closePlayer(): void {
-    const playing = this.playing;
-    if (!playing) return;
-    this.playing = undefined;
-    this.playerVideo.pause();
-    this.playerVideo.removeAttribute('src');
-    this.playerVideo.load();
-    this.player.hidden = true;
-    if (playing.ownsFullscreen && document.fullscreenElement) void document.exitFullscreen().catch(() => {});
-    this.onPlayerChange?.(false);
-  }
-
-  /** Space in the player: pause, or play on. */
-  togglePlayerPause(): void {
-    if (!this.playing) return;
-    if (this.playerVideo.paused) void this.playerVideo.play().catch(() => {});
-    else this.playerVideo.pause();
-  }
-
-  /** Switches the player between the game view and the camera view, at the same moment of the round. */
-  private showInPlayer(kind: VideoKind): void {
-    const playing = this.playing;
-    if (!playing || playing.kind === kind || !playing.round.videos.some((video) => video.kind === kind)) return;
-    playing.kind = kind;
-    this.playFrom(this.playerVideo.currentTime);
-  }
-
-  /** Loads the chosen video of the round into the player and plays it from `fromSec`. */
-  private playFrom(fromSec: number): void {
-    const playing = this.playing;
-    const video = playing?.round.videos.find((candidate) => candidate.kind === playing.kind);
-    if (!playing || !video) return;
-
-    this.playerVideo.src = video.url;
-    this.playerVideo.muted = false;
-    // Before the video has loaded, this sets where it will start.
-    this.playerVideo.currentTime = fromSec;
-    void this.playerVideo.play().catch(() => {});
-
-    for (const kind of ['game', 'camera'] as const) {
-      const button = find<HTMLButtonElement>(this.player, `#player-${kind}`);
-      button.hidden = !playing.round.videos.some((candidate) => candidate.kind === kind);
-      button.setAttribute('aria-pressed', String(kind === playing.kind));
-    }
-    const download = find<HTMLAnchorElement>(this.player, '#player-download');
-    download.href = video.url;
-    download.download = video.fileName;
-    download.textContent = `⬇ Download · ${sizeText(video.sizeBytes)}`;
+    if (block) showRecordings(block, list, (round, byHand) => this.player.open(round, byHand));
   }
 
   /** In the menu: chooses the next song (1) or the previous one (-1). After the last comes the first. */
   stepSong(direction: 1 | -1): void {
-    this.stepCarousel?.(direction);
+    this.menu?.stepSong(direction);
   }
 
   /**
@@ -456,99 +177,8 @@ export class GameUI {
    */
   showMenu(settings: Settings, onStart: (byHand: boolean) => void, onChange: () => void): void {
     this.openPanel('menu', MENU_HTML, MENU_SWITCHES_HTML);
-
-    // The two switches in the corner. Each shows its state in its text.
-    const handHint = find(this.panel, '#hand-hint');
-    type SwitchKey = 'previews' | 'handControl' | 'record';
-    const bindSwitch = (id: string, key: SwitchKey, label: string, icons: [string, string]): void => {
-      const button = find<HTMLButtonElement>(this.panel, id);
-      const show = (): void => {
-        const isOn = settings[key];
-        button.textContent = `${isOn ? icons[0] : icons[1]} ${label} ${isOn ? 'on' : 'off'}`;
-        button.setAttribute('aria-pressed', String(isOn));
-        handHint.hidden = !settings.handControl;
-      };
-      show();
-      button.addEventListener('click', () => {
-        settings[key] = !settings[key];
-        show();
-        onChange();
-      });
-    };
-    bindSwitch('#previews-switch', 'previews', 'Previews', ['🔊', '🔇']);
-    bindSwitch('#hands-switch', 'handControl', 'Hand control', ['✋', '🚫']);
-    bindSwitch('#record-switch', 'record', 'Recording', ['🔴', '⚪']);
-    // The cue style has more than two values: each choice steps to the next one.
-    find(this.panel, '#cues-switch').addEventListener('click', () => {
-      settings.cueStyle = nextCueStyle(settings.cueStyle);
-      onChange();
-    });
+    this.menu = buildMenu(this.panel, settings, { onStart, onChange });
     this.showCueStyle(settings.cueStyle);
-
-    // The songs are a carousel of covers: the chosen song in the middle, its neighbours beside
-    // it, the rest out of sight. It takes the same room for six songs as for sixty.
-    const strip = find(this.panel, '.song-strip');
-    strip.innerHTML = SONGS.map((_, index) => songCard(index)).join('');
-    const songCards = [...strip.querySelectorAll<HTMLElement>('.song-card')];
-    const showSongs = (): void => {
-      songCards.forEach((card, index) => {
-        const offset = carouselOffset(index, settings.songIndex, SONGS.length);
-        const onShow = Math.abs(offset) <= CAROUSEL_REACH;
-        // Every card out of sight waits just past the last card on show, on its own side.
-        card.dataset.offset = String(onShow ? offset : Math.sign(offset) * (CAROUSEL_REACH + 1));
-        // Only a card on show can be pointed at.
-        if (onShow) card.dataset.hand = `song-${index}`;
-        else delete card.dataset.hand;
-        find<HTMLInputElement>(card, 'input').checked = offset === 0;
-      });
-      find(this.panel, '#song-title').textContent = SONGS[settings.songIndex].title;
-      find(this.panel, '#song-count').textContent = `${settings.songIndex + 1} of ${SONGS.length}`;
-    };
-    showSongs();
-    const chooseSong = (index: number): void => {
-      if (index === settings.songIndex) return;
-      settings.songIndex = index;
-      showSongs();
-      onChange();
-    };
-    this.stepCarousel = (direction) => chooseSong(stepRing(settings.songIndex, direction, SONGS.length));
-    songCards.forEach((card, index) => {
-      find(card, 'input').addEventListener('change', () => chooseSong(index));
-    });
-    find(this.panel, '[data-hand="song-previous"]').addEventListener('click', () => this.stepSong(-1));
-    find(this.panel, '[data-hand="song-next"]').addEventListener('click', () => this.stepSong(1));
-
-    // A round started by hand has no click behind it, and a browser plays sound only on a page
-    // that was clicked or typed in at least once. Ask for that one click while it is missing.
-    const soundHint = find(this.panel, '#sound-hint');
-    soundHint.hidden = navigator.userActivation?.hasBeenActive ?? true;
-    const hideSoundHint = (): void => {
-      soundHint.hidden = true;
-    };
-    window.addEventListener('pointerdown', hideSoundHint, { once: true });
-    window.addEventListener('keydown', hideSoundHint, { once: true });
-
-    const cards = find(this.panel, '.players');
-    const standHint = find(this.panel, '#stand-hint');
-    const showPlayers = (): void => {
-      const indices: PlayerIndex[] = settings.playerCount === 1 ? [0] : [0, 1];
-      cards.replaceChildren(...indices.map((player) => playerCard(player, settings, onChange)));
-      cards.classList.toggle('solo', settings.playerCount === 1);
-      standHint.textContent = STAND_HINT[settings.playerCount];
-    };
-    showPlayers();
-
-    bindRadios(this.panel, 'count', String(settings.playerCount), (value) => {
-      settings.playerCount = Number(value) as PlayerCount;
-      showPlayers();
-      onChange();
-    });
-    bindRadios(this.panel, 'length', settings.length, (value) => {
-      settings.length = value as SongLength;
-      onChange();
-    });
-    // A choice made by hand is a click made by the page, which the browser marks as not trusted.
-    find(this.panel, '#start').addEventListener('click', (event) => onStart(!event.isTrusted));
   }
 
   /** `onRefit` hears whether a pointing hand chose it, and not a mouse. */
@@ -566,11 +196,11 @@ export class GameUI {
     this.openPanel(
       'results',
       `<div class="eyebrow">YOU MADE THE MUSIC MOVE</div>
-      <h1>What a dance! 🎉</h1>
+      <h1>${RESULTS_HEADING}</h1>
       <div class="result-players"></div>
       ${team}
       <p class="replay-prompt">Hands up to play again 🙌</p>
-      <p>Raise a hand above your head and hold</p>
+      <p class="replay-hint">Raise a hand above your head and hold</p>
       <div class="result-actions">
         <button id="replay" class="primary" data-hand="replay" data-hand-hold="${HAND_MENU.slowHoldSec}">Play again · Space</button>
         <button id="menu" data-hand="menu" data-hand-hold="${HAND_MENU.slowHoldSec}">Menu · Esc</button>
@@ -585,8 +215,7 @@ export class GameUI {
     find(this.panel, '.result-players').append(...players.map(resultCard));
     find(this.panel, '#replay').addEventListener('click', onReplay);
     find(this.panel, '#menu').addEventListener('click', onMenu);
-    // A choice made by hand is a click made by the page, which the browser marks as not trusted.
-    find(this.panel, '#refit-results').addEventListener('click', (event) => onRefit(!event.isTrusted));
+    find(this.panel, '#refit-results').addEventListener('click', (event) => onRefit(isHandClick(event)));
   }
 
   // --- Choosing items by hand ---
@@ -596,13 +225,7 @@ export class GameUI {
    * and the recalibrate button while it shows.
    */
   handTargets(): HandTarget[] {
-    const onPanel = this.panel.hidden ? [] : [...this.panel.querySelectorAll<HTMLElement>('[data-hand]')];
-    let elements = this.refitButton.hidden ? onPanel : [...onPanel, this.refitButton];
-    // The open video player covers everything else, so only its own buttons count.
-    if (this.playing) {
-      elements = [...this.player.querySelectorAll<HTMLElement>('[data-hand]')].filter((element) => !element.hidden);
-    }
-    return elements.map((element) => {
+    return this.handElements().map((element) => {
       const { left, top, width, height } = element.getBoundingClientRect();
       return {
         id: element.dataset.hand ?? '',
@@ -613,14 +236,22 @@ export class GameUI {
     });
   }
 
-  /** Chooses an item as a click would. */
+  /** The elements a hand can choose now. */
+  private handElements(): HTMLElement[] {
+    // The open video player covers everything else, so only its own buttons count.
+    if (this.player.isOpen) return this.player.handElements();
+    const onPanel = this.panel.hidden ? [] : [...this.panel.querySelectorAll<HTMLElement>('[data-hand]')];
+    return this.refitButton.hidden ? onPanel : [...onPanel, this.refitButton];
+  }
+
+  /** Chooses an item as a click would. The click is not trusted, so a handler can tell it from a real one. */
   chooseHandTarget(id: string): void {
     this.root.querySelector<HTMLElement>(`[data-hand="${id}"]`)?.click();
   }
 
   /**
    * Shows a ring at each hand (filled while the hand is a fist), a highlight on the item under
-   * a hand, and inside that item a bar for how far the fist hold has come.
+   * a hand, and on that item the cue style's mark for how far the fist hold has come.
    * `hands` are screen positions. Call it with no hands to clear everything.
    */
   showHands(hands: readonly MenuHand[], hoveredId: string | null, progress: number): void {
@@ -641,13 +272,17 @@ export class GameUI {
     for (const element of this.root.querySelectorAll<HTMLElement>('.hand-hover')) {
       if (element.dataset.hand !== hoveredId) element.classList.remove('hand-hover');
     }
-    const hovered = hoveredId ? this.root.querySelector<HTMLElement>(`[data-hand="${hoveredId}"]`) : null;
+    const hovered = hoveredId ? this.root.querySelector<HTMLElement>(`[data-hand="${hoveredId}"]`) : undefined;
+    if (hovered && hovered !== this.hovered) {
+      // The shrink mark starts this far outside the item: as far as a cue's outline starts
+      // outside its cell, measured on the item's height. Reading the height costs a layout,
+      // so it happens once for each item a hand moves onto, not on every tracking frame.
+      hovered.style.setProperty('--outset', `${(hovered.offsetHeight * (SHRINK_START_SCALE - 1)) / 2}px`);
+    }
+    this.hovered = hovered ?? undefined;
     if (!hovered) return;
     hovered.classList.add('hand-hover');
     hovered.style.setProperty('--hold', progress.toFixed(3));
-    // The shrink mark starts this far outside the item: as far as a cue's outline starts
-    // outside its cell, measured on the item's height.
-    hovered.style.setProperty('--outset', `${(hovered.offsetHeight * (SHRINK_START_SCALE - 1)) / 2}px`);
   }
 
   /**
@@ -681,7 +316,8 @@ export class GameUI {
 
   /** Opens the panel with `html` as its content. `outsideHtml` sits beside the content, in the panel's own corners. */
   private openPanel(className: string, html: string, outsideHtml = ''): void {
-    this.stepCarousel = undefined;
+    removePreview(this.panel);
+    this.menu = undefined;
     this.panel.className = className;
     this.panel.innerHTML = `<div class="fit">${html}</div>${outsideHtml}`;
     this.panel.hidden = false;

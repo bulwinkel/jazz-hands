@@ -1,4 +1,5 @@
-import type { Rect } from './types';
+import { clearScene, drawScene } from './recordingScene';
+import type { RecordingScene } from './recordingScene';
 
 /**
  * Records a round as video, when the players turn recording on in the menu.
@@ -68,27 +69,19 @@ export function sizeText(bytes: number): string {
   return megabytes < 10 ? `${megabytes.toFixed(1)} MB` : `${Math.round(megabytes)} MB`;
 }
 
-/** One player's result, as the game view shows it at the end of the video. */
-export interface ResultLine {
-  title: string;
-  color: string;
-  stars: number;
-  score: number;
-  accuracyPercent: number;
-}
+/** A display frame this close before a video frame's time still draws it, so screen jitter skips none. */
+const FRAME_SLACK_MS = 4;
 
-/** What the game view shows in one frame. */
-export interface RecordingScene {
-  /** The camera picture. Unset with a test input. */
-  video?: HTMLVideoElement;
-  /** The game's own canvas: grids, cues and score. */
-  overlay: HTMLCanvasElement;
-  /** Where the camera frame is on that canvas, in the canvas's own pixels. */
-  frame: Rect;
-  /** The large message on screen, such as the countdown. */
-  message?: { title: string; detail: string };
-  /** Each player's result, once the round is over. */
-  results?: readonly ResultLine[];
+/**
+ * Paces the drawing of the game view to its video. The screen refreshes 60 times a second or
+ * more, and a 720p frame takes time to draw, but the video takes only `frameRate` frames a
+ * second. Returns the time the next frame is due when one is due at `nowMs`, else null.
+ */
+export function nextFrameDue(dueMs: number, nowMs: number, frameRate: number): number | null {
+  if (nowMs + FRAME_SLACK_MS < dueMs) return null;
+  const frameMs = 1000 / frameRate;
+  // After a long gap, such as a hidden tab, count on from now: no burst of frames to catch up.
+  return dueMs + frameMs > nowMs ? dueMs + frameMs : nowMs + frameMs;
 }
 
 /** One finished video. */
@@ -100,6 +93,8 @@ export interface RecordedVideo {
 
 /** The videos of one round, ready to download. */
 export interface RoundVideos {
+  /** Names the round for as long as the game keeps it. A new round gets a new id. */
+  id: number;
   /** For example "20:41 · Todo Bueno". */
   label: string;
   videos: { kind: VideoKind; url: string; fileName: string; sizeBytes: number }[];
@@ -112,12 +107,6 @@ interface Track {
   stopped: Promise<void>;
 }
 
-const BACKGROUND = '#080d20';
-/** The same veil the screen puts over the camera picture, so the cues stand out. */
-const VEIL = 'rgba(5, 7, 27, 0.4)';
-const RESULT_VEIL = 'rgba(8, 12, 32, 0.84)';
-const FONT = 'system-ui, sans-serif';
-
 /** Records one round. Make a new one for each round. */
 export class RoundRecorder {
   private readonly format: VideoFormat;
@@ -126,6 +115,8 @@ export class RoundRecorder {
   private tracks: Track[] = [];
   /** The video track of the game view's canvas. It ends with the recording. */
   private canvasTrack?: MediaStreamTrack;
+  /** When the next frame of the game view is due, in `performance.now()` time. */
+  private frameDueMs = 0;
   private ended = false;
 
   private constructor(format: VideoFormat) {
@@ -157,8 +148,7 @@ export class RoundRecorder {
     const size = videoSize(aspect, RECORDING.gameHeight);
     this.canvas.width = size.width;
     this.canvas.height = size.height;
-    this.ctx.fillStyle = BACKGROUND;
-    this.ctx.fillRect(0, 0, size.width, size.height);
+    clearScene(this.ctx);
 
     [this.canvasTrack] = this.canvas.captureStream(RECORDING.frameRate).getVideoTracks();
     this.record('game', [this.canvasTrack, ...gameAudio.getAudioTracks()], RECORDING.gameBitsPerSec);
@@ -190,82 +180,16 @@ export class RoundRecorder {
     this.tracks.push({ kind, recorder, chunks, stopped });
   }
 
-  /** Draws one frame of the game view. Call it after the game has drawn its own canvas. */
+  /**
+   * Draws one frame of the game view, when the video's frame rate asks for one. Call it on
+   * every display frame, after the game has drawn its own canvas.
+   */
   drawFrame(scene: RecordingScene): void {
     if (!this.active) return;
-    const { ctx, canvas } = this;
-    const { width, height } = canvas;
-
-    ctx.fillStyle = BACKGROUND;
-    ctx.fillRect(0, 0, width, height);
-    if (scene.video && scene.video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-      // Mirrored, as on screen: the grids are drawn for the mirrored picture.
-      ctx.save();
-      ctx.translate(width, 0);
-      ctx.scale(-1, 1);
-      ctx.drawImage(scene.video, 0, 0, width, height);
-      ctx.restore();
-    }
-    ctx.fillStyle = VEIL;
-    ctx.fillRect(0, 0, width, height);
-
-    const { frame } = scene;
-    if (frame.width > 0 && frame.height > 0) {
-      ctx.drawImage(scene.overlay, frame.x, frame.y, frame.width, frame.height, 0, 0, width, height);
-    }
-    if (scene.results) this.drawResults(scene.results);
-    else if (scene.message) this.drawMessage(scene.message.title, scene.message.detail);
-  }
-
-  /** The large message of the screen. A countdown number is drawn very large, as on screen. */
-  private drawMessage(title: string, detail: string): void {
-    const { height, width } = this.canvas;
-    const isCountdown = title.length <= 2;
-    const titleSize = height * (isCountdown ? 0.34 : 0.08);
-    const y = height * (isCountdown ? 0.4 : 0.44);
-    this.text(title, width / 2, y, titleSize, '#ffffff');
-    if (detail) this.text(detail, width / 2, y + titleSize * 0.62 + height * 0.04, height * 0.045, '#fef08a');
-  }
-
-  /** The end card: a heading and one column for each player. */
-  private drawResults(results: readonly ResultLine[]): void {
-    const { ctx } = this;
-    const { height, width } = this.canvas;
-    ctx.fillStyle = RESULT_VEIL;
-    ctx.fillRect(0, 0, width, height);
-    this.text('What a dance! 🎉', width / 2, height * 0.17, height * 0.1, '#ffffff');
-
-    const columnWidth = Math.min(width * 0.36, (width * 0.84) / results.length);
-    const gap = width * 0.04;
-    const left = (width - (columnWidth * results.length + gap * (results.length - 1))) / 2;
-    results.forEach((result, i) => {
-      const x = left + i * (columnWidth + gap);
-      const centre = x + columnWidth / 2;
-      ctx.beginPath();
-      ctx.roundRect(x, height * 0.3, columnWidth, height * 0.5, height * 0.03);
-      ctx.fillStyle = 'rgba(17, 23, 43, 0.8)';
-      ctx.fill();
-      ctx.strokeStyle = result.color;
-      ctx.lineWidth = Math.max(2, height * 0.004);
-      ctx.stroke();
-
-      this.text(result.title, centre, height * 0.37, height * 0.042, result.color);
-      this.text('★'.repeat(result.stars) + '☆'.repeat(5 - result.stars), centre, height * 0.47, height * 0.07, '#fde047');
-      this.text(result.score.toLocaleString(), centre, height * 0.6, height * 0.1, '#ffffff');
-      this.text(`${result.accuracyPercent}% accuracy`, centre, height * 0.72, height * 0.04, '#cbd5e1');
-    });
-  }
-
-  private text(content: string, x: number, y: number, size: number, color: string): void {
-    const { ctx } = this;
-    ctx.font = `800 ${size}px ${FONT}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.shadowColor = '#000000';
-    ctx.shadowBlur = size * 0.25;
-    ctx.fillStyle = color;
-    ctx.fillText(content, x, y);
-    ctx.shadowBlur = 0;
+    const nextDueMs = nextFrameDue(this.frameDueMs, performance.now(), RECORDING.frameRate);
+    if (nextDueMs === null) return;
+    this.frameDueMs = nextDueMs;
+    drawScene(this.ctx, scene);
   }
 
   /** Holds both videos while the game is paused, so the pause is not in them. */

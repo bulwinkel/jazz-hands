@@ -1,206 +1,122 @@
-:root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#f8fafc;background:#090d22;font-synthesis:none;text-rendering:optimizeLegibility;color-scheme:dark}
+/* The game's one stylesheet, grouped by part of the page. Each part keeps its base rules and
+   its variants together. */
 
-*{box-sizing:border-box}
-body{margin:0;overflow:hidden}
-button,input{font:inherit}
-button{cursor:pointer;border:2px solid #ffffff35;border-radius:18px;padding:14px 24px;background:#252b49;color:white;font-weight:800;font-size:22px}
-button:hover{filter:brightness(1.15)}
-button:focus-visible,input:focus-visible+span{outline:4px solid #fde047;outline-offset:5px}
-[hidden]{display:none!important}
+/* --- Colours and page base --- */
 
-#app,#stage{position:absolute;inset:0}
-#stage{overflow:hidden;background:radial-gradient(ellipse at 18% 30%,#14344b 0,transparent 50%),radial-gradient(ellipse at 85% 65%,#38204d 0,transparent 45%),#080d20}
-#stage video{position:absolute;width:100%;height:100%;object-fit:contain;transform:scaleX(-1)}
-#stage:after{content:"";position:absolute;inset:0;background:#05071b66;pointer-events:none}
-canvas{position:absolute;inset:0;width:100%;height:100%;z-index:1;pointer-events:none}
+/* The colours that repeat. Three values come from the game's code, which sets them on this
+   element (see `GameUI` in ui.ts), so a change there reaches the page too:
+   - `--due-color`: the colour of a cue on its beat, and the game's yellow;
+   - `--grow-start`: the share of a cell where a block of the grow style starts;
+   - `--veil`: the veil over the camera picture, which the game view copies. */
+:root {
+  --text-soft: #cbd5e1;
+  --text-faint: #94a3b8;
+  /* Text on the due colour. */
+  --on-due: #181627;
+  --button: #252b49;
+  /* The dark, see-through face of small buttons and choices. */
+  --surface: #0b1024cc;
+  /* The marks over the game picture: the pause button and the recording mark. */
+  --chip: #0f172aab;
+  --border: #ffffff35;
+  --border-faint: #ffffff20;
 
-#panel{position:absolute;z-index:2;inset:0;margin:auto;overflow:auto;text-align:center;padding:30px max(24px,5vw);background:linear-gradient(130deg,#0d1429ef,#17142bea)}
-h1{font-size:clamp(38px,5vw,72px);line-height:1.05;margin:14px 0 16px;letter-spacing:-2px}
-h1>span{color:#fde047;margin-left:18px}
-.eyebrow{font-size:15px;font-weight:800;letter-spacing:4px;color:#a5b4fc}
-.subtitle{font-size:24px;color:#cbd5e1;margin:0 0 18px}
-
-.players{display:grid;grid-template-columns:1fr 1fr;gap:24px;max-width:1200px;margin:18px auto 22px}
-fieldset{border:2px solid color-mix(in srgb,var(--player,#fff) 35%,transparent);border-radius:22px;padding:18px;margin:0}
-legend{font-size:24px;font-weight:800;color:var(--player,#fff);padding:0 12px}
-.level-options{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
-.level-options label{cursor:pointer;position:relative}
-.level-options input{position:absolute;opacity:0;width:100%;height:100%;inset:0;margin:0}
-.level-options span{display:flex;flex-direction:column;justify-content:center;min-height:86px;border:2px solid #ffffff20;border-radius:14px;font-size:21px;font-weight:800;padding:10px 5px;pointer-events:none}
-.level-options small{display:block;font-size:14px;margin-top:8px;color:#cbd5e1;font-weight:500}
-.level-options input:checked+span{border-color:var(--player);background:color-mix(in srgb,var(--player) 18%,transparent);color:var(--player)}
-.primary{background:#fde047;border-color:#fde047;color:#181627;font-size:28px;padding:17px 52px;box-shadow:0 6px 35px #fde04720}
-.menu .primary{margin-top:20px}
-.keys{font-size:16px;line-height:1.7;color:#94a3b8;margin:18px 0 0}
-
-#message{position:absolute;z-index:5;top:38%;left:5%;right:5%;text-align:center;pointer-events:none;text-shadow:0 3px 20px #000}
-#message h1{font-size:clamp(34px,4.5vw,66px);margin:0 auto 18px;max-width:1100px;line-height:1.15}
-#message p{font-size:clamp(24px,2.5vw,38px);font-weight:750;margin:0;color:#fef08a}
-/* Keep the players' bodies and the hands-up cell visible: put fit and ready prompts at the bottom. */
-body[data-phase="fit"] #message,body[data-phase="ready"] #message{top:auto;bottom:4%}
-body[data-phase="fit"] #message h1,body[data-phase="ready"] #message h1{margin-bottom:6px}
-body[data-phase="fit"] #message p{font-size:clamp(64px,8vw,130px);line-height:1}
-body[data-phase="countdown"] #message{top:26%}
-body[data-phase="countdown"] #message h1{font-size:clamp(140px,20vw,300px);line-height:1;margin-bottom:10px}
-#resume{position:absolute;z-index:7;top:65%;left:50%;transform:translateX(-50%);background:#fde047;color:#161629;font-size:32px}
-#pause{position:absolute;bottom:18px;right:18px;z-index:6;font-size:18px;padding:8px 14px;background:#0f172aab}
-#debug{position:absolute;bottom:50px;left:12px;z-index:8;background:#020617df;padding:16px;font-size:17px;color:#fff;pointer-events:none;border-radius:12px}
-
-.results{padding-top:24px!important;background:#0b1025d9!important}
-.results h1{font-size:clamp(34px,4vw,58px)}
-.result-players{display:flex;gap:32px;justify-content:center;max-width:1100px;margin:20px auto}
-.result-players section{flex:1;max-width:520px;border:2px solid var(--player);background:#11172bbd;border-radius:24px;padding:20px}
-.result-players h2{color:var(--player);font-size:24px;margin:0 0 8px}
-.stars{color:#fde047;font-size:42px;letter-spacing:5px;white-space:nowrap}
-.stars span{color:#64748b}
-.result-score{display:block;font-size:54px;margin:4px 0 12px}
-.result-stats{display:flex;justify-content:space-around;font-size:30px;font-weight:800}
-.result-stats small{display:block;font-size:16px;color:#cbd5e1;font-weight:500;margin-top:4px}
-.counts{display:flex;justify-content:space-around;font-size:17px;margin-top:20px;color:#d1fae5}
-.counts span:last-child{color:#fda4af}
-.team{font-size:22px;color:#cbd5e1}
-.team strong{color:#fde047;font-size:32px;margin-left:16px}
-.replay-prompt{font-size:32px;font-weight:850;margin:18px 0 4px}
-.results p:not(.replay-prompt){margin:4px 0 16px;font-size:18px;color:#cbd5e1}
-.result-actions{display:flex;justify-content:center;gap:20px}
-.result-actions .primary{font-size:22px;padding:12px 28px}
-
-.replay-hold{height:14px;background:#ffffff20;border-radius:20px;margin-top:18px;overflow:hidden}
-.replay-hold span{display:block;width:0;height:100%;background:var(--player);border-radius:inherit}
-
-/* One player: a single card, centred. */
-.players.solo {
-  grid-template-columns: minmax(0, 620px);
-  justify-content: center;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #f8fafc;
+  background: #090d22;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  color-scheme: dark;
 }
 
-/* Hand shapes and faces switches on each player card. They sit side by side, far enough
-   apart that a pointing hand can hold one without touching the other. */
-.switches {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  column-gap: 40px;
+* {
+  box-sizing: border-box;
 }
-.shapes,
-.faces {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  margin-top: 14px;
-  font-size: 20px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.shapes input,
-.faces input {
-  width: 22px;
-  height: 22px;
-  accent-color: var(--player);
-}
-
-/* Level buttons keep one height when a level name wraps onto two lines. */
-.level-options label {
-  display: flex;
-}
-.level-options span {
-  flex: 1;
-}
-
-/* Dev server only: the diagnostics row under the result buttons. */
-.diagnostics {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  margin-top: 16px;
-  font-size: 15px;
-  color: #94a3b8;
-}
-.diagnostics button {
-  font-size: 15px;
-  padding: 6px 14px;
-  border-radius: 10px;
-}
-
-/* Menu and results: the content has one design size. It sits in the middle of the screen,
-   and when the window is too small for it the game scales it down as one piece (see
-   `fitPanel` in ui.ts), so it never scrolls and never reflows. */
-#panel {
-  display: grid;
-  /* Centre the content even while it is larger than the panel: it then overflows evenly on
-     all sides, and the scale shrinks it around the middle. */
-  place-content: center;
+body {
+  margin: 0;
   overflow: hidden;
-  padding: 24px;
 }
-.fit {
-  display: grid;
-  justify-items: center;
-  width: 1200px;
-  transform-origin: center;
-}
-.fit > .players,
-.fit > .result-players {
-  width: 100%;
+[hidden] {
+  display: none !important;
 }
 
-/* The menu lets the camera picture show through, so players see their hands point at it. */
-.menu {
-  background: linear-gradient(130deg, #0d142980, #17142b73);
-  text-shadow: 0 2px 12px #000;
+button,
+input {
+  font: inherit;
 }
-.menu fieldset:not(.choices, .songs) {
-  background: #0b1024a6;
-}
-.level-options span {
-  background: #0b1024cc;
-}
-
-/* A row of large buttons that behave as radio inputs: songs, player count and length. */
-.choices {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 12px;
-  border: none;
-  padding: 0;
-  margin: 14px 0 0;
-}
-.choices legend {
-  font-size: 18px;
-  color: #cbd5e1;
-  margin: 0 auto 8px;
-}
-.choices label {
-  position: relative;
+button {
   cursor: pointer;
+  border: 2px solid var(--border);
+  border-radius: 18px;
+  padding: 14px 24px;
+  background: var(--button);
+  color: white;
+  font-weight: 800;
+  font-size: 22px;
 }
-.choices input {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
+button:hover {
+  filter: brightness(1.15);
+}
+button:focus-visible,
+input:focus-visible + span {
+  outline: 4px solid var(--due-color);
+  outline-offset: 5px;
+}
+/* The large yellow button of the menu and the results. */
+.primary {
+  background: var(--due-color);
+  border-color: var(--due-color);
+  color: var(--on-due);
+  font-size: 28px;
+  padding: 17px 52px;
+  box-shadow: 0 6px 35px color-mix(in srgb, var(--due-color) 12.5%, transparent);
+}
+
+/* The small dark buttons of the menu's corner, the ready check and the video player. */
+.corner button,
+#refit,
+.player-bar button,
+.player-bar a {
+  padding: 12px 18px;
+  border-radius: 14px;
+  background: var(--surface);
+  font-size: 20px;
+}
+
+h1 {
+  font-size: clamp(38px, 5vw, 72px);
+  line-height: 1.05;
+  margin: 14px 0 16px;
+  letter-spacing: -2px;
+}
+h1 > span {
+  color: var(--due-color);
+  margin-left: 18px;
+}
+.eyebrow {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 4px;
+  color: #a5b4fc;
+}
+
+fieldset {
+  border: 2px solid color-mix(in srgb, var(--player, #fff) 35%, transparent);
+  border-radius: 22px;
+  padding: 18px;
   margin: 0;
 }
-.choices span {
-  display: block;
-  min-width: 170px;
-  padding: 12px 22px;
-  border: 2px solid #ffffff20;
-  border-radius: 14px;
-  background: #0b1024cc;
-  font-size: 21px;
+legend {
+  font-size: 24px;
   font-weight: 800;
-  pointer-events: none;
-}
-.choices input:checked + span {
-  border-color: #fde047;
-  background: #3a3413e6;
-  color: #fde047;
+  color: var(--player, #fff);
+  padding: 0 12px;
 }
 
-/* Choosing by hand: a ring at each hand the game sees, above the panel. */
+/* --- Choosing by hand ---
+   A ring at each hand the game sees, above the panel. The item under a hand is outlined.
+   While a fist holds on it, the cue style's mark shows the hold. */
+
 #cursors {
   position: absolute;
   inset: 0;
@@ -221,26 +137,26 @@ body[data-phase="countdown"] #message h1{font-size:clamp(140px,20vw,300px);line-
 }
 /* A fist fills the ring, so a player sees that the game reads the fist. */
 .hand-cursor.fist {
-  background: #fde047d9;
-  border-color: #fde047;
-  box-shadow: 0 0 18px #fde047;
+  background: color-mix(in srgb, var(--due-color) 85%, transparent);
+  border-color: var(--due-color);
+  box-shadow: 0 0 18px var(--due-color);
 }
 
-/* The item under a hand is outlined. While a fist holds on it, a bar fills it from the left. */
 [data-hand] {
   position: relative;
 }
+/* `.preview` keeps its own corners: it has one class too, and comes later in this file. */
 .hand-hover {
-  outline: 4px solid #fde047;
+  outline: 4px solid var(--due-color);
   outline-offset: 4px;
   border-radius: 16px;
 }
 /* The mark of the fist hold. It works as the timing mark of a cue in a round does (see
    cueStyle.ts), so the menu teaches how a round reads: the item is chosen when the mark is
-   exactly the size of the item, and its colour has reached yellow.
+   exactly the size of the item, and its colour has reached the due colour.
    `--hold` goes from 0 to 1, and `--outset` is a length; ui.ts sets both. */
 .hand-hover::after {
-  --mark: color-mix(in srgb, #fde047 calc(var(--hold, 0) * 100%), #ffffff);
+  --mark: color-mix(in srgb, var(--due-color) calc(var(--hold, 0) * 100%), #ffffff);
   content: "";
   position: absolute;
   pointer-events: none;
@@ -259,12 +175,116 @@ body[data-cues="grow"] .hand-hover::after {
   border: 3px solid var(--mark);
   border-radius: 14px;
   background: color-mix(in srgb, var(--mark) 50%, transparent);
-  transform: scale(calc(0.15 + 0.85 * var(--hold, 0)));
+  transform: scale(calc(var(--grow-start) + (1 - var(--grow-start)) * var(--hold, 0)));
+}
+/* The yellow buttons do not show the yellow highlight. Their highlight is white. Their hold
+   mark is white in the shrink style and dark in the grow style. */
+.primary.hand-hover {
+  outline: 6px solid #fff;
+  box-shadow: 0 0 34px #ffffffb3;
+}
+.primary.hand-hover::after {
+  --mark: #ffffff;
+}
+body[data-cues="grow"] .primary.hand-hover::after {
+  border-color: var(--on-due);
+  background: color-mix(in srgb, var(--on-due) 40%, transparent);
+}
+
+/* --- The stage: the camera picture and the game's canvas --- */
+
+#app,
+#stage {
+  position: absolute;
+  inset: 0;
+}
+#stage {
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 18% 30%, #14344b 0, transparent 50%),
+    radial-gradient(ellipse at 85% 65%, #38204d 0, transparent 45%),
+    #080d20;
+}
+#stage video {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transform: scaleX(-1);
+}
+#stage::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--veil);
+  pointer-events: none;
+}
+canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* --- The panel: menu and results ---
+   The content has one design size. It sits in the middle of the screen, and when the window
+   is too small for it the game scales it down as one piece (see `fitPanel` in ui.ts), so it
+   never scrolls and never reflows. */
+
+#panel {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  margin: auto;
+  display: grid;
+  /* Centre the content even while it is larger than the panel: it then overflows evenly on
+     all sides, and the scale shrinks it around the middle. */
+  place-content: center;
+  overflow: hidden;
+  padding: 24px;
+  text-align: center;
+  background: linear-gradient(130deg, #0d1429ef, #17142bea);
+}
+#panel.results {
+  background: #0b1025d9;
+}
+.fit {
+  display: grid;
+  justify-items: center;
+  width: 1200px;
+  transform-origin: center;
+}
+.fit > .players,
+.fit > .result-players {
+  width: 100%;
+}
+
+/* --- The menu --- */
+
+.menu {
+  text-shadow: 0 2px 12px #000;
+}
+.menu .primary {
+  margin-top: 20px;
+}
+.subtitle {
+  font-size: 24px;
+  color: var(--text-soft);
+  margin: 0 0 18px;
+}
+.keys {
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--text-faint);
+  margin: 18px 0 0;
 }
 
 /* The song carousel: the chosen song's cover in the middle, two neighbours on each side,
    and a step button at each end. Every card sits at the centre of the strip, and its
-   `data-offset` (set in ui.ts) moves and shrinks it, so a change of song slides the row. */
+   `data-offset` (set in menuView.ts) moves and shrinks it, so a change of song slides the
+   row. There is one rule for each offset that `CAROUSEL_REACH` in menuView.ts allows. */
 .songs {
   display: grid;
   grid-template-columns: auto auto auto;
@@ -278,13 +298,13 @@ body[data-cues="grow"] .hand-hover::after {
 .songs legend {
   margin: 0 auto 6px;
   font-size: 26px;
-  color: #fde047;
+  color: var(--due-color);
 }
 .songs legend small {
   margin-left: 14px;
   font-size: 16px;
   font-weight: 600;
-  color: #cbd5e1;
+  color: var(--text-soft);
 }
 .song-strip {
   position: relative;
@@ -311,6 +331,9 @@ body[data-cues="grow"] .hand-hover::after {
 /* Cards out of sight wait just past the last card on show, where they fade in and out. */
 .song-card[data-offset="3"] { --x: 400px; --scale: 0.45; opacity: 0; visibility: hidden; }
 .song-card[data-offset="-3"] { --x: -400px; --scale: 0.45; opacity: 0; visibility: hidden; }
+@media (prefers-reduced-motion: reduce) {
+  .song-strip .song-card { transition: none; }
+}
 .song-card input {
   position: absolute;
   inset: 0;
@@ -325,7 +348,7 @@ body[data-cues="grow"] .hand-hover::after {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  border: 3px solid #ffffff35;
+  border: 3px solid var(--border);
   border-radius: 18px;
   /* The plain cover of a song with no picture yet: the song's own colour. */
   background: linear-gradient(145deg, hsl(var(--hue) 70% 44%), hsl(calc(var(--hue) + 50) 75% 20%));
@@ -353,8 +376,8 @@ body[data-cues="grow"] .hand-hover::after {
   opacity: 0.16;
 }
 .song-card input:checked + .cover {
-  border-color: #fde047;
-  box-shadow: 0 0 34px #fde04755;
+  border-color: var(--due-color);
+  box-shadow: 0 0 34px color-mix(in srgb, var(--due-color) 33.3%, transparent);
 }
 .song-step {
   display: grid;
@@ -362,7 +385,7 @@ body[data-cues="grow"] .hand-hover::after {
   width: 64px;
   height: 96px;
   padding: 0;
-  background: #0b1024cc;
+  background: var(--surface);
 }
 .song-step svg {
   width: 36px;
@@ -373,27 +396,140 @@ body[data-cues="grow"] .hand-hover::after {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-@media (prefers-reduced-motion: reduce) {
-  .song-strip .song-card { transition: none; }
+
+/* A row of large buttons that behave as radio inputs: player count and length. */
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  border: none;
+  padding: 0;
+  margin: 14px 0 0;
+}
+.choices legend {
+  font-size: 18px;
+  color: var(--text-soft);
+  margin: 0 auto 8px;
+}
+.choices label {
+  position: relative;
+  cursor: pointer;
+}
+.choices input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  margin: 0;
+}
+.choices span {
+  display: block;
+  min-width: 170px;
+  padding: 12px 22px;
+  border: 2px solid var(--border-faint);
+  border-radius: 14px;
+  background: var(--surface);
+  font-size: 21px;
+  font-weight: 800;
+  pointer-events: none;
+}
+.choices input:checked + span {
+  border-color: var(--due-color);
+  background: #3a3413e6;
+  color: var(--due-color);
 }
 
-/* The start buttons are yellow themselves, so the yellow highlight does not show on them.
-   Their highlight is white, and their hold bar is dark. */
-.primary.hand-hover {
-  outline: 6px solid #fff;
-  box-shadow: 0 0 34px #ffffffb3;
+/* The player cards: each player's level, hand shapes and faces. */
+.players {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  max-width: 1200px;
+  margin: 18px auto 22px;
 }
-.primary.hand-hover::after {
-  --mark: #ffffff;
+/* One player: a single card, centred. */
+.players.solo {
+  grid-template-columns: minmax(0, 620px);
+  justify-content: center;
 }
-body[data-cues="grow"] .primary.hand-hover::after {
-  border-color: #181627;
-  background: #18162766;
+.menu fieldset:not(.choices, .songs) {
+  background: #0b1024a6;
+}
+.level-options {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+/* Level buttons keep one height when a level name wraps onto two lines. */
+.level-options label {
+  display: flex;
+  cursor: pointer;
+  position: relative;
+}
+.level-options input {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  inset: 0;
+  margin: 0;
+}
+.level-options span {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 86px;
+  border: 2px solid var(--border-faint);
+  border-radius: 14px;
+  background: var(--surface);
+  font-size: 21px;
+  font-weight: 800;
+  padding: 10px 5px;
+  pointer-events: none;
+}
+.level-options small {
+  display: block;
+  font-size: 14px;
+  margin-top: 8px;
+  color: var(--text-soft);
+  font-weight: 500;
+}
+.level-options input:checked + span {
+  border-color: var(--player);
+  background: color-mix(in srgb, var(--player) 18%, transparent);
+  color: var(--player);
+}
+/* Hand shapes and faces switches on each player card. They sit side by side, far enough
+   apart that a pointing hand can hold one without touching the other. */
+.switches {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  column-gap: 40px;
+}
+.shapes,
+.faces {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 14px;
+  font-size: 20px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.shapes input,
+.faces input {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--player);
 }
 
-/* Two switches in a top corner of the menu: song previews and choosing by hand. They sit a
-   little in from the side and from the top, because the camera tracks a hand badly at the
-   edge of its picture. They shrink with the menu content (`--fit` is set in ui.ts). */
+/* Four switches in a top corner of the menu: previews, hand control, recording and the cue
+   style. They sit a little in from the side and from the top, because the camera tracks a
+   hand badly at the edge of its picture. They shrink with the menu content (`--fit` is set
+   in ui.ts). */
 .corner {
   position: absolute;
   top: 4%;
@@ -405,61 +541,146 @@ body[data-cues="grow"] .primary.hand-hover::after {
 }
 .corner button {
   min-width: 236px;
-  padding: 12px 18px;
-  border-radius: 14px;
-  background: #0b1024cc;
-  font-size: 20px;
   text-align: left;
 }
 .corner button[aria-pressed="false"] {
   border-style: dashed;
-  color: #94a3b8;
+  color: var(--text-faint);
 }
 
-/* The recalibrate button of the ready check. One player: top right, a little in from the
-   side, as the menu switches are. Two players: that place is the right player's hands-up
-   cell, so the button sits at the top between the two grids, where both players reach it. */
-#refit {
-  position: absolute;
-  z-index: 6;
-  top: 5%;
-  right: 17%;
-  padding: 12px 18px;
-  border-radius: 14px;
-  background: #0b1024cc;
-  font-size: 20px;
-}
-#refit[data-players="2"] {
-  right: 50%;
-  transform: translateX(50%);
-}
+/* --- The results --- */
 
-/* The mark that tells the players a round is recorded. It is not part of the videos. */
-#rec {
-  position: absolute;
-  z-index: 6;
-  top: 18px;
-  left: 18px;
-  padding: 6px 12px;
-  border-radius: 10px;
-  background: #0f172aab;
-  color: #f87171;
-  font-size: 16px;
+.results h1 {
+  font-size: clamp(34px, 4vw, 58px);
+}
+.result-players {
+  display: flex;
+  gap: 32px;
+  justify-content: center;
+  max-width: 1100px;
+  margin: 20px auto;
+}
+.result-players section {
+  flex: 1;
+  max-width: 520px;
+  border: 2px solid var(--player);
+  background: #11172bbd;
+  border-radius: 24px;
+  padding: 20px;
+}
+.result-players h2 {
+  color: var(--player);
+  font-size: 24px;
+  margin: 0 0 8px;
+}
+.stars {
+  color: var(--due-color);
+  font-size: 42px;
+  letter-spacing: 5px;
+  white-space: nowrap;
+}
+.stars span {
+  color: #64748b;
+}
+.result-score {
+  display: block;
+  font-size: 54px;
+  margin: 4px 0 12px;
+}
+.result-stats {
+  display: flex;
+  justify-content: space-around;
+  font-size: 30px;
   font-weight: 800;
-  letter-spacing: 1px;
+}
+.result-stats small {
+  display: block;
+  font-size: 16px;
+  color: var(--text-soft);
+  font-weight: 500;
+  margin-top: 4px;
+}
+.counts {
+  display: flex;
+  justify-content: space-around;
+  font-size: 17px;
+  margin-top: 20px;
+  color: #d1fae5;
+}
+.counts span:last-child {
+  color: #fda4af;
+}
+/* Each card's bar fills while its player holds a hand up to play again. */
+.replay-hold {
+  height: 14px;
+  background: var(--border-faint);
+  border-radius: 20px;
+  margin-top: 18px;
+  overflow: hidden;
+}
+.replay-hold span {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: var(--player);
+  border-radius: inherit;
+}
+.team {
+  font-size: 22px;
+  color: var(--text-soft);
+}
+.team strong {
+  color: var(--due-color);
+  font-size: 32px;
+  margin-left: 16px;
+}
+.replay-prompt {
+  font-size: 32px;
+  font-weight: 850;
+  margin: 18px 0 4px;
+}
+.replay-hint {
+  margin: 4px 0 16px;
+  font-size: 18px;
+  color: var(--text-soft);
+}
+.result-actions {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+}
+.result-actions .primary {
+  font-size: 22px;
+  padding: 12px 28px;
+}
+/* Dev server only: the diagnostics row under the result buttons. */
+.diagnostics {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 16px;
+  font-size: 15px;
+  color: var(--text-faint);
+}
+.diagnostics button {
+  font-size: 15px;
+  padding: 6px 14px;
+  border-radius: 10px;
 }
 
-/* The recorded rounds on the menu and the results, each with a link that downloads a video. */
+/* --- Recorded rounds: the list on the menu and the results, and the preview of a round --- */
+
 .recordings {
   margin-top: 16px;
   font-size: 17px;
-  color: #cbd5e1;
+  color: var(--text-soft);
 }
-#panel .recordings p {
+.recordings p {
   margin: 0 0 6px;
   font-size: 17px;
 }
-#panel .recordings p:empty {
+.recordings p:empty {
   display: none;
 }
 .recordings ul {
@@ -475,11 +696,16 @@ body[data-cues="grow"] .primary.hand-hover::after {
   justify-content: center;
   gap: 12px;
 }
+.recordings li button {
+  padding: 7px 14px;
+  border-radius: 10px;
+  font-size: 17px;
+}
 .recordings a {
   padding: 7px 14px;
-  border: 2px solid #ffffff35;
+  border: 2px solid var(--border);
   border-radius: 10px;
-  background: #252b49;
+  background: var(--button);
   color: #fff;
   font-weight: 800;
   text-decoration: none;
@@ -487,15 +713,15 @@ body[data-cues="grow"] .primary.hand-hover::after {
 .recordings a:hover {
   filter: brightness(1.15);
 }
-
-/* The small silent video of the round on the results screen. A click or a fist plays it large. */
+/* The small silent video of the round on the results screen. A click or a fist plays it large.
+   This rule must come after `.hand-hover`, so the button keeps its corners while a hand is on it. */
 .preview {
   display: block;
   width: 320px;
   aspect-ratio: 16 / 9;
   margin: 0 auto 12px;
   padding: 0;
-  border: 3px solid #ffffff35;
+  border: 3px solid var(--border);
   border-radius: 14px;
   background: #000;
 }
@@ -517,19 +743,21 @@ body[data-cues="grow"] .primary.hand-hover::after {
   background: #0b1024d9;
   font-size: 16px;
 }
-.recordings li button {
-  padding: 7px 14px;
-  border-radius: 10px;
-  font-size: 17px;
-}
 
-/* The video player. It lies over the panel and under the hand rings, so a hand can point at
-   its buttons. They sit at the top, in from the sides, where the camera tracks a hand well. */
+/* --- The video player ---
+   It lies over the panel and under the hand rings, so a hand can point at its buttons. They
+   sit at the top, in from the sides, where the camera tracks a hand well. */
+
 #player {
   position: absolute;
   inset: 0;
   z-index: 3;
   background: #000;
+}
+/* The player takes the focus when it opens. It fills the window, so a ring around it would
+   only frame the screen. */
+#player:focus {
+  outline: none;
 }
 #player video {
   width: 100%;
@@ -549,18 +777,61 @@ body[data-cues="grow"] .primary.hand-hover::after {
 .player-bar a {
   display: flex;
   align-items: center;
-  padding: 12px 18px;
-  border: 2px solid #ffffff35;
-  border-radius: 14px;
-  background: #0b1024cc;
+  border: 2px solid var(--border);
   color: #fff;
-  font-size: 20px;
   font-weight: 800;
   text-decoration: none;
 }
 .player-bar [aria-pressed="true"] {
-  border-color: #fde047;
-  color: #fde047;
+  border-color: var(--due-color);
+  color: var(--due-color);
+}
+
+/* --- Messages and controls over the game --- */
+
+#message {
+  position: absolute;
+  z-index: 5;
+  top: 38%;
+  left: 5%;
+  right: 5%;
+  text-align: center;
+  pointer-events: none;
+  text-shadow: 0 3px 20px #000;
+}
+#message h1 {
+  font-size: clamp(34px, 4.5vw, 66px);
+  margin: 0 auto 18px;
+  max-width: 1100px;
+  line-height: 1.15;
+}
+#message p {
+  font-size: clamp(24px, 2.5vw, 38px);
+  font-weight: 750;
+  margin: 0;
+  color: #fef08a;
+}
+/* Keep the players' bodies and the hands-up cell visible: put fit and ready prompts at the bottom. */
+body[data-phase="fit"] #message,
+body[data-phase="ready"] #message {
+  top: auto;
+  bottom: 4%;
+}
+body[data-phase="fit"] #message h1,
+body[data-phase="ready"] #message h1 {
+  margin-bottom: 6px;
+}
+body[data-phase="fit"] #message p {
+  font-size: clamp(64px, 8vw, 130px);
+  line-height: 1;
+}
+body[data-phase="countdown"] #message {
+  top: 26%;
+}
+body[data-phase="countdown"] #message h1 {
+  font-size: clamp(140px, 20vw, 300px);
+  line-height: 1;
+  margin-bottom: 10px;
 }
 
 /* A short note at the top of the screen, for example the name of the cue style after the V key. */
@@ -572,10 +843,72 @@ body[data-cues="grow"] .primary.hand-hover::after {
   padding: 10px 22px;
   border-radius: 14px;
   background: #0b1024e6;
-  border: 2px solid #fde047;
-  color: #fde047;
+  border: 2px solid var(--due-color);
+  color: var(--due-color);
   font-size: 24px;
   font-weight: 800;
   transform: translateX(-50%);
   pointer-events: none;
+}
+
+#resume {
+  position: absolute;
+  z-index: 7;
+  top: 65%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--due-color);
+  color: #161629;
+  font-size: 32px;
+}
+#pause {
+  position: absolute;
+  bottom: 18px;
+  right: 18px;
+  z-index: 6;
+  font-size: 18px;
+  padding: 8px 14px;
+  background: var(--chip);
+}
+
+/* The recalibrate button of the ready check. One player: top right, a little in from the
+   side, as the menu switches are. Two players: that place is the right player's hands-up
+   cell, so the button sits at the top between the two grids, where both players reach it. */
+#refit {
+  position: absolute;
+  z-index: 6;
+  top: 5%;
+  right: 17%;
+}
+#refit[data-players="2"] {
+  right: 50%;
+  transform: translateX(50%);
+}
+
+/* The mark that tells the players a round is recorded. It is not part of the videos. */
+#rec {
+  position: absolute;
+  z-index: 6;
+  top: 18px;
+  left: 18px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: var(--chip);
+  color: #f87171;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+#debug {
+  position: absolute;
+  bottom: 50px;
+  left: 12px;
+  z-index: 8;
+  background: #020617df;
+  padding: 16px;
+  font-size: 17px;
+  color: #fff;
+  pointer-events: none;
+  border-radius: 12px;
 }

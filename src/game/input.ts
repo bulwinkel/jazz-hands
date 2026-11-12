@@ -9,6 +9,7 @@ import type {
 } from '../tracking/types';
 import { botPlayer } from './bot';
 import { containRect } from './geometry';
+import { clamp01 } from './numbers';
 import type { PlayerRun } from './player';
 import type { Options } from './settings';
 import type { Phase, PlayerCount, Point } from './types';
@@ -54,8 +55,9 @@ export class CameraInput implements GameInput {
   private animationId = 0;
   private lastVideoTime = -1;
 
-  constructor(mode: TrackerMode) {
-    this.tracker = createTracker(mode);
+  /** With `faces`, the first tracker loads the face models with the hand models. */
+  constructor(mode: TrackerMode, faces: boolean) {
+    this.tracker = createTracker(mode, { faces });
     this.loaded.set(mode, this.tracker);
   }
 
@@ -268,7 +270,6 @@ export class SimulatedInput implements GameInput {
     // The simulated camera frame is letterboxed at 16:9, the same as the renderer's default.
     const bounds = this.surface.getBoundingClientRect();
     const frame = containRect(bounds.width, bounds.height, 16 / 9);
-    const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
     this.pointer = {
       x: clamp01((event.clientX - bounds.left - frame.x) / frame.width),
       y: clamp01((event.clientY - bounds.top - frame.y) / frame.height),
@@ -288,6 +289,12 @@ export class SimulatedInput implements GameInput {
   };
 }
 
-export function createInput(options: Options, trackerMode: TrackerMode, surface: HTMLElement): GameInput {
-  return options.input === 'camera' ? new CameraInput(trackerMode) : new SimulatedInput(options, surface);
+/** The input the options ask for. A camera starts with `trackerMode`, with or without the face models. */
+export function createInput(
+  options: Options,
+  trackerMode: TrackerMode,
+  faces: boolean,
+  surface: HTMLElement,
+): GameInput {
+  return options.input === 'camera' ? new CameraInput(trackerMode, faces) : new SimulatedInput(options, surface);
 }

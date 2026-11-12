@@ -49,6 +49,19 @@ export function validateManifest(value: unknown): Manifest {
   return m;
 }
 
+/** Loads and checks a song's manifest. */
+export async function fetchManifest(url: string): Promise<Manifest> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Song manifest load failed (${response.status}).`);
+  let json: unknown;
+  try {
+    json = await response.json();
+  } catch {
+    throw new Error('Song manifest: invalid JSON.');
+  }
+  return validateManifest(json);
+}
+
 export function isBarStart(m: Manifest, beat: number): boolean {
   return beat >= m.firstDownbeat && (beat - m.firstDownbeat) % m.beatsPerBar === 0;
 }

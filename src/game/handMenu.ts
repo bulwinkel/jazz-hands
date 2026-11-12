@@ -119,7 +119,7 @@ export function stepHandMenu(
   // Choose only on a frame that really shows a fist, never inside a tracking gap.
   const chooseNow = fistOnIt && progress >= 1 && !next.chosen;
   if (chooseNow && target.repeats) {
-    // The hold starts again from nothing, and so does its bar.
+    // The hold starts again from nothing, and so does its mark.
     next.holdStartedMs = nowMs;
   } else {
     next.chosen = next.chosen || chooseNow;

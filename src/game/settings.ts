@@ -46,6 +46,11 @@ export interface Options {
 
 export const STORAGE_KEY = 'dance-game-v1';
 
+/** The range a kept camera delay is clamped into on load, as [lowest, highest]. */
+export const INPUT_LATENCY_RANGE_MS = [-1000, 2000] as const;
+/** The range a kept picture offset is clamped into on load, as [lowest, highest]. */
+export const AV_OFFSET_RANGE_MS = [-2000, 2000] as const;
+
 export function defaultSettings(): Settings {
   return {
     playerCount: 2,
@@ -105,8 +110,8 @@ function readStored(stored: unknown): Settings {
   if (typeof saved.handControl === 'boolean') settings.handControl = saved.handControl;
   if (typeof saved.record === 'boolean') settings.record = saved.record;
   if (isCueStyle(saved.cueStyle)) settings.cueStyle = saved.cueStyle;
-  settings.inputLatencyMs = finiteOr(saved.inputLatencyMs, settings.inputLatencyMs, -1000, 2000);
-  settings.avOffsetMs = finiteOr(saved.avOffsetMs, settings.avOffsetMs, -2000, 2000);
+  settings.inputLatencyMs = finiteOr(saved.inputLatencyMs, settings.inputLatencyMs, ...INPUT_LATENCY_RANGE_MS);
+  settings.avOffsetMs = finiteOr(saved.avOffsetMs, settings.avOffsetMs, ...AV_OFFSET_RANGE_MS);
   return settings;
 }
 
