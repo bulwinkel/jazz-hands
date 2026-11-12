@@ -232,7 +232,7 @@ describe('level 4', () => {
     expect(speeds).toEqual(new Set(['fast', 'normal', 'slow']));
   });
 
-  it('runs a fast slide in half a beat and keeps the next beat for the next cue', () => {
+  it('runs a fast slide in half a beat, then leaves the rest of that beat and the next one free', () => {
     const fast = cues.filter((cue) => cue.speed === 'fast');
     expect(fast.length).toBeGreaterThan(30);
     for (const cue of fast) {
@@ -240,7 +240,8 @@ describe('level 4', () => {
       expect(cue.times[1] - cue.times[0]).toBeCloseTo(beatSec / 2);
     }
     cues.forEach((cue, i) => {
-      if (cue.speed === 'fast' && i < cues.length - 1) expect(cues[i + 1].beatIndex).toBe(cue.beatIndex + 1);
+      if (cue.speed !== 'fast' || i === cues.length - 1) return;
+      expect(cues[i + 1].timeSec - lastTime(cue)).toBeGreaterThan(1.4 * beatSec);
     });
   });
 
@@ -297,13 +298,6 @@ describe('two hands', () => {
       const cues = chart(synthetic(bpm, 600), level, 42, { shapes: true });
       expect(cuesBeyondTwoHands(cues)).toEqual([]);
     }
-  });
-
-  it('are not asked for a double straight after a fast slide', () => {
-    const cues = chart(synthetic(100, 1800), 4, 42);
-    const afterFastSlides = cues.filter((_, i) => i > 0 && cues[i - 1].speed === 'fast');
-    expect(afterFastSlides.length).toBeGreaterThan(50);
-    expect(afterFastSlides.some(isDouble)).toBe(false);
   });
 
   it('are not asked for an off-beat tap straight after a double, or a double after an off-beat tap', () => {

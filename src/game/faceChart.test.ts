@@ -138,7 +138,7 @@ describe('hand charts', () => {
     [1, 94, 1672571102],
     [2, 188, 2944844745],
     [3, 141, 2486315852],
-    [4, 193, 2104804640],
+    [4, 156, 1446666729],
   ];
 
   it.each(BEFORE_FACES)('at level %i are what they were before face cues existed', (level, count, expected) => {
