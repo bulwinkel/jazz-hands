@@ -8,6 +8,7 @@ import {
   HANDS_UP_CELL,
   LEVELS,
   MENU_TRACKER,
+  PLAYER_COLORS,
   PREVIEW,
   SONGS,
   TIMING,
@@ -34,9 +35,11 @@ import { createPlayers, summariseChart } from './player';
 import type { ChartSummary, PlayerRun } from './player';
 import { SongPreview } from './preview';
 import type { PreviewState } from './preview';
+import { RECORDING, RoundRecorder, videoFileName } from './recording';
+import type { ResultLine, RoundVideos } from './recording';
 import { GameRenderer } from './render';
 import type { Feedback } from './render';
-import { award, freshScore } from './scoring';
+import { accuracy, award, freshScore, stars } from './scoring';
 import { parseSettings, STORAGE_KEY, usesFaces } from './settings';
 import type { Options } from './settings';
 import { mergeForSolo } from './solo';
@@ -133,6 +136,16 @@ export class DanceGame {
   private pickedTracker?: TrackerMode;
   private switchingTracker = false;
 
+  /** Records the round that runs now, while recording is on. */
+  private recorder?: RoundRecorder;
+  /** The song's sound for the two videos, each with its own delay. They belong to `audio`. */
+  private recordingAudio?: { game: MediaStream; camera: MediaStream };
+  private recordingStopTimer = 0;
+  /** Recordings that have ended and are not yet ready to download. */
+  private recordingsInProgress = 0;
+  /** The videos of the last rounds, newest first. */
+  private recordedRounds: RoundVideos[] = [];
+
   private readonly preview = new SongPreview();
   /** The song whose preview plays or is about to play, as an index into SONGS. */
   private previewedSong: number | null = null;
@@ -181,9 +194,11 @@ export class DanceGame {
   }
 
   private showMenu = (): void => {
+    this.endRecording();
     this.session++;
     this.audio?.close();
     this.audio = undefined;
+    this.recordingAudio = undefined;
     this.players = [];
     this.frame = undefined;
     this.paused = false;
@@ -191,6 +206,7 @@ export class DanceGame {
     this.ui.resumeButton.hidden = true;
     this.setPhase('menu');
     this.ui.showMenu(this.options.settings, (byHand) => void this.start(byHand), this.onMenuChange);
+    this.showRecordings();
     this.previewChosenSong();
     this.syncMenuInput();
   };
@@ -300,6 +316,7 @@ export class DanceGame {
     const audio = new SongAudio();
     audio.avOffsetMs = settings.avOffsetMs;
     this.audio = audio;
+    this.recordingAudio = undefined;
     // Browsers allow sound only after a click or key press. Resume now, inside the Start
     // gesture, before the first await. If it fails, the "Click to start" button retries.
     void audio.resume().catch(() => {});
@@ -348,6 +365,95 @@ export class DanceGame {
     const manifest = await fetchManifest(SONGS[this.options.settings.songIndex].manifest);
     await audio.load(manifest.audio);
     return manifest;
+  }
+
+  // --- Recording a round as video ---
+
+  /** Starts to record the round, when the players turned recording on. Runs with the countdown. */
+  private startRecording(): void {
+    const { settings } = this.options;
+    const audio = this.audio;
+    if (!settings.record || !audio) return;
+    const recorder = RoundRecorder.create();
+    if (!recorder) return;
+
+    // In the game view, the sound must fit the cues: later by what the speakers add. In the
+    // camera view it must fit the dancers: later again by what the camera adds.
+    const heardLateSec = audio.outputLatencySec + settings.avOffsetMs / 1000;
+    this.recordingAudio ??= {
+      game: audio.recordingStream(heardLateSec),
+      camera: audio.recordingStream(heardLateSec + settings.inputLatencyMs / 1000),
+    };
+    try {
+      recorder.start(this.input?.video, this.recordingAudio.game, this.recordingAudio.camera);
+    } catch {
+      return; // A recording that cannot start must never stop the round.
+    }
+    this.recorder = recorder;
+    this.ui.showRecordingMark(true);
+  }
+
+  /**
+   * Ends the recording of this round, if one runs. A round that reached its results keeps
+   * its videos. A round that stopped part-way (a restart, the menu, an error) does not.
+   */
+  private endRecording(): void {
+    window.clearTimeout(this.recordingStopTimer);
+    const recorder = this.recorder;
+    this.recorder = undefined;
+    this.ui.showRecordingMark(false);
+    if (!recorder?.active) return;
+    if (this.phase === 'results') void this.keepRecording(recorder);
+    else recorder.discard();
+  }
+
+  /** Finishes the videos of a round and puts them in the list to download. */
+  private async keepRecording(recorder: RoundRecorder): Promise<void> {
+    const songId = this.manifest?.id ?? 'song';
+    const title = this.manifest?.title ?? '';
+    const endedAt = new Date();
+    this.recordingsInProgress++;
+    this.showRecordings();
+    const videos = await recorder.stop();
+    this.recordingsInProgress--;
+
+    if (videos.length > 0) {
+      const time = endedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+      this.recordedRounds.unshift({
+        label: `${time} · ${title}`,
+        videos: videos.map((video) => ({
+          kind: video.kind,
+          url: URL.createObjectURL(video.blob),
+          fileName: videoFileName(songId, endedAt, video.kind, video.extension),
+          sizeBytes: video.blob.size,
+        })),
+      });
+      // Videos are large: keep those of the last few rounds only.
+      for (const old of this.recordedRounds.splice(RECORDING.keepRounds)) {
+        for (const video of old.videos) URL.revokeObjectURL(video.url);
+      }
+    }
+    this.showRecordings();
+  }
+
+  /** Shows the recorded rounds on the menu or the results, whichever is open. */
+  private showRecordings(): void {
+    const status = this.recorder?.active
+      ? 'Recording the last seconds…'
+      : this.recordingsInProgress > 0
+        ? 'Finishing the video…'
+        : '';
+    this.ui.showRecordings(this.recordedRounds, status);
+  }
+
+  private resultLines(): ResultLine[] {
+    return this.players.map((player) => ({
+      title: `Player ${player.index + 1} · Level ${player.level}`,
+      color: PLAYER_COLORS[player.index],
+      stars: stars(player.score),
+      score: Math.round(player.score.score),
+      accuracyPercent: Math.round(accuracy(player.score) * 100),
+    }));
   }
 
   // --- Song preview in the menu ---
@@ -409,6 +515,7 @@ export class DanceGame {
     const inRound = ['fit', 'ready', 'countdown', 'play', 'results'].includes(this.phase);
     if (!inRound || this.switchingTracker) return;
     const session = this.session;
+    this.endRecording();
     this.audio?.stop();
     // A paused round has a stopped audio clock. The next countdown needs it running.
     void this.audio?.resume().catch((error: unknown) => this.failIfCurrent(session, error));
@@ -423,6 +530,7 @@ export class DanceGame {
   private beginCountdown = (): void => {
     if (this.phase !== 'ready' && this.phase !== 'results' && this.phase !== 'play') return;
     const session = this.session;
+    this.endRecording();
     this.audio?.stop();
     void this.audio?.resume().catch((error: unknown) => this.failIfCurrent(session, error));
     this.paused = false;
@@ -436,6 +544,7 @@ export class DanceGame {
     }
     this.ui.hidePanel();
     this.setPhase('countdown');
+    this.startRecording();
   };
 
   private beginPlay(): void {
@@ -460,6 +569,11 @@ export class DanceGame {
     this.audio?.stop();
     this.setPhase('results');
     this.ui.showResults(this.players, this.beginCountdown, this.showMenu, (byHand) => this.refit(byHand));
+    // A recording goes on for a few seconds: the cheer, and the result card in the game view.
+    if (this.recorder?.active) {
+      this.recordingStopTimer = window.setTimeout(() => this.endRecording(), RECORDING.tailSec * 1000);
+    }
+    this.showRecordings();
     if (import.meta.env.DEV) void this.saveReport(this.report);
   }
 
@@ -480,6 +594,7 @@ export class DanceGame {
         inputLatencyMs: settings.inputLatencyMs,
         avOffsetMs: settings.avOffsetMs,
         audioOutputLatencyMs: Math.round((this.audio?.outputLatencySec ?? 0) * 1000),
+        recording: this.recorder?.active ?? false,
       },
       trackerMode: this.input?.mode ?? this.trackerMode(),
       trackerDelegate: this.input?.delegate ?? '',
@@ -512,6 +627,7 @@ export class DanceGame {
   }
 
   private fail(error: unknown): void {
+    this.endRecording();
     this.audio?.stop();
     this.setPhase('error');
     this.ui.hidePanel();
@@ -688,6 +804,8 @@ export class DanceGame {
     if (session !== this.session) return; // The player left for the menu while the audio switched.
 
     this.paused = pausing;
+    if (pausing) this.recorder?.pause();
+    else this.recorder?.resume();
     if (pausing) this.ui.showMessage('Paused', 'Space to keep dancing · Esc for menu');
     else this.ui.showMessage();
     this.ui.pauseButton.textContent = pausing ? '▶ Resume' : 'Ⅱ Pause';
@@ -845,9 +963,17 @@ export class DanceGame {
         startSec: this.startSec,
         endSec: this.endSec,
         feedback: this.feedback,
+        recording: this.recorder?.active,
       },
       this.videoAspect(),
     );
+    this.recorder?.drawFrame({
+      video: this.input?.video,
+      overlay: this.ui.canvas,
+      frame: this.renderer.framePixels,
+      message: this.ui.message,
+      results: this.phase === 'results' ? this.resultLines() : undefined,
+    });
     this.updateDebug();
     this.expose();
     this.animationId = requestAnimationFrame(this.render);
@@ -1010,6 +1136,8 @@ export class DanceGame {
     this.audio?.close();
     window.clearTimeout(this.previewTimer);
     this.preview.halt();
+    window.clearTimeout(this.recordingStopTimer);
+    this.recorder?.discard();
     window.removeEventListener('keydown', this.onKey);
   }
 }

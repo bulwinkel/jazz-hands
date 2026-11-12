@@ -233,6 +233,8 @@ export interface RunReport {
     inputLatencyMs: number;
     avOffsetMs: number;
     audioOutputLatencyMs: number;
+    /** True when the round was recorded as video, which costs some speed. */
+    recording: boolean;
   };
   tracking: {
     mode: string;

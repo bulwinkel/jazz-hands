@@ -27,6 +27,8 @@ export interface RenderView {
   startSec: number;
   endSec: number;
   feedback: readonly Feedback[];
+  /** True while the round is recorded as video. The key hints then stay out of the picture. */
+  recording?: boolean;
 }
 
 const HIDDEN_PHASES: readonly Phase[] = ['menu', 'loading', 'error'];
@@ -116,8 +118,15 @@ export class GameRenderer {
     }
     this.drawFeedback(view);
     if (view.phase === 'play') {
-      this.drawProgress((view.songTimeSec - view.startSec) / (view.endSec - view.startSec));
+      this.drawProgress((view.songTimeSec - view.startSec) / (view.endSec - view.startSec), !view.recording);
     }
+  }
+
+  /** Where the camera frame is on the canvas, in the canvas's own pixels. A recording cuts this part out. */
+  get framePixels(): Rect {
+    const scale = this.pixelRatio || 1;
+    const { x, y, width, height } = this.frameRect;
+    return { x: x * scale, y: y * scale, width: width * scale, height: height * scale };
   }
 
   /** Matches the canvas to its on-screen size and clears it. */
@@ -456,12 +465,13 @@ export class GameRenderer {
     }
   }
 
-  private drawProgress(fraction: number): void {
+  private drawProgress(fraction: number, withKeyHints: boolean): void {
     const ctx = this.ctx;
     ctx.fillStyle = withAlpha(WHITE, 0.15);
     ctx.fillRect(0, 0, this.width, 8);
     ctx.fillStyle = RATING_COLORS.perfect;
     ctx.fillRect(0, 0, this.width * clamp01(fraction), 8);
+    if (!withKeyHints) return;
     const hint = 'SPACE pause   ·   R restart   ·   ESC menu';
     this.text(hint, this.width / 2, this.height - this.textSize * 0.7, this.textSize * 0.48, '#e2e8f0');
   }

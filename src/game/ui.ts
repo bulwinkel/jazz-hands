@@ -2,6 +2,8 @@ import { carouselOffset, stepRing } from './carousel';
 import { HAND_MENU, LEVELS, PLAYER_COLORS, SONGS } from './config';
 import type { HandTarget, MenuHand } from './handMenu';
 import type { PlayerRun } from './player';
+import { sizeText } from './recording';
+import type { RoundVideos, VideoKind } from './recording';
 import { accuracy, stars } from './scoring';
 import type { Settings } from './settings';
 import type { Level, PlayerCount, PlayerIndex, SongLength } from './types';
@@ -28,8 +30,13 @@ const SHELL_HTML = `
   <div id="message" role="status" aria-live="polite"><h1></h1><p></p></div>
   <button id="resume" hidden>Click to start</button>
   <button id="pause" hidden aria-label="Pause game">Ⅱ Pause</button>
+  <div id="rec" hidden aria-label="Recording">● REC</div>
   <button id="refit" hidden data-hand="refit" data-hand-hold="${HAND_MENU.slowHoldSec}">↺ Recalibrate · C</button>
   <pre id="debug" hidden></pre>`;
+
+/** The list of recorded rounds, with a download link for each video. Menu and results both have it. */
+const RECORDINGS_HTML = '<div class="recordings" hidden><p role="status"></p><ul></ul></div>';
+const VIDEO_NAMES: Record<VideoKind, string> = { game: 'Game view', camera: 'Camera only' };
 
 const MENU_HTML = `
   <div class="eyebrow">MOVE TOGETHER · PLAY TOGETHER</div>
@@ -57,7 +64,8 @@ const MENU_HTML = `
     <span id="hand-hint">Point with an open hand ✋, then make a fist ✊ to choose · </span>Space or Enter to start · F fullscreen<br>
     <span id="stand-hint"></span>
     <span id="sound-hint" hidden><br>Click or press a key once, so the browser lets the music play.</span>
-  </p>`;
+  </p>
+  ${RECORDINGS_HTML}`;
 
 /**
  * Two switches in a top corner of the menu. They are outside the scaled content, a little in
@@ -67,7 +75,9 @@ const MENU_SWITCHES_HTML = `
   <div class="corner">
     <button type="button" id="previews-switch" data-hand="previews"></button>
     <button type="button" id="hands-switch" data-hand="hand-control"></button>
+    <button type="button" id="record-switch" data-hand="record"></button>
   </div>`;
+
 
 const STAND_HINT: Record<PlayerCount, string> = {
   1: 'Stand in the middle of the picture.',
@@ -197,7 +207,8 @@ export class GameUI {
   private readonly panel: HTMLElement;
   /** Rings that show where the game sees pointing hands. They sit above the panel. */
   private readonly cursors: HTMLElement;
-  private readonly message: HTMLElement;
+  private readonly messageBox: HTMLElement;
+  private readonly recordingMark: HTMLElement;
   private readonly messageTitle: HTMLElement;
   private readonly messageDetail: HTMLElement;
   private readonly fitObserver = new ResizeObserver(() => this.fitPanel());
@@ -211,9 +222,10 @@ export class GameUI {
     this.canvas = find(root, 'canvas');
     this.panel = find(root, '#panel');
     this.cursors = find(root, '#cursors');
-    this.message = find(root, '#message');
-    this.messageTitle = find(this.message, 'h1');
-    this.messageDetail = find(this.message, 'p');
+    this.messageBox = find(root, '#message');
+    this.recordingMark = find(root, '#rec');
+    this.messageTitle = find(this.messageBox, 'h1');
+    this.messageDetail = find(this.messageBox, 'p');
     this.debug = find(root, '#debug');
     this.pauseButton = find(root, '#pause');
     this.resumeButton = find(root, '#resume');
@@ -225,12 +237,50 @@ export class GameUI {
     // Only touch the page when the text changes: this runs on every frame of a countdown.
     if (this.messageTitle.textContent !== title) this.messageTitle.textContent = title;
     if (this.messageDetail.textContent !== detail) this.messageDetail.textContent = detail;
-    this.message.hidden = !title;
+    this.messageBox.hidden = !title;
   }
 
   hidePanel(): void {
     this.panel.hidden = true;
     this.stepCarousel = undefined;
+  }
+
+  /** The large message on screen now, or undefined when none shows. */
+  get message(): { title: string; detail: string } | undefined {
+    if (this.messageBox.hidden) return undefined;
+    return { title: this.messageTitle.textContent ?? '', detail: this.messageDetail.textContent ?? '' };
+  }
+
+  /** Shows the red mark that tells the players a round is recorded. */
+  showRecordingMark(isOn: boolean): void {
+    this.recordingMark.hidden = !isOn;
+  }
+
+  /**
+   * Shows the recorded rounds on the open panel, newest first, with a link that downloads
+   * each video. `status` is a line above them, for a recording that is not finished yet.
+   * Does nothing on a panel with no place for them.
+   */
+  showRecordings(rounds: readonly RoundVideos[], status: string): void {
+    const block = this.panel.querySelector<HTMLElement>('.recordings');
+    if (!block) return;
+    block.hidden = rounds.length === 0 && !status;
+    find(block, 'p').textContent = status;
+    const rows = rounds.map((round) => {
+      const row = document.createElement('li');
+      const label = document.createElement('span');
+      label.textContent = round.label;
+      row.append(label);
+      for (const video of round.videos) {
+        const link = document.createElement('a');
+        link.href = video.url;
+        link.download = video.fileName;
+        link.textContent = `⬇ ${VIDEO_NAMES[video.kind]} · ${sizeText(video.sizeBytes)}`;
+        row.append(link);
+      }
+      return row;
+    });
+    find(block, 'ul').replaceChildren(...rows);
   }
 
   /** In the menu: chooses the next song (1) or the previous one (-1). After the last comes the first. */
@@ -247,7 +297,8 @@ export class GameUI {
 
     // The two switches in the corner. Each shows its state in its text.
     const handHint = find(this.panel, '#hand-hint');
-    const bindSwitch = (id: string, key: 'previews' | 'handControl', label: string, icons: [string, string]): void => {
+    type SwitchKey = 'previews' | 'handControl' | 'record';
+    const bindSwitch = (id: string, key: SwitchKey, label: string, icons: [string, string]): void => {
       const button = find<HTMLButtonElement>(this.panel, id);
       const show = (): void => {
         const isOn = settings[key];
@@ -264,6 +315,7 @@ export class GameUI {
     };
     bindSwitch('#previews-switch', 'previews', 'Previews', ['🔊', '🔇']);
     bindSwitch('#hands-switch', 'handControl', 'Hand control', ['✋', '🚫']);
+    bindSwitch('#record-switch', 'record', 'Recording', ['🔴', '⚪']);
 
     // The songs are a carousel of covers: the chosen song in the middle, its neighbours beside
     // it, the rest out of sight. It takes the same room for six songs as for sixty.
@@ -356,6 +408,7 @@ export class GameUI {
         <button id="menu" data-hand="menu" data-hand-hold="${HAND_MENU.slowHoldSec}">Menu · Esc</button>
         <button id="refit-results" data-hand="refit-results" data-hand-hold="${HAND_MENU.slowHoldSec}">↺ Recalibrate · C</button>
       </div>
+      ${RECORDINGS_HTML}
       <div class="diagnostics" hidden>
         <button id="copy-diagnostics">Copy diagnostics</button>
         <span id="diagnostics-status" role="status"></span>
@@ -456,7 +509,7 @@ export class GameUI {
     this.panel.className = className;
     this.panel.innerHTML = `<div class="fit">${html}</div>${outsideHtml}`;
     this.panel.hidden = false;
-    this.message.hidden = true;
+    this.messageBox.hidden = true;
 
     // Fit again whenever the window or the content changes size.
     this.fitObserver.disconnect();

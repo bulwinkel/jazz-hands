@@ -101,7 +101,7 @@ function playFaceCues(cues: FaceCue[], faceAt: (timeSec: number) => TrackedFace 
 function report(players: PlayerRun[], stats = newTrackingStats(0), faceDelegate: string | null = null) {
   const context: RunContext = {
     song: { id: 'synthetic', title: 'Test', length: 'short', startSec: 0, endSec: 2 },
-    settings: { playerCount: 1, input: 'bot', seed: 1, inputLatencyMs: 100, avOffsetMs: 0, audioOutputLatencyMs: 20 },
+    settings: { playerCount: 1, input: 'bot', seed: 1, inputLatencyMs: 100, avOffsetMs: 0, audioOutputLatencyMs: 20, recording: false },
     trackerMode: 'hands-full',
     trackerDelegate: 'GPU',
     trackerFaceDelegate: faceDelegate,

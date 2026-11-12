@@ -412,3 +412,57 @@ body[data-phase="countdown"] #message h1{font-size:clamp(140px,20vw,300px);line-
   right: 50%;
   transform: translateX(50%);
 }
+
+/* The mark that tells the players a round is recorded. It is not part of the videos. */
+#rec {
+  position: absolute;
+  z-index: 6;
+  top: 18px;
+  left: 18px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: #0f172aab;
+  color: #f87171;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+/* The recorded rounds on the menu and the results, each with a link that downloads a video. */
+.recordings {
+  margin-top: 16px;
+  font-size: 17px;
+  color: #cbd5e1;
+}
+#panel .recordings p {
+  margin: 0 0 6px;
+  font-size: 17px;
+}
+#panel .recordings p:empty {
+  display: none;
+}
+.recordings ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.recordings li {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+.recordings a {
+  padding: 7px 14px;
+  border: 2px solid #ffffff35;
+  border-radius: 10px;
+  background: #252b49;
+  color: #fff;
+  font-weight: 800;
+  text-decoration: none;
+}
+.recordings a:hover {
+  filter: brightness(1.15);
+}

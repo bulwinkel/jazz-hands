@@ -1,5 +1,7 @@
 import { TIMING } from './config';
 
+const MAX_RECORDING_DELAY_SEC = 2;
+
 /**
  * Plays the song. Its audio context is the only clock in the game:
  * the cue animation and the judging both read `songTime`.
@@ -18,6 +20,8 @@ export class SongAudio {
   private startOffsetSec = 0;
   /** Context time at which the current playback runs out. */
   private endCtxTime = 0;
+  /** Where copies of the song's sound go, for recordings. Each is a delay in front of a stream. */
+  private readonly recordingTaps: DelayNode[] = [];
 
   /** Delay between the context clock and the sound leaving the speakers. */
   get outputLatencySec(): number {
@@ -33,6 +37,26 @@ export class SongAudio {
   /** True once the sound has played to its end. Unlike `songTime`, no offset moves this moment. */
   get ended(): boolean {
     return this.source !== undefined && this.context.currentTime >= this.endCtxTime;
+  }
+
+  /**
+   * A copy of the song's sound for a video recording, `delaySec` behind the sound this
+   * context makes. The speakers and the camera both add a delay to what a video shows, so a
+   * recording needs its sound later by the same amount. Ask for the stream before `play`.
+   */
+  recordingStream(delaySec: number): MediaStream {
+    const delay = this.context.createDelay(MAX_RECORDING_DELAY_SEC);
+    delay.delayTime.value = Math.max(0, Math.min(MAX_RECORDING_DELAY_SEC, delaySec));
+    const output = this.context.createMediaStreamDestination();
+    delay.connect(output);
+    // A source of silence that is always on. Without it, the stream stops while no song
+    // plays, and a video then has no sound track for its countdown and its last seconds.
+    const silence = this.context.createConstantSource();
+    silence.offset.value = 0;
+    silence.connect(output);
+    silence.start();
+    this.recordingTaps.push(delay);
+    return output.stream;
   }
 
   async load(url: string): Promise<void> {
@@ -68,6 +92,7 @@ export class SongAudio {
     source.buffer = this.buffer;
     source.connect(gain);
     gain.connect(this.context.destination);
+    for (const tap of this.recordingTaps) gain.connect(tap);
 
     // Start slightly in the future so the first samples are never cut.
     this.startCtxTime = this.context.currentTime + 0.1;

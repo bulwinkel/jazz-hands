@@ -21,6 +21,7 @@ describe('kept settings', () => {
       songIndex: 0,
       previews: false,
       handControl: false,
+      record: true,
     };
     expect(parseSettings(kept, '').settings).toEqual(kept);
   });
@@ -105,6 +106,13 @@ describe('URL parameters', () => {
     expect(parseSettings(null, '?hands=0').settings).toMatchObject({ previews: true, handControl: false });
     const kept = { previews: false, handControl: false };
     expect(parseSettings(kept, '?previews=1&hands=1').settings).toMatchObject({ previews: true, handControl: true });
+  });
+
+  it('keep recording off until a player turns it on', () => {
+    expect(parseSettings(null, '').settings.record).toBe(false);
+    expect(parseSettings({ record: 'yes' }, '').settings.record).toBe(false);
+    expect(parseSettings(null, '?record=1').settings.record).toBe(true);
+    expect(parseSettings({ record: true }, '?record=0').settings.record).toBe(false);
   });
 
   it('set the one-off options', () => {

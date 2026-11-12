@@ -19,6 +19,8 @@ export interface Settings {
   previews: boolean;
   /** Whether a hand can point at the menu and the results and choose there with a fist. */
   handControl: boolean;
+  /** Whether each round is recorded as video. */
+  record: boolean;
 }
 
 export type InputSource = 'camera' | 'mouse' | 'bot';
@@ -52,6 +54,7 @@ export function defaultSettings(): Settings {
     songIndex: 0,
     previews: true,
     handControl: true,
+    record: false,
   };
 }
 
@@ -95,6 +98,7 @@ function readStored(stored: unknown): Settings {
   if (isSongIndex(saved.songIndex)) settings.songIndex = saved.songIndex;
   if (typeof saved.previews === 'boolean') settings.previews = saved.previews;
   if (typeof saved.handControl === 'boolean') settings.handControl = saved.handControl;
+  if (typeof saved.record === 'boolean') settings.record = saved.record;
   settings.inputLatencyMs = finiteOr(saved.inputLatencyMs, settings.inputLatencyMs, -1000, 2000);
   settings.avOffsetMs = finiteOr(saved.avOffsetMs, settings.avOffsetMs, -2000, 2000);
   return settings;
@@ -103,7 +107,7 @@ function readStored(stored: unknown): Settings {
 /**
  * URL parameters, all optional:
  *   players=1|2   p0, p1=1..5   shapes0, shapes1=1|0   faces0, faces1=1|0
- *   length=short|full   song=<index from 0>   previews=1|0   hands=1|0
+ *   length=short|full   song=<index from 0>   previews=1|0   hands=1|0   record=1|0
  *   tracker=hands-full|hands-split|pose   input=camera|mouse|bot
  *   start=<seconds>   autostart=1   seed=<integer>   botAccuracy=<0..1>
  */
@@ -127,6 +131,7 @@ export function parseSettings(stored: unknown, query: string): Options {
   if (isSongIndex(song)) settings.songIndex = song;
   if (params.has('previews')) settings.previews = params.get('previews') === '1';
   if (params.has('hands')) settings.handControl = params.get('hands') === '1';
+  if (params.has('record')) settings.record = params.get('record') === '1';
 
   const tracker = params.get('tracker');
   const input = params.get('input');

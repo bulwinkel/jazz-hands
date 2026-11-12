@@ -4,6 +4,24 @@
 
 Created in [T3 Code](https://t3.codes).
 
+## Record a round
+
+Turn on **Recording** in the top right corner of the menu. Each round then gives two videos:
+
+| Video | Content |
+| --- | --- |
+| Game view | The camera picture with the grids, the cues and the score, as on screen, at 720p. It ends with a result card. |
+| Camera only | The camera picture alone, not mirrored, at the camera's own size. |
+
+Both carry the song. A video runs from the countdown to 4 seconds after the results show.
+A pause is left out. A round that stops part-way (restart, recalibrate, menu) gives no video.
+
+The download links show on the results screen and on the menu. The game keeps the videos of
+the last 3 rounds, in memory only: a reload of the page drops them.
+
+The files are MP4 (H.264 and AAC). The run report of a recorded round has
+`settings.recording: true`, to compare its tracking speed with other rounds.
+
 ## Add a song
 
 `tools/songs/add_song.py` analyses one audio file and writes its manifest for the game.
