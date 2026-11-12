@@ -1,5 +1,5 @@
-// Game entry point. The game core replaces this placeholder.
-const app = document.querySelector<HTMLDivElement>('#app');
-if (app) {
-  app.textContent = 'Dance Game: game core not built yet. Open /tracker-test.html for the tracking test.';
-}
+import './style.css';
+import { DanceGame } from './game/flow';
+const root = document.querySelector<HTMLElement>('#app');
+if (!root) throw new Error('The game root is missing.');
+new DanceGame(root);
