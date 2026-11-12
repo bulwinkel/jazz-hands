@@ -16,7 +16,7 @@ export const GAME_CONFIG = {
     3: { perfect: [-120, 160], good: [-280, 350] } },
   cellMargin: 0.12,
   defaultGridWidth: 0.42, defaultGridTop: 0.1, defaultGridHeight: 0.8,
-  fitSec: 6, fitMinSamples: 20, fitPercentiles: [0.02, 0.98],
+  walkBackSec: 8, fitSec: 6, fitMinSamples: 20, fitPercentiles: [0.02, 0.98],
   minGridWidth: 0.18, minGridHeight: 0.3, halfMargin: 0.01,
   inputLatencyMs: 100, avOffsetMs: 0,
   shortSec: 90, fadeSec: 2,

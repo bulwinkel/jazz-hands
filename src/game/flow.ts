@@ -60,6 +60,7 @@ export class DanceGame {
   private enter(phase: Phase): void {
     this.phase = phase; this.enteredAt = performance.now(); this.holdStart = [null, null]; this.hold = [0, 0];
     this.ui.pauseButton.hidden = phase !== 'play';
+    document.body.dataset.phase = phase; // Lets the stylesheet place messages per phase.
     this.expose();
   }
   private menu = (): void => {
@@ -103,6 +104,8 @@ export class DanceGame {
     this.samples = [[], []]; this.grids = [defaultGrid(0), defaultGrid(1)]; this.enter('fit');
     this.ui.resumeButton.hidden = true;
   }
+  /** Test inputs need no walk from the laptop to the play spot. */
+  private walkBackSec(): number { return this.options.input === 'camera' ? C.walkBackSec : 0; }
   private async unlockAudio(): Promise<void> {
     try {
       await this.audio?.resume();
@@ -116,6 +119,8 @@ export class DanceGame {
   private trackingFrame = (frame: TrackingFrame): void => {
     const previous = this.frame; this.frame = frame;
     if (this.phase === 'fit') {
+      // Ignore hands while the players walk from the laptop to their spots.
+      if (performance.now() - this.enteredAt < this.walkBackSec() * 1000) return;
       ([0, 1] as const).forEach(i => { if (!this.options.settings.levels[i]) return; this.samples[i].push(...frame.players[i].hands.map(({ x, y }) => ({ x, y }))); this.grids[i] = fitGrid(this.samples[i], i); });
     } else if (this.phase === 'ready' || this.phase === 'results') {
       const duration = this.phase === 'ready' ? C.readyHoldSec : C.replayHoldSec;
@@ -215,8 +220,10 @@ export class DanceGame {
     const now = performance.now(); this.fps = this.fps * 0.9 + 1000 / Math.max(1, now - this.lastRender) * 0.1; this.lastRender = now;
     const elapsed = (now - this.enteredAt) / 1000;
     if (this.phase === 'fit') {
-      this.ui.showMessage('Stand back. Draw the biggest circles you can with both arms!', `${Math.max(1, Math.ceil(C.fitSec - elapsed))}`);
-      if (elapsed >= C.fitSec) { this.enter('ready'); this.ui.showMessage('Hands up to start!', 'Hold a hand in the glowing top-middle cell · Space also starts'); }
+      const lead = this.walkBackSec();
+      if (elapsed < lead) this.ui.showMessage('Walk back to your spot!', `${Math.ceil(lead - elapsed)}`);
+      else this.ui.showMessage('Draw the biggest circles you can with both arms!', `${Math.max(1, Math.ceil(lead + C.fitSec - elapsed))}`);
+      if (elapsed >= lead + C.fitSec) { this.enter('ready'); this.ui.showMessage('Hands up to start!', 'Hold a hand in the glowing top-middle cell · Space also starts'); }
     } else if (this.phase === 'countdown') {
       this.ui.showMessage(String(Math.max(1, Math.ceil(C.countdownSec - elapsed))), 'Here comes the beat!');
       if (elapsed >= C.countdownSec) this.play();
