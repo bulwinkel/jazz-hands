@@ -531,6 +531,11 @@ body[data-cues="grow"] .primary.hand-hover::after {
   z-index: 3;
   background: #000;
 }
+/* The player takes the focus when it opens. It fills the window, so a ring around it would
+   only frame the screen. */
+#player:focus {
+  outline: none;
+}
 #player video {
   width: 100%;
   height: 100%;

@@ -12,23 +12,34 @@ const PLAYER_HTML = `
     <button type="button" id="player-close" data-hand="player-close">✕ Close · Esc</button>
   </div>`;
 
-/** The video player: it fills the window and plays a recorded round with its sound. */
+/**
+ * The video player: it fills the window and plays a recorded round with its sound.
+ * While it is open, it is the whole page for the keyboard: everything behind it is inert,
+ * so Tab and Enter reach only the player.
+ */
 export class VideoPlayer {
   private readonly element: HTMLElement;
   private readonly video: HTMLVideoElement;
   /** What the player shows now. Unset while it is closed. */
   private playing?: { round: RoundVideos; kind: VideoKind; ownsFullscreen: boolean };
+  /** The element that had the focus before the player opened. It gets the focus back on close. */
+  private returnFocus?: HTMLElement;
+  /** The elements behind the player that it made inert. */
+  private madeInert: HTMLElement[] = [];
   /** Hears when the player opens and when it closes. */
   onChange?: (isOpen: boolean) => void;
 
   /** Builds the player in `element`, which stays hidden while the player is closed. */
   constructor(element: HTMLElement) {
     element.innerHTML = PLAYER_HTML;
+    // The player itself takes the focus when it opens, so a key acts on nothing behind it.
+    element.tabIndex = -1;
     this.element = element;
     this.video = find(element, 'video');
     find(element, '#player-game').addEventListener('click', () => this.show('game'));
     find(element, '#player-camera').addEventListener('click', () => this.show('camera'));
     find(element, '#player-close').addEventListener('click', () => this.close());
+    document.addEventListener('fullscreenchange', this.onFullscreenChange);
   }
 
   get isOpen(): boolean {
@@ -53,6 +64,7 @@ export class VideoPlayer {
     if (ownsFullscreen) void document.documentElement.requestFullscreen().catch(() => {});
     this.playing = { round, kind: first.kind, ownsFullscreen };
     this.element.hidden = false;
+    this.holdFocus();
     this.playFrom(0);
     this.onChange?.(true);
   }
@@ -65,6 +77,7 @@ export class VideoPlayer {
     this.video.removeAttribute('src');
     this.video.load();
     this.element.hidden = true;
+    this.releaseFocus();
     if (playing.ownsFullscreen && document.fullscreenElement) void document.exitFullscreen().catch(() => {});
     this.onChange?.(false);
   }
@@ -75,6 +88,35 @@ export class VideoPlayer {
     if (this.video.paused) void this.video.play().catch(() => {});
     else this.video.pause();
   }
+
+  /** Makes everything behind the player inert, and moves the focus into the player. */
+  private holdFocus(): void {
+    const focused = document.activeElement;
+    this.returnFocus = focused instanceof HTMLElement && focused !== document.body ? focused : undefined;
+    const behind = [...(this.element.parentElement?.children ?? [])].filter(
+      (sibling): sibling is HTMLElement => sibling !== this.element && sibling instanceof HTMLElement && !sibling.inert,
+    );
+    for (const element of behind) element.inert = true;
+    this.madeInert = behind;
+    this.element.focus({ preventScroll: true });
+  }
+
+  /** Undoes `holdFocus`: the page behind works again, and the focus goes back where it was. */
+  private releaseFocus(): void {
+    for (const element of this.madeInert) element.inert = false;
+    this.madeInert = [];
+    // The element may have gone meanwhile, for example a list of rounds that was drawn again.
+    if (this.returnFocus?.isConnected) this.returnFocus.focus({ preventScroll: true });
+    this.returnFocus = undefined;
+  }
+
+  /**
+   * In full screen, Chrome keeps the first Esc for itself and only leaves full screen. A player
+   * that switched the page to full screen closes when full screen ends, so one Esc does both.
+   */
+  private onFullscreenChange = (): void => {
+    if (this.playing?.ownsFullscreen && !document.fullscreenElement) this.close();
+  };
 
   /** Switches between the game view and the camera view, at the same moment of the round. */
   private show(kind: VideoKind): void {
