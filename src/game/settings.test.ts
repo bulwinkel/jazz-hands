@@ -42,13 +42,14 @@ describe('URL parameters', () => {
   it('override the kept settings', () => {
     const options = parseSettings(
       { levels: [1, 1], inputLatencyMs: 120 },
-      '?players=1&p0=3&p1=2&shapes0=1&shapes1=0&length=full',
+      '?players=1&p0=3&p1=2&shapes0=1&shapes1=0&length=full&song=1',
     );
     expect(options.settings).toMatchObject({
       playerCount: 1,
       levels: [3, 2],
       shapes: [true, false],
       length: 'full',
+      songIndex: 1,
       inputLatencyMs: 120,
     });
   });
@@ -66,7 +67,7 @@ describe('URL parameters', () => {
   });
 
   it('are ignored when invalid', () => {
-    const options = parseSettings(null, '?players=4&p0=0&p1=9&length=long&tracker=bad&input=x&start=NaN&seed=1.5&botAccuracy=NaN');
+    const options = parseSettings(null, '?players=4&p0=0&p1=9&length=long&song=99&tracker=bad&input=x&start=NaN&seed=1.5&botAccuracy=NaN');
     expect(options.settings).toEqual(defaultSettings());
     expect(options).toMatchObject({ tracker: undefined, input: 'camera', startSec: 0, botAccuracy: 1 });
     expect(options.seed).toBe(parseSettings(null, '').seed);

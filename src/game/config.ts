@@ -14,6 +14,7 @@ export const DEFAULT_TRACKER: Record<PlayerCount, TrackerMode> = {
 /** Add a song with one line here. */
 export const SONGS = [
   { manifest: '/songs/blessed-on-the-hillside.json', title: 'Blessed on the Hillside' },
+  { manifest: '/songs/todo-bueno.json', title: 'Todo Bueno' },
 ] as const;
 
 /** The chart is the same every run unless the URL gives another seed. */

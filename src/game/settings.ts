@@ -49,6 +49,8 @@ export function defaultSettings(): Settings {
 const isLevel = (value: unknown): value is Level => value === 1 || value === 2 || value === 3;
 const isPlayerCount = (value: unknown): value is PlayerCount => value === 1 || value === 2;
 const isLength = (value: unknown): value is SongLength => value === 'short' || value === 'full';
+const isSongIndex = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 0 && value < SONGS.length;
 const isTrackerMode = (value: unknown): value is TrackerMode =>
   value === 'hands-full' || value === 'hands-split' || value === 'pose';
 
@@ -73,10 +75,7 @@ function readStored(stored: unknown): Settings {
     if (isLevel(level)) settings.levels[player] = level;
     if (typeof shapes === 'boolean') settings.shapes[player] = shapes;
   }
-  const songIndex = saved.songIndex;
-  if (typeof songIndex === 'number' && Number.isInteger(songIndex) && songIndex >= 0 && songIndex < SONGS.length) {
-    settings.songIndex = songIndex;
-  }
+  if (isSongIndex(saved.songIndex)) settings.songIndex = saved.songIndex;
   settings.inputLatencyMs = finiteOr(saved.inputLatencyMs, settings.inputLatencyMs, -1000, 2000);
   settings.avOffsetMs = finiteOr(saved.avOffsetMs, settings.avOffsetMs, -2000, 2000);
   return settings;
@@ -84,7 +83,7 @@ function readStored(stored: unknown): Settings {
 
 /**
  * URL parameters, all optional:
- *   players=1|2   p0, p1=1..3   shapes0, shapes1=1|0   length=short|full
+ *   players=1|2   p0, p1=1..3   shapes0, shapes1=1|0   length=short|full   song=<index from 0>
  *   tracker=hands-full|hands-split|pose   input=camera|mouse|bot
  *   start=<seconds>   autostart=1   seed=<integer>   botAccuracy=<0..1>
  */
@@ -103,6 +102,8 @@ export function parseSettings(stored: unknown, query: string): Options {
   }
   const length = params.get('length');
   if (isLength(length)) settings.length = length;
+  const song = numberParam('song');
+  if (isSongIndex(song)) settings.songIndex = song;
 
   const tracker = params.get('tracker');
   const input = params.get('input');
