@@ -99,6 +99,8 @@ export class RoundRecordings {
     try {
       recorder.start(source.video, this.sound.game, this.sound.camera);
     } catch {
+      // One video may have started before the other failed. Stop it: nothing else would.
+      recorder.discard();
       return;
     }
     this.recorder = recorder;
