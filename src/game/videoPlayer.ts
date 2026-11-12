@@ -46,6 +46,11 @@ export class VideoPlayer {
     return this.playing !== undefined;
   }
 
+  /** True while the player shows `round`. */
+  shows(round: RoundVideos): boolean {
+    return this.playing?.round === round;
+  }
+
   /** The items a hand can choose in the player: its buttons on show. */
   handElements(): HTMLElement[] {
     return [...this.element.querySelectorAll<HTMLElement>('[data-hand]')].filter((element) => !element.hidden);

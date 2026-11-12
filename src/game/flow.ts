@@ -109,7 +109,10 @@ export class DanceGame {
   private switchingTracker = false;
 
   /** Records the rounds while recording is on, and keeps the videos of the last few. */
-  private readonly recordings = new RoundRecordings(() => this.onRecordingsChange());
+  private readonly recordings = new RoundRecordings({
+    onChange: () => this.onRecordingsChange(),
+    isOnShow: (round) => this.ui.player.shows(round),
+  });
   private readonly preview = new MenuPreview();
 
   private debugVisible = false;
@@ -325,14 +328,16 @@ export class DanceGame {
 
   /**
    * The video player opened or closed. While it is open, a raised hand must not start a new
-   * round, and the menu's song preview must not play over the video.
+   * round, and the menu's song preview must not play over the video. Once it closes, the
+   * videos of a round that left the list while it played can go.
    */
-  private onPlayerChange = (): void => {
+  private onPlayerChange = (isOpen: boolean): void => {
     for (const player of this.players) {
       player.holdStartMs = null;
       player.hold = 0;
     }
     this.followPreview();
+    if (!isOpen) this.recordings.freeDropped();
   };
 
   // --- Song preview in the menu ---

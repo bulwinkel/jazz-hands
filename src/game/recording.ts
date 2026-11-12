@@ -78,6 +78,8 @@ export interface RecordedVideo {
 
 /** The videos of one round, ready to download. */
 export interface RoundVideos {
+  /** Names the round for as long as the game keeps it. A new round gets a new id. */
+  id: number;
   /** For example "20:41 · Todo Bueno". */
   label: string;
   videos: { kind: VideoKind; url: string; fileName: string; sizeBytes: number }[];

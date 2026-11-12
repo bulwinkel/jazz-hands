@@ -31,13 +31,14 @@ export function showRecordings(block: HTMLElement, list: RecordingsList, onWatch
   find(block, 'p').textContent = status;
   showPreview(find(block, '.preview-slot'), preview, onWatch);
 
-  const rows = rounds.map((round, i) => {
+  const rows = rounds.map((round) => {
     const row = document.createElement('li');
     const label = document.createElement('span');
     label.textContent = round.label;
     const watch = document.createElement('button');
     watch.type = 'button';
-    watch.dataset.hand = `watch-${i}`;
+    // The id stays with the round when the list changes, so a fist held on Watch keeps its round.
+    watch.dataset.hand = `watch-${round.id}`;
     watch.textContent = '▶ Watch';
     // A choice made by hand is a click made by the page, which the browser marks as not trusted.
     watch.addEventListener('click', (event) => onWatch(round, !event.isTrusted));
