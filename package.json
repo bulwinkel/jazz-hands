@@ -1,0 +1,25 @@
+{
+  "name": "mediapipe-dance-game",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "setup": "node scripts/setup-assets.mjs",
+    "predev": "node scripts/setup-assets.mjs",
+    "dev": "vite --host localhost --port 5173 --strictPort",
+    "prebuild": "node scripts/setup-assets.mjs",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mediapipe/tasks-vision": "^1.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0"
+  }
+}
