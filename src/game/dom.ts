@@ -6,3 +6,11 @@ export function find<T extends HTMLElement>(root: ParentNode, selector: string):
   if (!element) throw new Error(`Missing element: ${selector}`);
   return element;
 }
+
+/**
+ * True for a click that a pointing hand made. A choice made by hand is a click made by the
+ * page (see `GameUI.chooseHandTarget`), which the browser marks as not trusted.
+ */
+export function isHandClick(event: Event): boolean {
+  return !event.isTrusted;
+}

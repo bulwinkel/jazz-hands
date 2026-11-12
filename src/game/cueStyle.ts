@@ -10,6 +10,8 @@
  *
  * The fist hold in the menu uses the same mark, so the menu teaches how a round reads.
  */
+import { clamp01 } from './numbers';
+
 export type CueStyle = 'shrink' | 'grow';
 
 export const CUE_STYLES: readonly CueStyle[] = ['shrink', 'grow'];
@@ -20,8 +22,6 @@ export const CUE_STYLE_NAMES: Record<CueStyle, string> = { shrink: 'Shrink', gro
 export const SHRINK_START_SCALE = 2.2;
 /** A block of the grow style starts at this share of its cell. Small, but large enough to see. */
 export const GROW_START_SCALE = 0.15;
-
-const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
 
 export function isCueStyle(value: unknown): value is CueStyle {
   return CUE_STYLES.includes(value as CueStyle);

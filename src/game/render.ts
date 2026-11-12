@@ -6,6 +6,7 @@ import { FACE_EMOJI, GESTURE_EMOJI, HANDS_UP_CELL, LEVELS, PLAYER_COLORS, TIMING
 import { openFaceCue } from './faceJudgment';
 import { cellRect, containRect } from './geometry';
 import type { CueState } from './judgment';
+import { clamp01 } from './numbers';
 import type { PlayerRun } from './player';
 import type { Manifest, Phase, PlayerIndex, Point, Rating, Rect, SlideSpeed } from './types';
 
@@ -49,7 +50,6 @@ const FACE_EMOJI_ALPHA = 0.8;
 /** The ring around the emoji, as a share of the emoji size. It sits just outside the emoji. */
 const FACE_RING_SCALE = 0.6;
 
-const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
 /** A slide that is not next is drawn faint. */
 const slideStrength = (isNext: boolean): number => (isNext ? 1 : 0.45);
 const centreOf = (rect: Rect): Point => ({ x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 });

@@ -1,7 +1,7 @@
 import { HAND_MENU, PLAYER_COLORS } from './config';
 import { SHRINK_START_SCALE } from './cueStyle';
 import type { CueStyle } from './cueStyle';
-import { find } from './dom';
+import { find, isHandClick } from './dom';
 import type { HandTarget, MenuHand } from './handMenu';
 import { buildMenu, MENU_HTML, MENU_SWITCHES_HTML } from './menuView';
 import type { MenuControls } from './menuView';
@@ -206,8 +206,7 @@ export class GameUI {
     find(this.panel, '.result-players').append(...players.map(resultCard));
     find(this.panel, '#replay').addEventListener('click', onReplay);
     find(this.panel, '#menu').addEventListener('click', onMenu);
-    // A choice made by hand is a click made by the page, which the browser marks as not trusted.
-    find(this.panel, '#refit-results').addEventListener('click', (event) => onRefit(!event.isTrusted));
+    find(this.panel, '#refit-results').addEventListener('click', (event) => onRefit(isHandClick(event)));
   }
 
   // --- Choosing items by hand ---
@@ -236,7 +235,7 @@ export class GameUI {
     return this.refitButton.hidden ? onPanel : [...onPanel, this.refitButton];
   }
 
-  /** Chooses an item as a click would. */
+  /** Chooses an item as a click would. The click is not trusted, so a handler can tell it from a real one. */
   chooseHandTarget(id: string): void {
     this.root.querySelector<HTMLElement>(`[data-hand="${id}"]`)?.click();
   }

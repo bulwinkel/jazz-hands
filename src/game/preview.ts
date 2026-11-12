@@ -1,11 +1,10 @@
 import { PREVIEW, SONGS } from './config';
 import { fetchManifest, previewStartSec } from './manifest';
+import { clamp01 } from './numbers';
 import type { Manifest } from './types';
 
 /** How often the volume is set while a preview plays. Short enough for a smooth fade. */
 const TICK_MS = 40;
-
-const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
 
 /** What a preview does right now. Automated checks read it at `window.__dance.preview`. */
 export interface PreviewState {

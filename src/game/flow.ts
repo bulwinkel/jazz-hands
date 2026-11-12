@@ -12,6 +12,7 @@ import {
   observeFrame,
 } from './diagnostics';
 import type { RunReport, TrackingStats } from './diagnostics';
+import { isHandClick } from './dom';
 import { generateFaceCues } from './faceChart';
 import { judgeFaceFrame, needsFace, newFaceCueState } from './faceJudgment';
 import { fitMomentAt, planFit } from './fitTiming';
@@ -134,8 +135,7 @@ export class DanceGame {
 
     this.ui.pauseButton.addEventListener('click', () => void this.togglePause());
     this.ui.resumeButton.addEventListener('click', () => void this.unlockAudio());
-    // A choice made by hand is a click made by the page, which the browser marks as not trusted.
-    this.ui.refitButton.addEventListener('click', (event) => this.refit(!event.isTrusted));
+    this.ui.refitButton.addEventListener('click', (event) => this.refit(isHandClick(event)));
     this.ui.player.onChange = this.onPlayerChange;
     this.ui.showCueStyle(this.options.settings.cueStyle);
     window.addEventListener('keydown', this.onKey);
@@ -151,10 +151,7 @@ export class DanceGame {
   private setPhase(phase: Phase): void {
     this.phase = phase;
     this.phaseStartedMs = performance.now();
-    for (const player of this.players) {
-      player.holdStartMs = null;
-      player.hold = 0;
-    }
+    this.clearHolds();
     this.ui.player.close();
     this.ui.pauseButton.hidden = phase !== 'play';
     // The recalibrate button shows in the ready check: there the players see whether the grids
@@ -334,10 +331,7 @@ export class DanceGame {
    * videos of a round that left the list while it played can go.
    */
   private onPlayerChange = (isOpen: boolean): void => {
-    for (const player of this.players) {
-      player.holdStartMs = null;
-      player.hold = 0;
-    }
+    this.clearHolds();
     this.followPreview();
     if (!isOpen) this.recordings.freeDropped();
   };
@@ -373,27 +367,15 @@ export class DanceGame {
   private refit(byHand = false): void {
     const inRound = ['fit', 'ready', 'countdown', 'play', 'results'].includes(this.phase);
     if (!inRound || this.switchingTracker) return;
-    const session = this.session;
-    this.endRecording();
-    this.audio?.stop();
-    // A paused round has a stopped audio clock. The next countdown needs it running.
-    void this.audio?.resume().catch((error: unknown) => this.failIfCurrent(session, error));
-    this.paused = false;
-    this.feedback = [];
+    this.resetRound();
     this.fitBegunBy = byHand ? 'recalibrate-by-hand' : 'not-by-hand';
-    this.ui.hidePanel();
     this.beginFit();
   }
 
   /** Starts, or restarts, the song from its 3-2-1 countdown. Keeps the fitted grids. */
   private beginCountdown = (): void => {
     if (this.phase !== 'ready' && this.phase !== 'results' && this.phase !== 'play') return;
-    const session = this.session;
-    this.endRecording();
-    this.audio?.stop();
-    void this.audio?.resume().catch((error: unknown) => this.failIfCurrent(session, error));
-    this.paused = false;
-    this.feedback = [];
+    this.resetRound();
     for (const player of this.players) {
       player.score = freshScore();
       player.states = player.cues.map(newCueState);
@@ -401,10 +383,32 @@ export class DanceGame {
       player.faceStates = player.faceCues.map(newFaceCueState);
       player.faceObservations = player.faceCues.map(newFaceObservation);
     }
-    this.ui.hidePanel();
     this.setPhase('countdown');
     this.beginRecording();
   };
+
+  /**
+   * Stops what runs of a round before it starts again, from its fit or from its countdown:
+   * the recording, the song, a pause, the flashes of cues, and the panel.
+   */
+  private resetRound(): void {
+    const session = this.session;
+    this.endRecording();
+    this.audio?.stop();
+    // A paused round has a stopped audio clock. The next countdown needs it running.
+    void this.audio?.resume().catch((error: unknown) => this.failIfCurrent(session, error));
+    this.paused = false;
+    this.feedback = [];
+    this.ui.hidePanel();
+  }
+
+  /** Forgets every player's hands-up hold. */
+  private clearHolds(): void {
+    for (const player of this.players) {
+      player.holdStartMs = null;
+      player.hold = 0;
+    }
+  }
 
   /** Tells the recordings that a round begins. It is recorded when the players turned recording on. */
   private beginRecording(): void {

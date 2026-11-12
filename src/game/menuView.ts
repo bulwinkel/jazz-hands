@@ -2,7 +2,7 @@ import { carouselOffset, stepRing } from './carousel';
 import { HAND_MENU, LEVELS, PLAYER_COLORS, SONGS } from './config';
 import { CUE_STYLE_NAMES, nextCueStyle } from './cueStyle';
 import type { CueStyle } from './cueStyle';
-import { find } from './dom';
+import { find, isHandClick } from './dom';
 import { RECORDINGS_HTML } from './recordingsView';
 import type { Settings } from './settings';
 import type { Level, PlayerCount, PlayerIndex, SongLength } from './types';
@@ -259,8 +259,7 @@ export function buildMenu(panel: HTMLElement, settings: Settings, handlers: Menu
     settings.length = value as SongLength;
     onChange();
   });
-  // A choice made by hand is a click made by the page, which the browser marks as not trusted.
-  find(panel, '#start').addEventListener('click', (event) => onStart(!event.isTrusted));
+  find(panel, '#start').addEventListener('click', (event) => onStart(isHandClick(event)));
 
   return { stepSong, showCueStyle };
 }

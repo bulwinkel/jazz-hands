@@ -1,4 +1,4 @@
-import { find } from './dom';
+import { find, isHandClick } from './dom';
 import { sizeText } from './recording';
 import type { RoundVideos, VideoKind } from './recording';
 
@@ -40,8 +40,7 @@ export function showRecordings(block: HTMLElement, list: RecordingsList, onWatch
     // The id stays with the round when the list changes, so a fist held on Watch keeps its round.
     watch.dataset.hand = `watch-${round.id}`;
     watch.textContent = '▶ Watch';
-    // A choice made by hand is a click made by the page, which the browser marks as not trusted.
-    watch.addEventListener('click', (event) => onWatch(round, !event.isTrusted));
+    watch.addEventListener('click', (event) => onWatch(round, isHandClick(event)));
     row.append(label, watch);
     for (const video of round.videos) {
       const link = document.createElement('a');
@@ -92,7 +91,6 @@ function showPreview(slot: HTMLElement, round: RoundVideos | undefined, onWatch:
   const label = document.createElement('span');
   label.textContent = '▶ Watch the round';
   button.append(picture, label);
-  // A choice made by hand is a click made by the page, which the browser marks as not trusted.
-  button.addEventListener('click', (event) => onWatch(round, !event.isTrusted));
+  button.addEventListener('click', (event) => onWatch(round, isHandClick(event)));
   slot.replaceChildren(button);
 }

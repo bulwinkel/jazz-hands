@@ -9,6 +9,7 @@ import type {
 } from '../tracking/types';
 import { botPlayer } from './bot';
 import { containRect } from './geometry';
+import { clamp01 } from './numbers';
 import type { PlayerRun } from './player';
 import type { Options } from './settings';
 import type { Phase, PlayerCount, Point } from './types';
@@ -269,7 +270,6 @@ export class SimulatedInput implements GameInput {
     // The simulated camera frame is letterboxed at 16:9, the same as the renderer's default.
     const bounds = this.surface.getBoundingClientRect();
     const frame = containRect(bounds.width, bounds.height, 16 / 9);
-    const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
     this.pointer = {
       x: clamp01((event.clientX - bounds.left - frame.x) / frame.width),
       y: clamp01((event.clientY - bounds.top - frame.y) / frame.height),
