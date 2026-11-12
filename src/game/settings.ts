@@ -49,6 +49,11 @@ export function defaultSettings(): Settings {
   };
 }
 
+/** True when a player in the session has faces on. The second switch counts only with two players. */
+export function usesFaces(settings: Settings): boolean {
+  return settings.faces.slice(0, settings.playerCount).some((isOn) => isOn);
+}
+
 const isLevel = (value: unknown): value is Level => value === 1 || value === 2 || value === 3 || value === 4;
 const isPlayerCount = (value: unknown): value is PlayerCount => value === 1 || value === 2;
 const isLength = (value: unknown): value is SongLength => value === 'short' || value === 'full';

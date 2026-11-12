@@ -37,7 +37,8 @@ export interface GameInput {
     onFrame: (frame: TrackingFrame) => void,
     onError: (error: unknown) => void,
   ): void;
-  setMode(mode: TrackerMode): Promise<void>;
+  /** Switches the tracker. With `faces`, the tracker also has the face models loaded. */
+  setMode(mode: TrackerMode, faces?: boolean): Promise<void>;
   dispose(): void;
 }
 
@@ -45,17 +46,17 @@ export interface GameInput {
 export class CameraInput implements GameInput {
   video?: HTMLVideoElement;
   private tracker: Tracker;
-  /** Whether the trackers load the face models. */
-  private readonly faces: boolean;
+  /** Trackers that are loaded, by mode. The menu and the rounds switch between them often. */
+  private readonly loaded = new Map<TrackerMode, Tracker>();
   private running = false;
   private disposed = false;
   private videoCallbackId = 0;
   private animationId = 0;
   private lastVideoTime = -1;
 
-  constructor(mode: TrackerMode, faces: boolean) {
-    this.faces = faces;
-    this.tracker = createTracker(mode, { faces });
+  constructor(mode: TrackerMode) {
+    this.tracker = createTracker(mode);
+    this.loaded.set(mode, this.tracker);
   }
 
   get mode(): string {
@@ -67,7 +68,8 @@ export class CameraInput implements GameInput {
   }
 
   get faceDelegate(): string | undefined {
-    return this.faces ? this.tracker.faceDelegate : undefined;
+    const { faceDelegate } = this.tracker;
+    return faceDelegate === 'uninitialized' ? undefined : faceDelegate;
   }
 
   async init(): Promise<void> {
@@ -125,18 +127,39 @@ export class CameraInput implements GameInput {
     this.animationId = requestAnimationFrame(onAnimationFrame);
   }
 
-  /** Swaps the tracker only after the new one has loaded, so tracking never stops on a failure. */
-  async setMode(mode: TrackerMode): Promise<void> {
-    const replacement = createTracker(mode, { faces: this.faces });
+  /**
+   * Switches the tracker. A mode loads once and is then kept, so switching back is instant.
+   * The switch happens only after the new tracker has loaded, so tracking never stops on a failure.
+   *
+   * With `faces`, the tracker must have the face models. The menu loads its tracker before
+   * anyone has chosen faces, so a mode that was loaded without them loads once more, with them.
+   * A tracker with the face models also serves a round without faces: it reads a face only
+   * where the game asks for one.
+   */
+  async setMode(mode: TrackerMode, faces = false): Promise<void> {
+    const loaded = this.loaded.get(mode);
+    const isUsable = loaded !== undefined && (!faces || loaded.faceDelegate !== 'uninitialized');
+    if (isUsable) {
+      this.tracker = loaded;
+      return;
+    }
+
+    const next = createTracker(mode, { faces });
     try {
-      await replacement.init();
+      await next.init();
     } catch (error) {
-      replacement.dispose();
+      next.dispose();
       throw error;
     }
-    const old = this.tracker;
-    this.tracker = replacement;
-    old.dispose();
+    if (this.disposed) {
+      next.dispose(); // The input was closed while this tracker loaded.
+      return;
+    }
+    // Switch first, then let go of the tracker of this mode that had no face models.
+    const replaced = this.loaded.get(mode);
+    this.loaded.set(mode, next);
+    this.tracker = next;
+    replaced?.dispose();
   }
 
   dispose(): void {
@@ -144,7 +167,7 @@ export class CameraInput implements GameInput {
     this.disposed = true;
     if (this.videoCallbackId) this.video?.cancelVideoFrameCallback(this.videoCallbackId);
     cancelAnimationFrame(this.animationId);
-    this.tracker.dispose();
+    for (const tracker of this.loaded.values()) tracker.dispose();
     this.stopCamera();
   }
 
@@ -266,9 +289,5 @@ export class SimulatedInput implements GameInput {
 }
 
 export function createInput(options: Options, trackerMode: TrackerMode, surface: HTMLElement): GameInput {
-  if (options.input !== 'camera') return new SimulatedInput(options, surface);
-  // Load the face models only when a player in this session has faces on.
-  const { faces, playerCount } = options.settings;
-  const anyFaces = faces.slice(0, playerCount).some((on) => on);
-  return new CameraInput(trackerMode, anyFaces);
+  return options.input === 'camera' ? new CameraInput(trackerMode) : new SimulatedInput(options, surface);
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultSettings, parseSettings } from './settings';
+import { defaultSettings, parseSettings, usesFaces } from './settings';
 
 describe('kept settings', () => {
   it('fall back to the defaults when nothing is kept', () => {
@@ -105,5 +105,20 @@ describe('URL parameters', () => {
     expect(options.settings).toEqual(defaultSettings());
     expect(options).toMatchObject({ tracker: undefined, input: 'camera', startSec: 0, botAccuracy: 1 });
     expect(options.seed).toBe(parseSettings(null, '').seed);
+  });
+});
+
+describe('whether a session uses faces', () => {
+  const withFaces = (playerCount: 1 | 2, faces: [boolean, boolean]) => ({ ...defaultSettings(), playerCount, faces });
+
+  it('is true when a player in the session has faces on', () => {
+    expect(usesFaces(withFaces(2, [false, false]))).toBe(false);
+    expect(usesFaces(withFaces(2, [true, false]))).toBe(true);
+    expect(usesFaces(withFaces(2, [false, true]))).toBe(true);
+    expect(usesFaces(withFaces(1, [true, false]))).toBe(true);
+  });
+
+  it('ignores the second switch with one player', () => {
+    expect(usesFaces(withFaces(1, [false, true]))).toBe(false);
   });
 });
