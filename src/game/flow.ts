@@ -185,7 +185,7 @@ export class DanceGame {
         this.beginFit();
       }
     } catch (error) {
-      if (session === this.session) this.fail(error);
+      this.failIfCurrent(session, error);
     }
   }
 
@@ -216,8 +216,9 @@ export class DanceGame {
   /** Starts, or restarts, the song from its 3-2-1 countdown. Keeps the fitted grids. */
   private beginCountdown = (): void => {
     if (this.phase !== 'ready' && this.phase !== 'results' && this.phase !== 'play') return;
+    const session = this.session;
     this.audio?.stop();
-    void this.audio?.resume().catch((error: unknown) => this.fail(error));
+    void this.audio?.resume().catch((error: unknown) => this.failIfCurrent(session, error));
     this.paused = false;
     this.feedback = [];
     for (const player of this.players) {
@@ -255,6 +256,14 @@ export class DanceGame {
     this.ui.hidePanel();
     this.ui.resumeButton.hidden = true;
     this.ui.showMessage('The dance floor needs a hand', `${errorText(error)} Press Esc to return to the menu.`);
+  }
+
+  /**
+   * Reports an error from work that takes a moment (audio, models), unless the player has
+   * left that session meanwhile. A late failure must never replace the menu or a new game.
+   */
+  private failIfCurrent(session: number, error: unknown): void {
+    if (session === this.session) this.fail(error);
   }
 
   // --- Tracking frames ---
@@ -330,37 +339,43 @@ export class DanceGame {
   // --- Controls ---
 
   private async togglePause(): Promise<void> {
-    if (this.phase !== 'play' || !this.audio || this.switchingTracker) return;
+    const audio = this.audio;
+    if (this.phase !== 'play' || !audio || this.switchingTracker) return;
+    const session = this.session;
+    const pausing = !this.paused;
     try {
-      if (this.paused) {
-        await this.audio.resume();
-        this.paused = false;
-        this.ui.showMessage();
-      } else {
-        await this.audio.pause();
-        this.paused = true;
-        this.ui.showMessage('Paused', 'Space to keep dancing · Esc for menu');
-      }
-      this.ui.pauseButton.textContent = this.paused ? '▶ Resume' : 'Ⅱ Pause';
+      await (pausing ? audio.pause() : audio.resume());
     } catch (error) {
-      this.fail(error);
+      this.failIfCurrent(session, error);
+      return;
     }
+    if (session !== this.session) return; // The player left for the menu while the audio switched.
+
+    this.paused = pausing;
+    if (pausing) this.ui.showMessage('Paused', 'Space to keep dancing · Esc for menu');
+    else this.ui.showMessage();
+    this.ui.pauseButton.textContent = pausing ? '▶ Resume' : 'Ⅱ Pause';
   }
 
   /** Runs when the player clicks the "Click to start" button after the browser blocked sound. */
   private async unlockAudio(): Promise<void> {
+    const audio = this.audio;
+    if (!audio) return;
+    const session = this.session;
     try {
-      await this.audio?.resume();
-      if (this.audio?.context.state !== 'running') return;
-      this.ui.resumeButton.hidden = true;
-      if (this.phase === 'loading') {
-        this.beginFit();
-      } else if (this.phase === 'play') {
-        this.paused = false;
-        this.ui.showMessage();
-      }
+      await audio.resume();
     } catch (error) {
-      this.fail(error);
+      this.failIfCurrent(session, error);
+      return;
+    }
+    if (session !== this.session || audio.context.state !== 'running') return;
+
+    this.ui.resumeButton.hidden = true;
+    if (this.phase === 'loading') {
+      this.beginFit();
+    } else if (this.phase === 'play') {
+      this.paused = false;
+      this.ui.showMessage();
     }
   }
 
@@ -375,29 +390,33 @@ export class DanceGame {
     if (!input || this.switchingTracker || this.phase === 'loading') return;
     this.switchingTracker = true;
     const session = this.session;
+    const audio = this.audio;
     const next = TRACKER_CYCLE[(TRACKER_CYCLE.indexOf(this.trackerMode()) + 1) % TRACKER_CYCLE.length];
     const wasPlaying = this.phase === 'play' && !this.paused;
+    // After every wait, stop if the player has left for the menu: the session is then stale.
     try {
       if (wasPlaying) {
-        await this.audio?.pause();
+        await audio?.pause();
+        if (session !== this.session) return;
         this.paused = true;
       }
       this.ui.showMessage('Changing hand tracker…');
       await input.setMode(next);
       if (session !== this.session) {
-        input.dispose();
+        input.dispose(); // Releases the tracker that loaded after the input was disposed.
         return;
       }
       this.pickedTracker = next;
       this.ui.showMessage();
       if (wasPlaying) {
-        await this.audio?.resume();
+        await audio?.resume();
+        if (session !== this.session) return;
         this.paused = false;
       }
     } catch (error) {
-      if (session === this.session) this.fail(error);
+      this.failIfCurrent(session, error);
     } finally {
-      this.switchingTracker = false;
+      if (session === this.session) this.switchingTracker = false;
     }
   }
 
@@ -520,7 +539,9 @@ export class DanceGame {
     const timeSec = this.songTime();
     // Close judging windows even when the camera stops sending frames. Old hands are never reused.
     this.judge(timeSec - this.options.settings.inputLatencyMs / 1000 - 0.001);
-    if (timeSec >= this.endSec) this.finish();
+    // End with the sound itself. The song clock includes the picture offset and can run
+    // ahead of the sound, which would cut the ending short.
+    if (this.audio?.ended) this.finish();
   }
 
   private updateDebug(): void {

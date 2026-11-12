@@ -115,9 +115,8 @@ export function generateChart(manifest: Manifest, options: ChartOptions): Cue[] 
     // Every beat takes the same rolls, used or not. One beat's choices then never shift
     // another beat's, and all levels read the same sequence.
     const roll = {
-      slide: random(),
+      kind: random(),
       slideTarget: random(),
-      double: random(),
       side: random(),
       partnerRow: random(),
       gesture: random(),
@@ -129,10 +128,14 @@ export function generateChart(manifest: Manifest, options: ChartOptions): Cue[] 
 
     const timeSec = beats[beat];
     const busy = intensity[beat] >= CHART.busyIntensity;
-    const doubleAllowed = !rules.doublesOnBarStartsOnly || isBarStart(manifest, beat);
+    // One roll picks the kind of cue: the first share of it is a slide, the next share a
+    // double, the rest a single tap. Each share is then exactly the chance in the level rules.
+    const slideShare = busy && isCueBeat(beat + 1) ? rules.slideChance : 0;
+    const doubleAllowed = busy && (!rules.doublesOnBarStartsOnly || isBarStart(manifest, beat));
+    const doubleShare = doubleAllowed ? rules.doubleChance : 0;
     let cue: Cue;
 
-    if (busy && roll.slide < rules.slideChance && isCueBeat(beat + 1)) {
+    if (roll.kind < slideShare) {
       const targets = slideTargets(master[beat]);
       const to = targets[Math.floor(roll.slideTarget * targets.length)];
       cue = {
@@ -142,7 +145,7 @@ export function generateChart(manifest: Manifest, options: ChartOptions): Cue[] 
         cells: [master[beat], to],
         times: [timeSec, beats[beat + 1]],
       };
-    } else if (busy && doubleAllowed && roll.double < rules.doubleChance) {
+    } else if (roll.kind < slideShare + doubleShare) {
       cue = {
         kind: 'tap',
         timeSec,

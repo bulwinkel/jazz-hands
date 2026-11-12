@@ -37,16 +37,17 @@ describe('the bot plays every cue Perfect', () => {
   ];
 
   it.each(cases)('at level %i with shapes %s', (level, shapes) => {
-    // 100 BPM is close to the real song. 150 BPM makes slide ends and the next cue overlap.
-    for (const bpm of [100, 150]) {
+    // 100 BPM is close to the real songs. 109 BPM is the fastest tempo with a cue on every beat,
+    // so it leaves the bot the least time between the end of a slide and the next cue.
+    for (const bpm of [100, 109]) {
       const { cues, results } = playThrough(synthetic(bpm, 90), level, shapes);
       expect(cues.length).toBeGreaterThan(10);
       expect(results.every((result) => result === 'perfect')).toBe(true);
     }
   });
 
-  it('including slides and doubles at level 3', () => {
-    const { cues } = playThrough(synthetic(100, 90), 3, false);
+  it.each([100, 109])('including slides and doubles at level 3, at %i BPM', (bpm) => {
+    const { cues } = playThrough(synthetic(bpm, 90), 3, false);
     expect(cues.some((cue) => cue.kind === 'slide')).toBe(true);
     expect(cues.some((cue) => cue.kind === 'tap' && cue.cells.length === 2)).toBe(true);
   });

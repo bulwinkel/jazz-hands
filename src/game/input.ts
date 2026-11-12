@@ -35,6 +35,7 @@ export class CameraInput implements GameInput {
   video?: HTMLVideoElement;
   private tracker: Tracker;
   private running = false;
+  private disposed = false;
   private videoCallbackId = 0;
   private animationId = 0;
   private lastVideoTime = -1;
@@ -52,9 +53,14 @@ export class CameraInput implements GameInput {
   }
 
   async init(): Promise<void> {
-    // Start both together, and wait for both, so a model failure never leaves the camera running.
-    const [camera, models] = await Promise.allSettled([startCamera(), this.tracker.init()]);
-    if (camera.status === 'fulfilled') this.video = camera.value;
+    // Keep the camera as soon as it starts, so `dispose` can stop it even while the models
+    // still load. A camera that starts after `dispose` is stopped at once.
+    const cameraStarted = startCamera().then((video) => {
+      this.video = video;
+      if (this.disposed) this.stopCamera();
+    });
+    // Wait for both, so a model failure never leaves the camera running.
+    const [camera, models] = await Promise.allSettled([cameraStarted, this.tracker.init()]);
     if (camera.status === 'rejected') {
       this.dispose();
       throw new Error(`Camera failed: ${String(camera.reason)}. Allow camera access in Chrome.`);
@@ -117,9 +123,14 @@ export class CameraInput implements GameInput {
 
   dispose(): void {
     this.running = false;
+    this.disposed = true;
     if (this.videoCallbackId) this.video?.cancelVideoFrameCallback(this.videoCallbackId);
     cancelAnimationFrame(this.animationId);
     this.tracker.dispose();
+    this.stopCamera();
+  }
+
+  private stopCamera(): void {
     const stream = this.video?.srcObject as MediaStream | null | undefined;
     stream?.getTracks().forEach((track) => track.stop());
     this.video?.remove();

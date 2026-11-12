@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { doubleCells, generateChart, masterCells, selectStride, slideTargets } from './chart';
-import { CHART } from './config';
+import { CHART, LEVELS } from './config';
 import { synthetic } from './fixtures';
 import { medianBeatInterval, playLengthSec, tailStartSec } from './manifest';
 import type { Cue, Level, Manifest } from './types';
@@ -156,6 +156,14 @@ describe('level 3', () => {
     }
   });
 
+  it('makes slides and doubles in the shares the level rules give', () => {
+    // A long song, so the shares settle close to the chances. Each slide and each double is one cue.
+    const many = chart(synthetic(100, 1800), 3, 42);
+    const share = (matches: (cue: Cue) => boolean): number => many.filter(matches).length / many.length;
+    expect(share(isSlide)).toBeCloseTo(LEVELS[3].slideChance, 1);
+    expect(share(isDouble)).toBeCloseTo(LEVELS[3].doubleChance, 1);
+  });
+
   it('leaves the beat a slide ends on free, so no slide starts where another ends', () => {
     cues.forEach((cue, i) => {
       if (!isSlide(cue) || i === cues.length - 1) return;
@@ -202,14 +210,25 @@ describe('hand shapes', () => {
     }
   });
 
-  it('never follow the previous cue faster than a hand can change shape', () => {
-    // At 128 BPM a beat is 0.47 s. A tap straight after a slide ends would be too soon.
-    const cues = chart(synthetic(128, 600), 3, 7, { shapes: true });
-    expect(cues.some((cue) => cue.gesture)).toBe(true);
-    cues.forEach((cue, i) => {
-      if (!cue.gesture || i === 0) return;
-      const previousEnd = cues[i - 1].times[cues[i - 1].times.length - 1];
-      expect(cue.timeSec - previousEnd).toBeGreaterThanOrEqual(CHART.gestureGapSec - 1e-8);
-    });
+  it.each([60, 100, 109, 128, 180])(
+    'at %i BPM, never follow the previous cue faster than a hand can change shape',
+    (bpm) => {
+      // The gap counts from the end of the previous cue, so it also covers a tap after a slide.
+      const cues = chart(synthetic(bpm, 600), 3, 7, { shapes: true });
+      expect(cues.some((cue) => cue.gesture)).toBe(true);
+      cues.forEach((cue, i) => {
+        if (!cue.gesture || i === 0) return;
+        const previousEnd = cues[i - 1].times[cues[i - 1].times.length - 1];
+        expect(cue.timeSec - previousEnd).toBeGreaterThanOrEqual(CHART.gestureGapSec - 1e-8);
+      });
+    },
+  );
+
+  it('can come straight after a slide when the beat leaves enough time', () => {
+    // At 100 BPM a beat is 0.6 s, longer than the gap a hand needs. This also proves that
+    // the gap test above sees taps that follow slides.
+    const cues = chart(synthetic(100, 600), 3, 7, { shapes: true });
+    const afterSlides = cues.filter((cue, i) => i > 0 && cue.gesture && cues[i - 1].kind === 'slide');
+    expect(afterSlides.length).toBeGreaterThan(0);
   });
 });
