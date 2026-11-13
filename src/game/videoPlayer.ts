@@ -50,8 +50,15 @@ export class VideoPlayer {
     element.tabIndex = -1;
     this.element = element;
     this.video = find(element, 'video');
-    find(element, '#player-game').addEventListener('click', () => this.show('game'));
-    find(element, '#player-camera').addEventListener('click', () => this.show('camera'));
+    for (const kind of ['game', 'camera'] as const) {
+      find(element, `#player-${kind}`).addEventListener('click', (event) => {
+        this.show(kind);
+        // A mouse click leaves the focus on the button, and Space would then press it again.
+        // Give the focus back to the player, so Space pauses. A press by keyboard (detail 0)
+        // keeps the focus where the player put it.
+        if ((event as MouseEvent).detail > 0) element.focus({ preventScroll: true });
+      });
+    }
     find(element, '#player-close').addEventListener('click', () => this.close());
     document.addEventListener('fullscreenchange', this.onFullscreenChange);
   }
