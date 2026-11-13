@@ -77,25 +77,33 @@ The files are MP4 (H.264 and AAC). The run report of a recorded round has
 
 ## Tracking thread
 
-The hand and face trackers run in Web Workers, so the game draws at the display's rate while
-MediaPipe works. Each tracker has a worker of its own: Chrome keeps at most 4 active WebGL
-contexts in a worker, and split hands with face models need 4.
+By default the hand and face trackers run on the main thread, as they always did. With
+`thread=worker` in the URL they run in the tracking workers instead, and the game draws at the
+display's rate while MediaPipe works. The default is `DEFAULT_TRACKING_THREAD` in
+`src/game/config.ts`. The tracking workers gave the same hands as the main thread on a test
+video. They become the default when a recording of real players has shown the same (see
+`scripts/compare-threads.mjs` below).
 
-- The page hands each camera frame to the worker as a `VideoFrame`. One frame is in a worker
-  at a time. A frame that comes meanwhile waits, and a newer one takes its place; the newest
-  goes as soon as the worker answers.
+Each tracker has a tracking worker of its own: Chrome keeps at most 4 active WebGL contexts in a
+worker, and split hands with face models need 4.
+
+- The page hands each camera frame to the worker of the tracker in use as a `VideoFrame`. One
+  frame is out at a time. A frame that comes meanwhile waits, and a newer one takes its place;
+  the newest goes as soon as the worker answers.
 - A frame keeps the page time at which it came, so judging corrects for its age as before.
-- When the worker cannot start, the game tracks on the main thread as before.
+  While a frame is out, judging keeps the timing windows open for it.
+- When a tracker's worker cannot be made, or the tracker does not load in it, that tracker
+  loads on the main thread. This holds for every tracker: the menu's, and each one that a
+  round or the M key loads later.
+- A worker that takes more than 30 s to load or more than 5 s for a frame is ended
+  (`WORKER_LIMITS` in `src/tracking/config.ts`). A load then falls back to the main thread. A
+  frame stops tracking with the game's error message, as any tracker failure does.
 
 | URL parameter | Use |
 | --- | --- |
-| `thread=worker` | Track in the workers. |
-| `thread=main` | The default for now. Track on the main thread, as before the workers. |
+| `thread=main` | The default. Track on the main thread. |
+| `thread=worker` | Track in the tracking workers. |
 | `framelog=1` | Keep every tracking frame in `window.__dance.frameLog`, for scripts. |
-
-The default is `DEFAULT_TRACKING_THREAD` in `src/game/config.ts`. The workers gave the same
-hands as the main thread on a test video. They become the default when a recording of real
-players has shown the same (see `scripts/compare-threads.mjs` below).
 
 The run report says which thread ran (`tracking.thread`), and how many frames per second the
 game drew during play (`tracking.drawnPerSec`) next to the tracking rate.
@@ -118,6 +126,10 @@ node scripts/smoke.mjs "http://localhost:5192/?input=camera&autostart=1&players=
 and with `thread=worker`. It matches the camera frames that both runs tracked, and prints how
 far their hands differ: hand count, palm position, hand size and shape.
 
+It compares the runs only when each one ran on the thread it asked for, both ran on the same
+delegate (GPU or CPU), neither reached the game's error phase, and neither had an error on the
+page or in a worker. Otherwise it says why, and exits 1.
+
 ```
 node scripts/compare-threads.mjs --camera-file=/path/to/recording.mov
 ```
@@ -131,6 +143,7 @@ node scripts/compare-threads.mjs --camera-file=/path/to/recording.mov
 | `--faces` | Turn on face cues, so that the face models run too. |
 | `--seconds=<n>` | How long each run records. The default is 45. |
 | `--fps=<n>` | The rate Chrome plays the file at. The default comes from a `.y4m` header, else 30. |
+| `--threads=main,main` | Compare two runs on the main thread: how far two runs differ with no thread change. Main against worker should differ no more. The default is `main,worker`. |
 
 It saves both frame logs and the result to `test-results/compare-threads-<time>.json`. The
 last line of the result checks the frame matching: with moving hands, the palm distance is

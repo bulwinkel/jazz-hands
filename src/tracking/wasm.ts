@@ -22,8 +22,8 @@ interface LoaderScope {
 
 /**
  * On the page, MediaPipe loads its WASM loader with a script tag. A worker has no document.
- * The tracking worker is a module worker, in `npm run dev` and in a build alike, and a module
- * worker cannot run `importScripts`. So the worker uses the loader that is built as a module.
+ * The tracking workers are module workers, in `npm run dev` and in a build alike, and a module
+ * worker cannot run `importScripts`. So a tracking worker uses the loader built as a module.
  *
  * - The URL is absolute. The dev server refuses an import of a file in `public/` by its path.
  * - A module runs once per worker. Its code sets the global `ModuleFactory` the first time

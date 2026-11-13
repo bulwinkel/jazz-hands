@@ -64,11 +64,11 @@ export interface TrackingFrame {
 
 /**
  * What a tracker reads a camera frame from: the video element on the page, or a VideoFrame
- * of it in the tracking worker, which has no document.
+ * of it in a tracking worker, which has no document.
  */
 export type CameraPicture = HTMLVideoElement | VideoFrame;
 
-/** Where the trackers run: on the page's main thread, or in the tracking worker. */
+/** Where the trackers run: on the page's main thread, or in the tracking workers. */
 export type TrackingThread = 'main' | 'worker';
 
 export type TrackerMode = 'hands-full' | 'hands-split' | 'pose';

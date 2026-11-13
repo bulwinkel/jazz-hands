@@ -1,17 +1,17 @@
 import type { CameraPicture } from './types';
 
 /**
- * The trackers run on the page and in the tracking worker. The worker has no document, so
+ * The trackers run on the page and in the tracking workers. A worker has no document, so
  * it has no HTML canvas and no video element. These helpers give each place what it has.
  */
 
-/** A canvas: an HTML canvas on the page, an OffscreenCanvas in the worker. */
+/** A canvas: an HTML canvas on the page, an OffscreenCanvas in a tracking worker. */
 export type Surface = HTMLCanvasElement | OffscreenCanvas;
 
 /** What the trackers draw with. The 2D context of either kind of canvas has it. */
 export type DrawingContext = CanvasDrawImage & CanvasRect;
 
-/** True on the page. False in the tracking worker. */
+/** True on the page. False in a tracking worker. */
 export function hasDocument(): boolean {
   return typeof document !== 'undefined';
 }
@@ -30,7 +30,7 @@ function isOffscreen(surface: Surface): surface is OffscreenCanvas {
   return typeof OffscreenCanvas !== 'undefined' && surface instanceof OffscreenCanvas;
 }
 
-/** The size of a camera picture in pixels: a video on the page, a VideoFrame in the worker. */
+/** The size of a camera picture in pixels: a video on the page, a VideoFrame in a tracking worker. */
 export function pictureSize(picture: CameraPicture): { width: number; height: number } {
   return 'videoWidth' in picture
     ? { width: picture.videoWidth, height: picture.videoHeight }

@@ -124,7 +124,7 @@ describe('a worker that breaks', () => {
     const tracker = new WorkerTracker('hands-full', false);
     const tracking = tracker.track(picture(), 100);
     FakeWorker.last.breakDown('out of memory');
-    await expect(tracking).rejects.toThrow('The tracking worker failed: out of memory');
+    await expect(tracking).rejects.toThrow('A tracking worker failed: out of memory');
 
     const unsent = picture();
     await expect(tracker.track(unsent, 133)).rejects.toThrow('out of memory');
@@ -136,7 +136,7 @@ describe('a worker that breaks', () => {
     const tracker = new WorkerTracker('hands-full', false);
     const loading = tracker.init();
     FakeWorker.last.breakDown('');
-    await expect(loading).rejects.toThrow('The tracking worker failed: it did not start.');
+    await expect(loading).rejects.toThrow('A tracking worker failed: it did not start.');
   });
 });
 

@@ -225,7 +225,7 @@ describe('a camera frame in a worker', () => {
     frameComes(133);
     worker.breakDown('lost the GPU');
     await settle();
-    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'The tracking worker failed: lost the GPU' }));
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'A tracking worker failed: lost the GPU' }));
     // The held frame went to the broken tracker, which let it go on the page.
     expect(FakeVideoFrame.made[1].closes).toBe(1);
   });

@@ -2,10 +2,11 @@ import type { FaceExpression, GestureName, TrackerMode, TrackingThread } from '.
 import type { Level, PlayerCount, SlideSpeed } from './types';
 
 /**
- * Where the camera is tracked when the URL does not say. In a worker, the picture stays smooth
- * while tracking is busy: 60 drawn frames per second, against about 30 with two players.
- * The worker gave the same hands as the main thread on a test video. It becomes the default
- * when a recording of real players has shown the same; until then `?thread=worker` turns it on.
+ * Where the camera is tracked when the URL does not say: the main thread, for now.
+ * `?thread=worker` moves the trackers into the tracking workers, where the picture stays
+ * smooth while tracking is busy: 60 drawn frames per second, against about 30 with two players.
+ * The tracking workers gave the same hands as the main thread on a test video. They become the
+ * default when a recording of real players has shown the same.
  */
 export const DEFAULT_TRACKING_THREAD: TrackingThread = 'main';
 

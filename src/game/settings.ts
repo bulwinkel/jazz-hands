@@ -39,7 +39,10 @@ export interface Options {
   input: InputSource;
   /** Tracker named in the URL. Unset means the default for the player count. */
   tracker?: TrackerMode;
-  /** Where the camera's trackers run. The worker keeps the drawing smooth; `main` is for tests. */
+  /**
+   * Where the camera's trackers run: `main`, the default for now, or `worker`, the tracking
+   * workers, which keep the drawing smooth while tracking is busy.
+   */
   thread: TrackingThread;
   /** Start the song this far in and drop earlier cues. */
   startSec: number;

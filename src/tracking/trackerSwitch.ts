@@ -1,6 +1,6 @@
 import type { TrackerDelegate, TrackerMode } from './types';
 
-/** What the switch needs of a tracker. A tracker on the page and one in the worker both have it. */
+/** What the switch needs of a tracker. A tracker on the main thread and one in a tracking worker both have it. */
 export interface SwitchableTracker {
   readonly mode: TrackerMode;
   /** True once the tracker can track no more, as a tracker in a worker that was ended. */

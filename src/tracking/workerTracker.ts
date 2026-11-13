@@ -48,10 +48,10 @@ export class WorkerTracker {
     this.worker.addEventListener('error', (event: ErrorEvent) => {
       // Handled here: without this, the page would also report the error as uncaught.
       event.preventDefault();
-      this.end(new Error(`The tracking worker failed: ${event.message || 'it did not start.'}`));
+      this.end(new Error(`A tracking worker failed: ${event.message || 'it did not start.'}`));
     });
     this.worker.addEventListener('messageerror', () => {
-      this.end(new Error('The tracking worker sent a message the page cannot read.'));
+      this.end(new Error('A tracking worker sent a message the page cannot read.'));
     });
   }
 
