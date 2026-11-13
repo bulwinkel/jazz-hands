@@ -31,6 +31,7 @@ Turn on **Recording** in the top right corner of the menu. Each round then gives
 | Camera only | The camera picture alone, not mirrored, at the camera's own size. |
 
 Both carry the song. A video runs from the countdown to 4 seconds after the results show.
+With large offsets it runs longer, until the end of the song has reached it.
 A pause is left out. A round that stops part-way (restart, recalibrate, menu) gives no video.
 The game delays the sound of each video to fit its picture, but it cannot make the sound earlier.
 When the picture offset and the camera delay, with the speakers' delay, add up to less than
