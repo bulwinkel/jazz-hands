@@ -64,7 +64,6 @@ describe('cue set numbers', () => {
     expect(CUE_SET_COUNT).toBe(6);
     expect([0, 1, 3, 6, 7, 2.5, '2', null].map(isCueSet)).toEqual([false, true, true, true, false, false, false, false]);
   });
-
 });
 
 describe('the set switch', () => {
@@ -91,7 +90,9 @@ describe('picking a set at random', () => {
   /** How often each set comes. */
   const timesEach = (sets: number[]): Map<number, number> => {
     const times = new Map<number, number>();
-    for (const set of sets) times.set(set, (times.get(set) ?? 0) + 1);
+    for (const set of sets) {
+      times.set(set, (times.get(set) ?? 0) + 1);
+    }
     return times;
   };
 
@@ -150,6 +151,8 @@ describe('the set of a round', () => {
     const picker = new CueSetPicker();
     const sets = Array.from({ length: 50 }, () => picker.setForRound('song-a', 'random'));
     expect(sets.every(isCueSet)).toBe(true);
+    const repeats = sets.filter((set, i) => i > 0 && set === sets[i - 1]);
+    expect(repeats).toEqual([]);
   });
 });
 
