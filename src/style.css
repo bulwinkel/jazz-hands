@@ -16,6 +16,8 @@
   --button: #252b49;
   /* The dark, see-through face of small buttons and choices. */
   --surface: #0b1024cc;
+  /* The lighter face of the menu's cards: the player cards and the list of recordings. */
+  --card: #0b1024a6;
   /* The marks over the game picture: the pause button and the recording mark. */
   --chip: #0f172aab;
   --border: #ffffff35;
@@ -247,6 +249,11 @@ canvas {
   text-align: center;
   background: linear-gradient(130deg, #0d1429ef, #17142bea);
 }
+/* The menu lets the camera picture show through, dimmed, so players see themselves while
+   they point at it. Its buttons, switches and cards keep a dark backing of their own. */
+#panel.menu {
+  background: linear-gradient(130deg, #0d142980, #17142b73);
+}
 #panel.results {
   background: #0b1025d9;
 }
@@ -263,6 +270,7 @@ canvas {
 
 /* --- The menu --- */
 
+/* Text that lies on the camera picture keeps a shadow, so it reads over a bright picture. */
 .menu {
   text-shadow: 0 2px 12px #000;
 }
@@ -274,10 +282,13 @@ canvas {
   color: var(--text-soft);
   margin: 0 0 18px;
 }
+/* The key hints have no backing. Over a bright picture they read by a light colour and by a
+   tight shadow at the edge of each letter, under the menu's soft one. */
 .keys {
   font-size: 16px;
   line-height: 1.7;
-  color: var(--text-faint);
+  color: var(--text-soft);
+  text-shadow: 0 1px 2px #000, 0 2px 12px #000;
   margin: 18px 0 0;
 }
 
@@ -453,7 +464,7 @@ canvas {
   justify-content: center;
 }
 .menu fieldset:not(.choices, .songs) {
-  background: #0b1024a6;
+  background: var(--card);
 }
 .level-options {
   display: grid;
@@ -689,6 +700,13 @@ canvas {
   margin: 0;
   padding: 0;
   list-style: none;
+}
+/* In the menu the list lies on the camera picture, so it gets a card behind it. The results
+   have a dark background of their own. */
+.menu .recordings {
+  padding: 10px 18px;
+  border-radius: 14px;
+  background: var(--card);
 }
 .recordings li {
   display: flex;
