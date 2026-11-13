@@ -114,7 +114,7 @@ export class RoundRecorder {
   private readonly ctx: CanvasRenderingContext2D;
   private tracks: Track[] = [];
   /** The video track of the game view's canvas. It ends with the recording. */
-  private canvasTrack?: MediaStreamTrack;
+  private canvasTrack?: CanvasCaptureMediaStreamTrack;
   /** When the next frame of the game view is due, in `performance.now()` time. */
   private frameDueMs = 0;
   private ended = false;
@@ -150,8 +150,13 @@ export class RoundRecorder {
     this.canvas.height = size.height;
     clearScene(this.ctx);
 
-    [this.canvasTrack] = this.canvas.captureStream(RECORDING.frameRate).getVideoTracks();
-    this.record('game', [this.canvasTrack, ...gameAudio.getAudioTracks()], RECORDING.gameBitsPerSec);
+    // The stream takes a frame only when asked, after each drawn frame (see `drawFrame`), so one
+    // clock paces the video. A stream with a frame rate of its own takes a frame on its own ticks,
+    // and two clocks of 30 Hz together drop frames.
+    const canvasTrack = this.canvas.captureStream(0).getVideoTracks()[0] as CanvasCaptureMediaStreamTrack;
+    this.canvasTrack = canvasTrack;
+    canvasTrack.requestFrame();
+    this.record('game', [canvasTrack, ...gameAudio.getAudioTracks()], RECORDING.gameBitsPerSec);
 
     const cameraStream = video?.srcObject instanceof MediaStream ? video.srcObject : undefined;
     const cameraTrack = cameraStream?.getVideoTracks()[0];
@@ -190,6 +195,7 @@ export class RoundRecorder {
     if (nextDueMs === null) return;
     this.frameDueMs = nextDueMs;
     drawScene(this.ctx, scene);
+    this.canvasTrack?.requestFrame();
   }
 
   /** Holds both videos while the game is paused, so the pause is not in them. */
