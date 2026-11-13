@@ -148,7 +148,8 @@ export const DEFAULT_SEED = 20261315;
 /**
  * Cue sets give one song other charts at the same difficulty. Set 1 is the chart from
  * DEFAULT_SEED. Every other set tries a few candidate seeds and keeps the one whose charts come
- * closest to the typical mix of slides and doubles of the level on this song. See cueSet.ts.
+ * closest to the typical mix of the level on this song: its slides, doubles, fast slides,
+ * off-beat taps and number of cues. See cueSet.ts.
  */
 export const CUE_SETS = {
   /** The sets are numbered from 1 to this count. */
@@ -165,6 +166,15 @@ export const CUE_SETS = {
    * the count of candidates, so no two sets share a seed.
    */
   candidateSpacing: 1000,
+  /**
+   * How much each part of the mix counts in a candidate's distance from the typical mix. A
+   * share counts in points; the number of cues counts by its relative change, so 1% more
+   * cues is like 1 point. Off-beat taps and the number of cues both say how busy a chart is:
+   * each counts half, so that counts once. At level 3, which has no off-beat taps, the number
+   * of cues sees the slow slides and the taps for the other hand. The weights were chosen by
+   * measuring the 15 songs at levels 3 to 5, at both lengths.
+   */
+  weights: { slides: 1, doubles: 1, fastSlides: 1, offbeats: 0.5, cues: 0.5 },
 } as const;
 
 /** Milliseconds around a cue's due time, as [early, late]. Early is negative. */

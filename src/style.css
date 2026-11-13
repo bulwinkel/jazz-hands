@@ -749,21 +749,32 @@ canvas {
   background: #0b1024d9;
   font-size: 16px;
 }
-/* Inside the placeholder: what the game does, in letters to read from the dance spot, and a
-   bar that moves while the players wait. */
+/* Inside the placeholder: what the game does, in letters to read from the dance spot, that
+   leaving loses the video, and a bar that moves while the players wait. Its content never
+   makes it larger than the preview: a box with an aspect ratio grows to fit content that
+   overflows it. */
 .recording-wait {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 20px;
+  gap: 16px;
   padding: 0 18px;
+  overflow: hidden;
 }
 .recording-wait p {
   margin: 0;
+  line-height: 1.15;
+}
+.wait-stage {
   color: #fff;
   font-size: 28px;
   font-weight: 800;
-  line-height: 1.15;
+}
+.recording-wait .wait-keep {
+  margin-top: 6px;
+  color: var(--text-soft);
+  font-size: 22px;
+  font-weight: 700;
 }
 .wait-bar {
   height: 14px;

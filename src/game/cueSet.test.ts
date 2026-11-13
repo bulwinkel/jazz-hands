@@ -104,57 +104,76 @@ describe('candidate seeds', () => {
 });
 
 describe('the mix of a chart', () => {
-  it('is its share of slides and its share of doubles', () => {
-    const chart = [...entries('slide', 22, 0), ...entries('double', 45, 22), ...entries('single', 33, 67)];
-    expect(chartMix(synthetic(60, 120), chart, 3)).toEqual({ slides: 0.22, doubles: 0.45 });
+  const mixed = (): ChartEntry[] => [...entries('slide', 22, 0), ...entries('double', 45, 22), ...entries('single', 33, 67)];
+
+  it('is its shares of slides and of doubles, and its number of cues', () => {
+    expect(chartMix(synthetic(60, 120), mixed(), 3)).toEqual({ slides: 0.22, doubles: 0.45, fastSlides: 0, offbeats: 0, cues: 100 });
   });
 
-  it('counts only cues on cue beats: no off-beat taps and no taps for the other hand', () => {
-    const chart = [...entries('slide', 22, 0), ...entries('double', 45, 22), ...entries('single', 33, 67)];
+  it('has its share of fast slides and its off-beat taps per cue on a cue beat', () => {
+    const chart = mixed();
+    for (const fast of chart.slice(0, 5)) fast.cue.speed = 'fast';
+    const offbeats = Array.from({ length: 20 }, (_, i) => entry('single', 100 + i, 'offbeat'));
+    expect(chartMix(synthetic(60, 200), [...chart, ...offbeats], 4)).toEqual({
+      slides: 0.22,
+      doubles: 0.45,
+      fastSlides: 0.05,
+      offbeats: 0.2,
+      cues: 120,
+    });
+  });
+
+  it('counts only cues on cue beats in its shares: no off-beat taps and no taps for the other hand', () => {
     const extras = [entry('single', 100, 'offbeat'), entry('single', 101, 'companion')];
-    expect(chartMix(synthetic(60, 120), [...chart, ...extras], 3)).toEqual({ slides: 0.22, doubles: 0.45 });
+    expect(chartMix(synthetic(60, 120), [...mixed(), ...extras], 3)).toMatchObject({ slides: 0.22, doubles: 0.45, cues: 102 });
   });
 
-  it('counts only cues in busy music, where the rules allow slides and doubles', () => {
+  it('counts only cues in busy music in its shares, where the rules allow slides and doubles', () => {
     const song = synthetic(60, 200);
     song.intensity = song.beats.map((_, beat) => (beat < 100 ? 0.8 : 0.2));
-    const busy = [...entries('slide', 22, 0), ...entries('double', 45, 22), ...entries('single', 33, 67)];
     const quiet = entries('single', 100, 100);
-    expect(chartMix(song, [...busy, ...quiet], 3)).toEqual({ slides: 0.22, doubles: 0.45 });
+    expect(chartMix(song, [...mixed(), ...quiet], 3)).toMatchObject({ slides: 0.22, doubles: 0.45, cues: 200 });
   });
 
   it('counts the doubles of level 2 on bar starts only, where the rules allow them', () => {
     // 6 doubles on 20 bar starts, and 60 single taps between them. Bars have 4 beats.
     const barStarts = Array.from({ length: 20 }, (_, bar) => entry(bar < 6 ? 'double' : 'single', bar * 4));
     const between = Array.from({ length: 60 }, (_, i) => entry('single', Math.floor(i / 3) * 4 + 1 + (i % 3)));
-    expect(chartMix(synthetic(60, 120), [...barStarts, ...between], 2)).toEqual({ slides: 0, doubles: 0.3 });
+    expect(chartMix(synthetic(60, 120), [...barStarts, ...between], 2)).toMatchObject({ slides: 0, doubles: 0.3 });
   });
 
-  it('is no slides and no doubles at level 1', () => {
-    expect(playedMix(round(realSong(1), solo(1)), solo(1)[0], 123)).toEqual({ slides: 0, doubles: 0 });
+  it('has no slides, doubles or off-beat taps at level 1', () => {
+    const mix = playedMix(round(realSong(1), solo(1)), solo(1)[0], 123);
+    expect(mix).toMatchObject({ slides: 0, doubles: 0, fastSlides: 0, offbeats: 0 });
+    expect(mix.cues).toBeGreaterThan(30);
   });
 
   it('counts only the part of the song that the round plays', () => {
     const late = { ...synthetic(100, 600), shortStartSec: 300 };
     const whole = playedMix(round(late, solo(3), 'full'), solo(3)[0], 7);
     const part = playedMix(round(late, solo(3), 'short'), solo(3)[0], 7);
-    expect(part).not.toEqual(whole);
+    expect(part.cues).toBeLessThan(whole.cues);
   });
 
-  it('is as far from a target as its two shares are, added', () => {
-    // 12 points of slides and 5 points of doubles.
-    expect(mixDistance({ slides: 0.1, doubles: 0.4 }, { slides: 0.22, doubles: 0.45 })).toBeCloseTo(0.17, 10);
+  it('is as far from a target as its parts are, each by its weight', () => {
+    const target = { slides: 0.22, doubles: 0.45, fastSlides: 0.06, offbeats: 0.3, cues: 100 };
+    // 12 points of slides, 5 of doubles, 2 of fast slides, 4 of off-beat taps, and 10% more cues.
+    const mix = { slides: 0.1, doubles: 0.4, fastSlides: 0.08, offbeats: 0.26, cues: 110 };
+    const { weights } = CUE_SETS;
+    const expected = 0.12 * weights.slides + 0.05 * weights.doubles + 0.02 * weights.fastSlides + 0.04 * weights.offbeats + 0.1 * weights.cues;
+    expect(mixDistance(mix, target)).toBeCloseTo(expected, 10);
+    expect(mixDistance(target, target)).toBe(0);
   });
 });
 
 describe('the typical mix', () => {
-  it('is the median share of slides and the median share of doubles', () => {
+  it('is the median of each part', () => {
     const mixes = [
-      { slides: 0.3, doubles: 0.2 },
-      { slides: 0.1, doubles: 0.5 },
-      { slides: 0.2, doubles: 0.4 },
+      { slides: 0.3, doubles: 0.2, fastSlides: 0.1, offbeats: 0.3, cues: 120 },
+      { slides: 0.1, doubles: 0.5, fastSlides: 0.05, offbeats: 0.2, cues: 100 },
+      { slides: 0.2, doubles: 0.4, fastSlides: 0, offbeats: 0.25, cues: 110 },
     ];
-    expect(typicalMix(mixes)).toEqual({ slides: 0.2, doubles: 0.4 });
+    expect(typicalMix(mixes)).toEqual({ slides: 0.2, doubles: 0.4, fastSlides: 0.05, offbeats: 0.25, cues: 110 });
   });
 
   it('comes from the charts of the pool, one for each player', () => {
@@ -167,9 +186,9 @@ describe('the typical mix', () => {
   });
 
   it('is close to the rules at level 3, where the rules can be reached', () => {
-    const rules = { slides: LEVELS[3].slideChance, doubles: LEVELS[3].doubleChance };
     for (const [index] of SONGS.entries()) {
-      expect(mixDistance(songPool(index, 3).targets[0], rules)).toBeLessThan(0.04);
+      const { slides, doubles } = songPool(index, 3).targets[0];
+      expect(Math.abs(slides - LEVELS[3].slideChance) + Math.abs(doubles - LEVELS[3].doubleChance)).toBeLessThan(0.04);
     }
   });
 
@@ -212,16 +231,33 @@ describe('the seed of a later set', () => {
     expect(cueSetSeed(2, round(song, players))).toBe(candidateSeeds(2)[sums.indexOf(Math.min(...sums))]);
   });
 
-  it('plays like the level usually does, on every song: close to the typical mix', () => {
+  it('plays like the level usually does, on every song: close to the typical shares of slides and doubles', () => {
     // A seed of the pool is a median of 8 points from the typical mix at level 3, and 9 at
-    // level 4. The chosen sets are at most 3.9 and 5.6 points from it today.
-    const bounds: Partial<Record<Level, number>> = { 3: 0.06, 4: 0.08 };
+    // level 4. The chosen sets are at most 4.7 points off in each share today.
     for (const [index] of SONGS.entries()) {
       for (const level of [3, 4] as Level[]) {
         const pool = songPool(index, level);
+        const target = pool.targets[0];
         for (const set of LATER_SETS) {
-          expect(poolDistance(pool, closestCandidate(set, pool))).toBeLessThan(bounds[level] as number);
+          const mix = pool.mixes[0][pool.seeds.indexOf(closestCandidate(set, pool))];
+          expect(Math.abs(mix.slides - target.slides)).toBeLessThan(0.06);
+          expect(Math.abs(mix.doubles - target.doubles)).toBeLessThan(0.06);
         }
+      }
+    }
+  });
+
+  it('keeps the sets of a song close in fast slides, off-beat taps and number of cues', () => {
+    // Chosen by slides and doubles alone, the sets of a song at level 4 were up to 9.5 points
+    // apart in fast slides, 14.7 in off-beat taps and 13% in cues. Today: 6.6, 8.9 and 6.3%.
+    const spread = (values: number[]): number => Math.max(...values) - Math.min(...values);
+    for (const [index] of SONGS.entries()) {
+      for (const level of [3, 4] as Level[]) {
+        const pool = songPool(index, level);
+        const mixes = LATER_SETS.map((set) => pool.mixes[0][pool.seeds.indexOf(closestCandidate(set, pool))]);
+        expect(spread(mixes.map((mix) => mix.fastSlides))).toBeLessThan(0.08);
+        expect(spread(mixes.map((mix) => mix.offbeats))).toBeLessThan(0.11);
+        expect(spread(mixes.map((mix) => mix.cues)) / pool.targets[0].cues).toBeLessThan(0.08);
       }
     }
   });

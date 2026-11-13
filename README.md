@@ -30,12 +30,20 @@ choice.
 
 A set gives other cues at the same difficulty. Set 1 is the chart the game always had. Sets
 2 to 5 each try 24 candidate charts for the song, the levels and the length, and keep the one
-that plays most like the level usually does: its shares of slides and two-hand cues come
-closest to the typical mix. The typical mix is the median over the 96 candidate charts of the
-four sets together, so every set aims at the same mix. It is not the level rules: at levels 4
-and 5 a slide never follows an off-beat tap, so their charts have about a third fewer slides
-than the rules say. Set 1 was picked against the rules, so at level 4 it often has more slides
-than the other sets.
+that plays most like the level usually does: closest to the typical mix. The mix is what
+makes a chart harder: its shares of slides, two-hand cues and fast slides, its off-beat taps,
+and its number of cues. Off-beat taps and the number of cues count half each, because both
+say how busy a chart is. The typical mix is the median over the 96 candidate charts of the
+four sets together, so every set aims at the same mix.
+
+On the 15 songs, sets 2 to 5 are a median of 1 point from the typical shares of slides and
+two-hand cues, and at most about 5. At level 4 the sets of one song differ by a median of 3
+fast slides, 4 off-beat taps and 2% of their cues. A set does not match where the cues are,
+which hand shapes they ask for, or how the slides split between normal and slow.
+
+The typical mix is not the level rules: at levels 4 and 5 a slide never follows an off-beat
+tap, so their charts have about a third fewer slides than the rules say. Set 1 was picked
+against the rules, so at level 4 it often has more slides than the other sets.
 
 A `seed=` in the URL replaces the set, for tests. The run report names the seed and the set.
 
@@ -57,7 +65,8 @@ zero, that video's sound is late by that amount.
 
 While the videos are made, the results screen shows a box in place of the preview. It says
 that the recording still runs, with a bar that fills over its last seconds, and then that the
-video is being finished, with a full bar that pulses.
+video is being finished, with a full bar that pulses. Under that, it asks the players to stay
+on the screen to keep the video: Play again, also by a raised hand, throws it away.
 
 When the videos are ready, the results screen shows the round as a small silent preview.
 A click on it, or a fist held on it, plays the round with its sound in a player that fills
@@ -241,8 +250,8 @@ Signs in the report that a song needs this:
 - The tool warns of no clear beat in a part of the song where you hear one.
 - The tool gives its bar-start choice "Confidence: low": the chords and the drums disagree, or the clues
   do not tell two beats apart. Listen for the high click in the check clips: it must be on the "one".
-- The tool gives its bar-start choice "Confidence: medium" and warns that it is not certain. Listen for
-  the high click in the check clips too.
+- The tool gives its bar-start choice "Confidence: medium" and warns that it is not certain, or that the
+  music does not tell two beats half a bar apart. Listen for the high click in the check clips too.
 
 ### Read the report
 
@@ -287,8 +296,8 @@ first beat of the music. The report prints each clue with its numbers.
 
 | Clue | What it reads | What it points to | Weight |
 | --- | --- | --- | --- |
-| Chord changes | How much the chords and the bass change on each beat of the bar. | The beat with the most change, when that change is at least 1.25 times the change on each beat next to it. The beat half a bar away can change almost as much, because many songs change chords at the half bar too. | 2 |
-| Drums | The share of the kick (30 to 150 Hz) and of the snare or clap (1.5 to 6 kHz) on each beat of the bar. | Two beats half a bar apart. The kick falls on beats 1 and 3 and the snare on 2 and 4, so the drums tell those two pairs apart, but often not beat 1 from beat 3. The kick must hit one pair at least 1.25 times as hard as the other pair, and the snare must be stronger on the other pair. A kick on every beat, or no clear drums, decides nothing. | 2 |
+| Chord changes | How much the chords and the bass change on each beat of the bar. | The beat with the most change, when that change is at least 1.25 times the change on each beat next to it. Many songs change chords at the half bar too, so the beat half a bar away can change almost as much. When the best beat changes less than 1.1 times as much as that beat, the chords point to both: a tie. | 2 |
+| Drums | The share of the kick (30 to 150 Hz) and of the snare or clap (1.5 to 6 kHz) on each beat of the bar. | Two beats half a bar apart. The kick falls on beats 1 and 3 and the snare on 2 and 4, so the drums tell those two pairs apart, but often not beat 1 from beat 3. The kick must hit one pair at least 1.25 times as hard as the other pair, and the snare must hit the other pair at least 1.25 times as hard as the kick's pair. A kick on every beat, no clear backbeat, or no clear drums, decides nothing. | 2 |
 | Level rises | The largest rises in level. They are section starts. | The beat that fits at least 1.5 times as many rises as the next best. A pickup or a fill can move a rise by one beat. | 1 |
 | Song start | Nothing in the music. Many songs start on a bar start. | Beat 0. A song that opens with a pickup breaks this. | 0.5 |
 
@@ -297,13 +306,22 @@ evidence: on its own it never beats a clear chord clue.
 
 Each clue that decides adds its weight to the beats it points to. The beat with the most weight
 starts the bars. On a tie, the earlier beat wins. So the drums narrow the choice to two beats, the
-chords pick one of them, and the song start decides only what the music leaves open.
+chords pick one of them, and the song start decides only what the music leaves open. When the chords
+tie at the half bar, they narrow the choice to two beats as the drums do, and the level rises or the
+song start pick one. The report then names the tie.
 
 | Confidence | When |
 | --- | --- |
-| High | The clues for the choice weigh 3 or more, and only the song start is against it. |
-| Medium | The level rises are against the choice, or the clues for it weigh less than 3. |
+| High | The clues for the choice weigh 3 or more, only the song start is against it, and a clue other than the song start tells it from the beat half a bar away. |
+| Medium | The level rises are against the choice, or the clues for it weigh less than 3, or only the song start tells it from the beat half a bar away. |
 | Low | The chords or the drums are against the choice, or another beat has as much weight. |
+
+The unit tests keep the clue numbers of the 15 songs in `public/songs` with their verified bar
+starts, and check how far each weight and threshold can move before a song comes out wrong. The
+weights need only their order: song start, then level rises, then chords. Two thresholds sit close to
+an edge. The chords' 1.25 against the next beat may move only from 1.17 to 1.35 (Todo Bueno and
+Nebuchadnezzar's Dream), and the half-bar ratio of 1.1 must stay below 1.17 (Hey-Ho, Jonah). On 15
+songs, the drum clue changes no choice: it only makes Job, Hold On certain.
 
 ### Listen to the check clips
 

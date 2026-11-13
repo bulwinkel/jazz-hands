@@ -4,7 +4,10 @@
  *
  * A set must give other cues at the same difficulty. Set 1 is the chart from DEFAULT_SEED.
  * Every other set tries a fixed list of candidate seeds and keeps the one whose charts play
- * most like the level usually does: closest to the typical mix of slides and doubles.
+ * most like the level usually does: closest to the typical mix. The mix holds what makes a
+ * chart harder: its shares of slides, doubles and fast slides, its off-beat taps, and its
+ * number of cues. Two shares alone left the sets of one song apart by up to 9 fast slides and
+ * 16 off-beat taps at level 4.
  *
  * The typical mix is not the level rules. At levels 4 and 5 a slide never follows an
  * off-beat tap, and a double needs both hands free, so their charts stay well under the
@@ -62,13 +65,24 @@ export interface RoundCharts {
   endSec: number;
 }
 
-/** A chart's share of slides and share of doubles, among the cues that the level rules speak about. */
+/**
+ * What makes a chart easy or hard. The shares are of the cues that the level rules speak
+ * about: the cues on cue beats in busy music.
+ */
 export interface ChartMix {
   slides: number;
+  /** A level with doubles on bar starts only counts its bar starts. */
   doubles: number;
+  /** The hardest cue of levels 4 and 5. */
+  fastSlides: number;
+  /** Off-beat taps, per cue that the shares count. */
+  offbeats: number;
+  /** The number of cues of every kind. */
+  cues: number;
 }
 
 const isSlide = (cue: Cue): boolean => cue.kind === 'slide';
+const isFastSlide = (cue: Cue): boolean => cue.speed === 'fast';
 const isDouble = (cue: Cue): boolean => cue.kind === 'tap' && cue.cells.length === 2;
 
 /** The share of `cues` that match. With no cues, 0. */
@@ -77,9 +91,9 @@ function shareOf(cues: readonly Cue[], matches: (cue: Cue) => boolean): number {
 }
 
 /**
- * The mix of a chart. The level rules speak about cue beats in busy music, so only the cues
- * on such beats count: no off-beat taps, and no taps for the other hand during a slow slide.
- * A level with doubles on bar starts only counts its doubles on bar starts.
+ * The mix of a chart. The level rules speak about cue beats in busy music, so the shares are
+ * of the cues on such beats: no off-beat taps, and no taps for the other hand during a slow
+ * slide. The number of cues counts every cue.
  */
 export function chartMix(manifest: Manifest, entries: readonly ChartEntry[], level: Level): ChartMix {
   const busyBeatCues = entries
@@ -88,17 +102,43 @@ export function chartMix(manifest: Manifest, entries: readonly ChartEntry[], lev
   const doubleBeatCues = LEVELS[level].doublesOnBarStartsOnly
     ? busyBeatCues.filter((cue) => isBarStart(manifest, cue.beatIndex))
     : busyBeatCues;
-  return { slides: shareOf(busyBeatCues, isSlide), doubles: shareOf(doubleBeatCues, isDouble) };
+  const offbeatCount = entries.filter((entry) => entry.role === 'offbeat').length;
+  return {
+    slides: shareOf(busyBeatCues, isSlide),
+    doubles: shareOf(doubleBeatCues, isDouble),
+    fastSlides: shareOf(busyBeatCues, isFastSlide),
+    offbeats: busyBeatCues.length === 0 ? 0 : offbeatCount / busyBeatCues.length,
+    cues: entries.length,
+  };
 }
 
-/** The typical mix of a pool of charts: the median share of slides and the median share of doubles. */
+/** The typical mix of a pool of charts: the median of each part. */
 export function typicalMix(mixes: readonly ChartMix[]): ChartMix {
-  return { slides: median(mixes.map((mix) => mix.slides)), doubles: median(mixes.map((mix) => mix.doubles)) };
+  const middle = (part: keyof ChartMix): number => median(mixes.map((mix) => mix[part]));
+  return {
+    slides: middle('slides'),
+    doubles: middle('doubles'),
+    fastSlides: middle('fastSlides'),
+    offbeats: middle('offbeats'),
+    cues: middle('cues'),
+  };
 }
 
-/** How far a mix is from a target: the distances of its two shares, added. 0.05 is 5 points. */
+/**
+ * How far a mix is from a target: the distance of each part, times its weight in
+ * `CUE_SETS.weights`, added. A share is off by its points: 0.05 is 5 points. The number of
+ * cues is off by its relative change: 5% more cues is like 5 points.
+ */
 export function mixDistance(mix: ChartMix, target: ChartMix): number {
-  return Math.abs(mix.slides - target.slides) + Math.abs(mix.doubles - target.doubles);
+  const { weights } = CUE_SETS;
+  const cueChange = target.cues > 0 ? Math.abs(mix.cues / target.cues - 1) : 0;
+  return (
+    weights.slides * Math.abs(mix.slides - target.slides) +
+    weights.doubles * Math.abs(mix.doubles - target.doubles) +
+    weights.fastSlides * Math.abs(mix.fastSlides - target.fastSlides) +
+    weights.offbeats * Math.abs(mix.offbeats - target.offbeats) +
+    weights.cues * cueChange
+  );
 }
 
 /** The mix of the part of one player's chart that the round plays. */
