@@ -230,6 +230,8 @@ export interface RunReport {
     playerCount: number;
     input: string;
     seed: number;
+    /** The cue set the seed came from. Null when the URL gave the seed. */
+    cueSet: number | null;
     inputLatencyMs: number;
     avOffsetMs: number;
     audioOutputLatencyMs: number;

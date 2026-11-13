@@ -21,6 +21,18 @@ In the grow style, two cues for one cell nest: the larger block comes first.
 A fist held on a menu item shows its progress with the mark of the chosen style, so the
 menu teaches how a round reads.
 
+## Cue sets
+
+A song has 5 cue sets. Each set gives other cues for the same song, and the same cues on
+every run, so **Play again** repeats them. Step through the sets with the **🎲 Set** switch
+in the top right corner of the menu. Both players play the same set. The game keeps the
+choice.
+
+Set 1 is the chart the game always had. Sets 2 to 5 each try 24 candidate charts for the
+song, the levels and the length, and keep the one whose shares of slides and two-hand cues
+come closest to the level rules. A `seed=` in the URL replaces the set, for tests. The run
+report names the seed and the set.
+
 ## Record a round
 
 Turn on **Recording** in the top right corner of the menu. Each round then gives two videos:
@@ -37,15 +49,22 @@ The game delays the sound of each video to fit its picture, but it cannot make t
 When the picture offset and the camera delay, with the speakers' delay, add up to less than
 zero, that video's sound is late by that amount.
 
+While the videos are made, the results screen shows a box in place of the preview. It says
+that the recording still runs, with a bar that fills over its last seconds, and then that the
+video is being finished, with a full bar that pulses.
+
 When the videos are ready, the results screen shows the round as a small silent preview.
 A click on it, or a fist held on it, plays the round with its sound in a player that fills
 the window. The player has buttons to switch between the game view and the camera view, to
-download the video on show, and to close. A real click also switches the browser to full
-screen. Space pauses and Esc closes.
+play the video on show again from its start (**↺ Restart**, also after it has ended), to
+download it, and to close. A real click also switches the browser to full
+screen. Space pauses and Esc closes. Under the preview are the download links of both videos.
 
-The results screen and the menu also list the recorded rounds, each with a Watch button and
-its download links. The game keeps the videos of the last 3 rounds, in memory only: a reload
-of the page drops them.
+The game keeps no history of recordings. It holds only the videos of the round whose results
+are on screen, in memory. When the results close, for any reason (Play again, Menu,
+Recalibrate, an error, a reload), the videos are deleted: download them before you leave
+the results. A recording that is still in its last seconds, or still being finished, when
+the results close is thrown away.
 
 The files are MP4 (H.264 and AAC). The run report of a recorded round has
 `settings.recording: true`, to compare its tracking speed with other rounds.

@@ -14,6 +14,7 @@ const PLAYER_HTML = `
   <div class="player-bar">
     <button type="button" id="player-game" data-hand="player-game">🎮 ${VIDEO_NAMES.game}</button>
     <button type="button" id="player-camera" data-hand="player-camera">🎥 ${VIDEO_NAMES.camera}</button>
+    <button type="button" id="player-restart" data-hand="player-restart">↺ Restart</button>
     <a id="player-download" data-hand="player-download"></a>
     <button type="button" id="player-close" data-hand="player-close">✕ Close · Esc</button>
   </div>`;
@@ -40,8 +41,8 @@ export class VideoPlayer {
   private returnFocus?: HTMLElement;
   /** The elements behind the player that it made inert. */
   private madeInert: HTMLElement[] = [];
-  /** Hears which round the player shows when it opens, and nothing when it closes. */
-  onChange?: (shown: RoundVideos | undefined) => void;
+  /** Hears when the player opens and when it closes. */
+  onChange?: () => void;
 
   /** Builds the player in `element`, which stays hidden while the player is closed. */
   constructor(element: HTMLElement) {
@@ -50,15 +51,8 @@ export class VideoPlayer {
     element.tabIndex = -1;
     this.element = element;
     this.video = find(element, 'video');
-    for (const kind of ['game', 'camera'] as const) {
-      find(element, `#player-${kind}`).addEventListener('click', (event) => {
-        this.show(kind);
-        // A mouse click leaves the focus on the button, and Space would then press it again.
-        // Give the focus back to the player, so Space pauses. A press by keyboard (detail 0)
-        // keeps the focus where the player put it.
-        if ((event as MouseEvent).detail > 0) element.focus({ preventScroll: true });
-      });
-    }
+    for (const kind of ['game', 'camera'] as const) this.onBarButton(`#player-${kind}`, () => this.show(kind));
+    this.onBarButton('#player-restart', () => this.restart());
     find(element, '#player-close').addEventListener('click', () => this.close());
     document.addEventListener('fullscreenchange', this.onFullscreenChange);
   }
@@ -91,7 +85,7 @@ export class VideoPlayer {
     this.element.hidden = false;
     this.holdFocus();
     this.playFrom(0);
-    this.onChange?.(round);
+    this.onChange?.();
   }
 
   close(): void {
@@ -104,7 +98,7 @@ export class VideoPlayer {
     this.element.hidden = true;
     this.releaseFocus();
     if (playing.ownsFullscreen && document.fullscreenElement) void document.exitFullscreen().catch(() => {});
-    this.onChange?.(undefined);
+    this.onChange?.();
   }
 
   /** Space in the player: pause, or play on. */
@@ -112,6 +106,29 @@ export class VideoPlayer {
     if (!this.playing) return;
     if (this.video.paused) void this.video.play().catch(() => {});
     else this.video.pause();
+  }
+
+  /**
+   * Runs `action` when the bar button at `selector` is pressed. A mouse click leaves the focus
+   * on the button, and Space would then press it again. The focus goes back to the player, so
+   * Space pauses. A press by keyboard (detail 0) keeps the focus where the player put it.
+   */
+  private onBarButton(selector: string, action: () => void): void {
+    find(this.element, selector).addEventListener('click', (event) => {
+      action();
+      if ((event as MouseEvent).detail > 0) this.element.focus({ preventScroll: true });
+    });
+  }
+
+  /**
+   * Plays the video on show from its start, with its sound: while it plays, while it is
+   * paused, and after it has ended. A hand has no other way to see the round again.
+   */
+  private restart(): void {
+    if (!this.playing) return;
+    this.video.currentTime = 0;
+    this.video.muted = false;
+    void this.video.play().catch(() => {});
   }
 
   /**
@@ -143,7 +160,7 @@ export class VideoPlayer {
   private releaseFocus(): void {
     for (const element of this.madeInert) element.inert = false;
     this.madeInert = [];
-    // The element may have gone meanwhile, for example a list of rounds that was drawn again.
+    // The element may have gone meanwhile, for example with the panel it was on.
     if (this.returnFocus?.isConnected) this.returnFocus.focus({ preventScroll: true });
     this.returnFocus = undefined;
   }
