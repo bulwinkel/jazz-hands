@@ -123,12 +123,13 @@ A song with no picture shows its title on a plain cover. To give it a picture:
 ### Songs that needed a correction by hand
 
 Six songs did not come out right from the tool alone. These command options make their manifests again.
+The tool now finds the bar start of the last four by itself, from the chords and the drums (see
+[How the tool finds the bar start](#how-the-tool-finds-the-bar-start)). The table keeps them as a record.
 
 | Song | Command options | Why |
 | --- | --- | --- |
 | Job, Hold On | `--half-beat shift` | The kick is syncopated (beat 1 and the "and" of 2), so it sits on the beats and between them alike, and the tool could not tell which pulses are the beats. The snare on beats 2 and 4 shows them. After the shift, every section has a clear kick on the beat and the music starts on the first beat. |
 | The Wilderness Knows | `--beats tools/songs/given-beats/the-wilderness-knows.json` | The opening is loose and the kick is soft. The tool's own grid lost the beat in the first 30 s. The given beats come from a comb on the eighth-note pulse (about 186 per minute), fitted in 10 s windows from the clearest window outward. |
-
 | All Aboard | `--first-downbeat 2` | The tool chose beat 3 with low confidence, from the level rises alone. The chords and the bass change on beat 2, and with bars from beat 2 the kick falls on beats 1 and 3 and the snare on 2 and 4. |
 | Nebuchadnezzar's Dream | `--first-downbeat 1` | The tool chose beat 0 with low confidence, because the music starts there. The chords and the bass change on beat 1, and with bars from beat 1 the kick falls on beat 1 and on the "and" of 3, as in the other songs of this style. |
 | Hey-Ho, Jonah | `--first-downbeat 2` | The tool chose beat 1 with low confidence, from three level rises alone. The kick and the clap are equally strong on every beat, so they do not show the bar. The chords and the bass change most on beat 2 and least on beat 1. |
@@ -139,7 +140,10 @@ Signs in the report that a song needs this:
 - The kick readings of the beat grid jump by about half a beat from one 20 s block to the next.
 - The tool warns that the kick hits and the chord changes do not agree on which pulses are the beats.
 - The tool warns of no clear beat in a part of the song where you hear one.
-- The tool warns that the bar-start evidence disagrees, and gives its choice "Confidence: low". Listen for the high click in the check clips: it must be on the "one".
+- The tool gives its bar-start choice "Confidence: low": the chords and the drums disagree, or the clues
+  do not tell two beats apart. Listen for the high click in the check clips: it must be on the "one".
+- The tool gives its bar-start choice "Confidence: medium" and warns that it is not certain. Listen for
+  the high click in the check clips too.
 
 ### Read the report
 
@@ -151,7 +155,7 @@ Signs in the report that a song needs this:
 | Beats, or the pulses between them | Kick hits and chord changes must be stronger on the beats. If not, the tool moves the beats by half a beat. |
 | Kick alignment | Each 30 s section reads about +5 ms. A section with no clear kick is less certain. |
 | Music | Where the sound starts and ends, and where the beat stops being clear. |
-| Bars | `firstDownbeat`, the clues for it, and the confidence. |
+| Bars | `firstDownbeat`, the four clues for it with their numbers, the weight for each beat, and the confidence. See [How the tool finds the bar start](#how-the-tool-finds-the-bar-start). |
 | Beats | The beat count, where the list stops and why, and the tempo at the start, middle and end. |
 | Intensity per bar | The pace of each bar, and the share of slow, medium and full bars. |
 | Short round | The mean intensity of the first 90 s and of the best 90 s, and `shortStartSec`. |
@@ -176,6 +180,31 @@ Three cases to know:
 
 The tool exits with code 1 and one error line when it cannot make a manifest it trusts.
 It then writes no manifest.
+
+### How the tool finds the bar start
+
+The tool reads four clues for the beat that starts the bars (`firstDownbeat`), counted from the
+first beat of the music. The report prints each clue with its numbers.
+
+| Clue | What it reads | What it points to | Weight |
+| --- | --- | --- | --- |
+| Chord changes | How much the chords and the bass change on each beat of the bar. | The beat with the most change, when that change is at least 1.25 times the change on each beat next to it. The beat half a bar away can change almost as much, because many songs change chords at the half bar too. | 2 |
+| Drums | The share of the kick (30 to 150 Hz) and of the snare or clap (1.5 to 6 kHz) on each beat of the bar. | Two beats half a bar apart. The kick falls on beats 1 and 3 and the snare on 2 and 4, so the drums tell those two pairs apart, but often not beat 1 from beat 3. The kick must hit one pair at least 1.25 times as hard as the other pair, and the snare must be stronger on the other pair. A kick on every beat, or no clear drums, decides nothing. | 2 |
+| Level rises | The largest rises in level. They are section starts. | The beat that fits at least 1.5 times as many rises as the next best. A pickup or a fill can move a rise by one beat. | 1 |
+| Song start | Nothing in the music. Many songs start on a bar start. | Beat 0. A song that opens with a pickup breaks this. | 0.5 |
+
+The chords and the drums read every bar of the song, so they weigh most. The song start is weak
+evidence: on its own it never beats a clear chord clue.
+
+Each clue that decides adds its weight to the beats it points to. The beat with the most weight
+starts the bars. On a tie, the earlier beat wins. So the drums narrow the choice to two beats, the
+chords pick one of them, and the song start decides only what the music leaves open.
+
+| Confidence | When |
+| --- | --- |
+| High | The clues for the choice weigh 3 or more, and only the song start is against it. |
+| Medium | The level rises are against the choice, or the clues for it weigh less than 3. |
+| Low | The chords or the drums are against the choice, or another beat has as much weight. |
 
 ### Listen to the check clips
 
