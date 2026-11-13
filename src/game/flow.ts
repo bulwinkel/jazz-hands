@@ -269,7 +269,7 @@ export class DanceGame {
 
     try {
       const [song, tracking] = await Promise.allSettled([this.loadSong(audio), this.prepareTracking()]);
-      if (session !== this.session) return; // The player left for the menu while this loaded.
+      if (!this.stillLoading(session)) return;
       if (song.status === 'rejected') throw song.reason;
       if (tracking.status === 'rejected') throw tracking.reason;
 
@@ -305,6 +305,15 @@ export class DanceGame {
     } catch (error) {
       this.failIfCurrent(session, error);
     }
+  }
+
+  /**
+   * True while `session` still loads. The player may have left for the menu meanwhile, or a
+   * failure may have ended the loading: a tracker that broke while the song still decoded.
+   * A failure does not start a new session.
+   */
+  private stillLoading(session: number): boolean {
+    return session === this.session && this.phase === 'loading';
   }
 
   private async loadSong(audio: SongAudio): Promise<Manifest> {
