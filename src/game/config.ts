@@ -133,6 +133,16 @@ export const SONGS: readonly SongEntry[] = [
     title: 'Peace, Be Still',
     cover: '/songs/peace-be-still.jpg',
   },
+  {
+    manifest: '/songs/zaqueo.json',
+    title: 'Zaqueo',
+    cover: '/songs/zaqueo.jpg',
+  },
+  {
+    manifest: '/songs/for-such-a-time-as-this.json',
+    title: 'For Such a Time as This',
+    cover: '/songs/for-such-a-time-as-this.jpg',
+  },
 ];
 
 /** The part of a song that plays in the menu while the song is chosen. */
