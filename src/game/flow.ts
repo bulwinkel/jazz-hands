@@ -685,8 +685,8 @@ export class DanceGame {
       .map((hand) => ({ ...this.toScreen(hand), fist: hand.gesture === 'fist' }));
   }
 
-  /** What the hands point at: the phase and the items they can choose. A choice may change it. */
-  private handScreen = (): string => `${this.phase} ${this.ui.handTargetIds().join(' ')}`;
+  /** What the hands point at: the phase, the open panel and the video player. A choice may change it. */
+  private handScreen = (): string => `${this.phase} ${this.ui.handScreen}`;
 
   /** A point in the camera frame, as a position on the screen in pixels. */
   private toScreen(point: Point): Point {

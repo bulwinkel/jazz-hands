@@ -87,7 +87,8 @@ function mergeHovers(steps: readonly HandMenuStep[]): ItemHover[] {
 /**
  * Chooses the items of one frame, in order. It stops once a choice has changed what the hands
  * point at, `screen`: a new phase, a new panel, or the video player. The later choices of the
- * frame were made on the screen before.
+ * frame were made on the screen before. A change inside the same panel does not stop it: one
+ * player steps the songs while the other picks a level.
  */
 export function chooseInTurn(ids: readonly string[], choose: (id: string) => void, screen: () => string): void {
   if (ids.length === 0) return;

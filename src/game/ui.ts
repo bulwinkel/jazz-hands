@@ -110,6 +110,8 @@ export class GameUI {
   private menu?: MenuControls;
   /** The rating rows of the open results. Unset while the results have none. */
   private ratings?: RatingRows;
+  /** Goes up each time the panel opens or closes. See `handScreen`. */
+  private panelOpenings = 0;
 
   constructor(root: HTMLElement) {
     // The stylesheet takes these values from the game's code, so one change reaches the page
@@ -150,6 +152,7 @@ export class GameUI {
   hidePanel(): void {
     removePreview(this.panel);
     this.panel.hidden = true;
+    this.panelOpenings++;
     this.closeMenu();
   }
 
@@ -253,9 +256,13 @@ export class GameUI {
     });
   }
 
-  /** The ids of the items a hand can choose now. They change when a panel or the video player opens. */
-  handTargetIds(): string[] {
-    return this.handElements().map((element) => element.dataset.hand ?? '');
+  /**
+   * Names the screen that the hands point at: which panel is open, and whether the video
+   * player covers it. A new panel, a closed one, or the player opening or closing changes it.
+   * A change inside the panel, such as the song carousel moving on, does not.
+   */
+  get handScreen(): string {
+    return `${this.panelOpenings} ${this.player.isOpen}`;
   }
 
   /** The elements a hand can choose now. */
@@ -338,6 +345,7 @@ export class GameUI {
     removePreview(this.panel);
     this.closeMenu();
     this.ratings = undefined;
+    this.panelOpenings++;
     this.panel.className = className;
     this.panel.innerHTML = `<div class="fit">${html}</div>${outsideHtml}`;
     this.panel.hidden = false;
