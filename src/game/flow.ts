@@ -23,6 +23,7 @@ import { closingSongTime, frameSongTime, newCueState } from './judgment';
 import { fetchManifest, playEndSec, playStartSec } from './manifest';
 import { createPlayers, summariseChart } from './player';
 import type { ChartSummary, PlayerRun } from './player';
+import { pausePlay, resumePlay } from './playTime';
 import { MenuPreview } from './preview';
 import type { PreviewState } from './preview';
 import { GameRenderer } from './render';
@@ -653,6 +654,7 @@ export class DanceGame {
    */
   private async pauseRound(): Promise<void> {
     this.paused = true;
+    this.trackingStats.play = pausePlay(this.trackingStats.play, performance.now());
     this.recordings.pause();
     await this.audio?.pause();
   }
@@ -664,6 +666,7 @@ export class DanceGame {
     // The player may have left the round while the sound came back, or it may not have come back.
     if (session !== this.session || this.audio?.context.state !== 'running') return;
     this.paused = false;
+    this.trackingStats.play = resumePlay(this.trackingStats.play, performance.now());
     this.recordings.resume();
   }
 

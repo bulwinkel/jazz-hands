@@ -5,6 +5,8 @@ import { cellRect, insideCell } from './geometry';
 import { isInsideWindow } from './judgment';
 import type { CueState } from './judgment';
 import type { PlayerRun } from './player';
+import { playedSec, startPlay } from './playTime';
+import type { PlayTime } from './playTime';
 import type { Cue, FaceCue, Level, Rating, Rect } from './types';
 
 /**
@@ -141,11 +143,12 @@ export interface TrackingStats {
   handCounts: [number[], number[]];
   /** Frames the game drew on the canvas. Tracking on the main thread takes time from these. */
   drawnFrames: number;
-  playStartedMs: number;
+  /** How long the round has been played. The frames above are counted only during play. */
+  play: PlayTime;
 }
 
 export function newTrackingStats(nowMs: number): TrackingStats {
-  return { frames: 0, inferenceMs: [], handCounts: [[0, 0, 0], [0, 0, 0]], drawnFrames: 0, playStartedMs: nowMs };
+  return { frames: 0, inferenceMs: [], handCounts: [[0, 0, 0], [0, 0, 0]], drawnFrames: 0, play: startPlay(nowMs) };
 }
 
 const round1 = (value: number): number => Math.round(value * 10) / 10;
@@ -370,7 +373,7 @@ export interface RunContext {
 /** Everything about one finished run, as plain data that can be saved as JSON. */
 export function buildRunReport(context: RunContext): RunReport {
   const { stats } = context;
-  const playSec = (context.nowMs - stats.playStartedMs) / 1000;
+  const playSec = playedSec(stats.play, context.nowMs);
   return {
     schemaVersion: 1,
     savedAt: new Date().toISOString(),

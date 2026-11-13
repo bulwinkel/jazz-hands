@@ -14,6 +14,7 @@ import { judgeFaceFrame, newFaceCueState } from './faceJudgment';
 import { cellCentre, defaultGrid } from './geometry';
 import { judgeFrame, newCueState } from './judgment';
 import type { PlayerRun } from './player';
+import { pausePlay, resumePlay } from './playTime';
 import { freshScore } from './scoring';
 import type { Cue, FaceCue } from './types';
 
@@ -202,6 +203,16 @@ describe('run report', () => {
 
   it('names the chart seed and the cue set it came from', () => {
     expect(report([]).settings).toMatchObject({ seed: 1, cueSet: 1 });
+  });
+
+  it('divides the frames by the time played, without the pauses', () => {
+    const stats = newTrackingStats(0);
+    stats.frames = 45;
+    stats.drawnFrames = 90;
+    // The report helper ends the run at 2 s. A pause from 1 s to 1.5 s leaves 1.5 s of play.
+    stats.play = resumePlay(pausePlay(stats.play, 1000), 1500);
+    const run = report([playOneCue(tap(), () => [hand(4)])], stats);
+    expect(run.tracking).toMatchObject({ framesPerSec: 30, drawnPerSec: 60 });
   });
 
   it('lists every cue with its result and what the tracker showed', () => {
