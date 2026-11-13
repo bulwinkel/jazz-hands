@@ -23,6 +23,7 @@ describe('kept settings', () => {
       handControl: false,
       record: true,
       cueStyle: 'grow',
+      cueSet: 4,
     };
     expect(parseSettings(kept, '').settings).toEqual(kept);
   });
@@ -124,6 +125,21 @@ describe('URL parameters', () => {
     expect(parseSettings({ cueStyle: 'grow' }, '?cues=other').settings.cueStyle).toBe('grow');
   });
 
+  it('keep cue set 1 until a player picks another, and take a set from 1 to 5', () => {
+    expect(parseSettings(null, '').settings.cueSet).toBe(1);
+    expect(parseSettings({ cueSet: 6 }, '').settings.cueSet).toBe(1);
+    expect(parseSettings({ cueSet: '2' }, '').settings.cueSet).toBe(1);
+    expect(parseSettings(null, '?set=3').settings.cueSet).toBe(3);
+    expect(parseSettings({ cueSet: 5 }, '?set=1').settings.cueSet).toBe(1);
+    expect(parseSettings({ cueSet: 5 }, '?set=0').settings.cueSet).toBe(5);
+    expect(parseSettings({ cueSet: 2 }, '?set=2.5').settings.cueSet).toBe(2);
+  });
+
+  it('give a chart seed only when the URL names one, so the cue set picks it otherwise', () => {
+    expect(parseSettings(null, '').seed).toBeUndefined();
+    expect(parseSettings(null, '?set=3&seed=42')).toMatchObject({ seed: 42, settings: { cueSet: 3 } });
+  });
+
   it('set the one-off options', () => {
     const options = parseSettings(null, '?tracker=pose&input=bot&start=185&seed=42&botAccuracy=0.5&autostart=1');
     expect(options).toMatchObject({
@@ -140,7 +156,7 @@ describe('URL parameters', () => {
     const options = parseSettings(null, '?players=4&p0=0&p1=9&length=long&song=99&tracker=bad&input=x&start=NaN&seed=1.5&botAccuracy=NaN');
     expect(options.settings).toEqual(defaultSettings());
     expect(options).toMatchObject({ tracker: undefined, input: 'camera', startSec: 0, botAccuracy: 1 });
-    expect(options.seed).toBe(parseSettings(null, '').seed);
+    expect(options.seed).toBeUndefined();
   });
 });
 

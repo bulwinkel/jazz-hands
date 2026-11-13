@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  chartEntries,
   cuesFrom,
   doubleCells,
   generateChart,
@@ -123,6 +124,27 @@ describe('chart for every level', () => {
         expect(cue.timeSec).toBeLessThan(tailStartSec(song, endSec));
       }
     }
+  });
+});
+
+describe('the role of each cue', () => {
+  it('is the same chart as generateChart, with a role for every cue', () => {
+    const song = synthetic(100, 600);
+    for (const level of ALL_LEVELS) {
+      const options = { level, shapes: true, seed: 7, endSec: song.durationSec };
+      expect(chartEntries(song, options).map((entry) => entry.cue)).toEqual(generateChart(song, options));
+    }
+  });
+
+  it.each([100, 128])('at %i BPM, names the off-beat taps and the taps for the other hand', (bpm) => {
+    const entries = chartEntries(synthetic(bpm, 600), { level: 4, shapes: false, seed: 42, endSec: 600 });
+    const cues = entries.map((entry) => entry.cue);
+    const withRole = (role: string): Cue[] => entries.filter((entry) => entry.role === role).map((entry) => entry.cue);
+    expect(withRole('offbeat').length).toBeGreaterThan(20);
+    expect(withRole('companion')).toEqual(cues.filter((cue, i) => isCompanion(cue, i, cues)));
+    // With a cue on every second beat, an off-beat tap sits on a whole beat: its index cannot tell.
+    if (bpm === 128) expect(withRole('offbeat').every((cue) => Number.isInteger(cue.beatIndex))).toBe(true);
+    else expect(withRole('offbeat')).toEqual(cues.filter(isOffbeat));
   });
 });
 

@@ -101,7 +101,7 @@ function playFaceCues(cues: FaceCue[], faceAt: (timeSec: number) => TrackedFace 
 function report(players: PlayerRun[], stats = newTrackingStats(0), faceDelegate: string | null = null) {
   const context: RunContext = {
     song: { id: 'synthetic', title: 'Test', length: 'short', startSec: 0, endSec: 2 },
-    settings: { playerCount: 1, input: 'bot', seed: 1, inputLatencyMs: 100, avOffsetMs: 0, audioOutputLatencyMs: 20, recording: false },
+    settings: { playerCount: 1, input: 'bot', seed: 1, cueSet: 1, inputLatencyMs: 100, avOffsetMs: 0, audioOutputLatencyMs: 20, recording: false },
     trackerMode: 'hands-full',
     trackerDelegate: 'GPU',
     trackerFaceDelegate: faceDelegate,
@@ -188,6 +188,10 @@ describe('run report', () => {
     const run = report([playOneCue(tap(), () => [hand(4)])], stats);
     expect(run.tracking).toMatchObject({ frames: 60, framesPerSec: 30, inferenceMs: { mean: 21.5, p95: 50 } });
     expect(run.players[0].handsSeen).toEqual({ none: 0.1, one: 0.2, two: 0.7 });
+  });
+
+  it('names the chart seed and the cue set it came from', () => {
+    expect(report([]).settings).toMatchObject({ seed: 1, cueSet: 1 });
   });
 
   it('lists every cue with its result and what the tracker showed', () => {

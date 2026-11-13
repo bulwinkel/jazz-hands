@@ -21,6 +21,18 @@ In the grow style, two cues for one cell nest: the larger block comes first.
 A fist held on a menu item shows its progress with the mark of the chosen style, so the
 menu teaches how a round reads.
 
+## Cue sets
+
+A song has 5 cue sets. Each set gives other cues for the same song, and the same cues on
+every run, so **Play again** repeats them. Step through the sets with the **🎲 Set** switch
+in the top right corner of the menu. Both players play the same set. The game keeps the
+choice.
+
+Set 1 is the chart the game always had. Sets 2 to 5 each try 24 candidate charts for the
+song, the levels and the length, and keep the one whose shares of slides and two-hand cues
+come closest to the level rules. A `seed=` in the URL replaces the set, for tests. The run
+report names the seed and the set.
+
 ## Record a round
 
 Turn on **Recording** in the top right corner of the menu. Each round then gives two videos:

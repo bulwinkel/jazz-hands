@@ -2,7 +2,8 @@ import type { FaceExpression, FaceRegions, TrackingFrame } from '../tracking/typ
 import { SongAudio } from './audio';
 import { cuesFrom, generateChart } from './chart';
 import { CUE_STYLE_NAMES, nextCueStyle } from './cueStyle';
-import { FACE_EMOJI, HAND_MENU, MENU_TRACKER, SONGS, TIMING, TOAST } from './config';
+import { DEFAULT_SEED, FACE_EMOJI, HAND_MENU, MENU_TRACKER, SONGS, TIMING, TOAST } from './config';
+import { cueSetSeed } from './cueSet';
 import { buildRunReport, newFaceObservation, newObservation, newTrackingStats } from './diagnostics';
 import type { RunReport, TrackingStats } from './diagnostics';
 import { isHandClick } from './dom';
@@ -98,6 +99,10 @@ export class DanceGame {
   private feedback: Feedback[] = [];
   private startSec = 0;
   private endSec = 0;
+  /** The chart seed of the round: from its cue set, or from the URL. */
+  private seed = DEFAULT_SEED;
+  /** The cue set the seed came from. Null when the URL gave the seed. */
+  private cueSet: number | null = null;
   private paused = false;
 
   /** Totals about tracking during the current run, and the report of the last finished run. */
@@ -275,16 +280,17 @@ export class DanceGame {
       }
 
       this.players = createPlayers(settings);
+      this.chooseSeed(manifest);
       for (const player of this.players) {
         const chart = generateChart(manifest, {
           level: player.level,
           shapes: player.shapes,
-          seed: this.options.seed,
+          seed: this.seed,
           endSec: this.endSec,
         });
         player.cues = cuesFrom(chart, this.startSec);
         if (player.faces) {
-          const faceCues = generateFaceCues(manifest, this.options.seed, this.endSec);
+          const faceCues = generateFaceCues(manifest, this.seed, this.endSec);
           player.faceCues = cuesFrom(faceCues, this.startSec);
         }
       }
@@ -297,6 +303,24 @@ export class DanceGame {
     } catch (error) {
       this.failIfCurrent(session, error);
     }
+  }
+
+  /**
+   * Sets the chart seed of the round. A seed in the URL wins, for tests. Otherwise the cue set
+   * gives it, for the part of the song that the length plays. A start in the URL then keeps
+   * the cues of the real round.
+   */
+  private chooseSeed(manifest: Manifest): void {
+    const { settings, seed } = this.options;
+    this.cueSet = seed === undefined ? settings.cueSet : null;
+    this.seed =
+      seed ??
+      cueSetSeed(settings.cueSet, {
+        manifest,
+        players: this.players,
+        startSec: playStartSec(manifest, settings.length),
+        endSec: this.endSec,
+      });
   }
 
   /**
@@ -470,7 +494,8 @@ export class DanceGame {
       settings: {
         playerCount: settings.playerCount,
         input: this.options.input,
-        seed: this.options.seed,
+        seed: this.seed,
+        cueSet: this.cueSet,
         inputLatencyMs: settings.inputLatencyMs,
         avOffsetMs: settings.avOffsetMs,
         audioOutputLatencyMs: Math.round((this.audio?.outputLatencySec ?? 0) * 1000),

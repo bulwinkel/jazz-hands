@@ -136,6 +136,26 @@ export const PREVIEW = {
  */
 export const DEFAULT_SEED = 20261315;
 
+/**
+ * Cue sets give one song other charts. Set 1 is the chart from DEFAULT_SEED. Every other set
+ * tries a few candidate seeds and keeps the one whose charts best match the level rules.
+ * See cueSet.ts.
+ */
+export const CUE_SETS = {
+  /** The sets are numbered from 1 to this count. */
+  count: 5,
+  /**
+   * Seeds that each set from 2 on tries. More candidates find a closer match, but each one
+   * makes a chart per player when a round starts.
+   */
+  candidates: 24,
+  /**
+   * Set k tries the seeds from DEFAULT_SEED + k × this spacing on. The spacing is larger than
+   * the count of candidates, so no two sets share a seed.
+   */
+  candidateSpacing: 1000,
+} as const;
+
 /** Milliseconds around a cue's due time, as [early, late]. Early is negative. */
 export type WindowMs = readonly [number, number];
 

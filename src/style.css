@@ -537,10 +537,10 @@ canvas {
   accent-color: var(--player);
 }
 
-/* Four switches in a top corner of the menu: previews, hand control, recording and the cue
-   style. They sit a little in from the side and from the top, because the camera tracks a
-   hand badly at the edge of its picture. They shrink with the menu content (`--fit` is set
-   in ui.ts). */
+/* Five switches in a top corner of the menu: previews, hand control, recording, the cue
+   style and the cue set. They sit a little in from the side and from the top, because the
+   camera tracks a hand badly at the edge of its picture. They shrink with the menu content
+   (`--fit` is set in ui.ts). */
 .corner {
   position: absolute;
   top: 4%;
