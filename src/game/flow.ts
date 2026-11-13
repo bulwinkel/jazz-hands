@@ -28,7 +28,7 @@ import { MenuPreview } from './preview';
 import type { PreviewState } from './preview';
 import { GameRenderer } from './render';
 import type { Feedback } from './render';
-import { resultLines } from './recordingScene';
+import { endCard } from './recordingScene';
 import { judgePlayers } from './roundJudging';
 import { recordingTailSec, RoundRecordings } from './roundRecordings';
 import { freshScore } from './scoring';
@@ -882,7 +882,7 @@ export class DanceGame {
         overlay: this.ui.canvas,
         frame: this.renderer.framePixels,
         message: this.ui.message,
-        results: this.phase === 'results' ? resultLines(this.players) : undefined,
+        results: this.phase === 'results' ? endCard(this.players, this.cueSet) : undefined,
       });
     }
     this.updateDebug();
