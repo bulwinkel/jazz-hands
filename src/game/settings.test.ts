@@ -149,6 +149,16 @@ describe('URL parameters', () => {
     expect(parseSettings({ cueSet: 2 }, '?set=2.5').settings.cueSet).toBe(2);
   });
 
+  it('give a share of moves only when the URL names one, from 0 to 1', () => {
+    expect(parseSettings(null, '').moves).toBeUndefined();
+    expect(parseSettings(null, '?seed=42').moves).toBeUndefined();
+    expect(parseSettings(null, '?moves=0.35').moves).toBe(0.35);
+    expect(parseSettings(null, '?seed=42&moves=1').moves).toBe(1);
+    expect(parseSettings(null, '?moves=2').moves).toBe(1);
+    expect(parseSettings(null, '?moves=-1').moves).toBe(0);
+    expect(parseSettings(null, '?moves=lots').moves).toBeUndefined();
+  });
+
   it('give a chart seed only when the URL names one, so the cue set picks it otherwise', () => {
     expect(parseSettings(null, '').seed).toBeUndefined();
     expect(parseSettings(null, '?set=3&seed=42')).toMatchObject({ seed: 42, settings: { cueSet: 3 } });

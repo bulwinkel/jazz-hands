@@ -50,6 +50,11 @@ export interface Options {
   autostart: boolean;
   /** A chart seed from the URL, for tests. It wins over the cue set. */
   seed?: number;
+  /**
+   * A share of moves from the URL, 0 to 1, for tests. It wins over the share of the cue set.
+   * Without it, a seed from the URL plays without moves.
+   */
+  moves?: number;
   /** Share of cues the test bot plays. */
   botAccuracy: number;
   /** Keep every tracking frame in `window.__dance.frameLog`, for scripts that compare runs. */
@@ -128,9 +133,12 @@ function readStored(stored: unknown): Settings {
  * URL parameters, all optional:
  *   players=1|2   p0, p1=1..5   shapes0, shapes1=1|0   faces0, faces1=1|0
  *   length=short|full   song=<index from 0>   previews=1|0   hands=1|0   record=1|0
- *   cues=shrink|grow   set=1..5
+ *   cues=shrink|grow   set=1..6
  *   tracker=hands-full|hands-split|pose   input=camera|mouse|bot   thread=worker|main
- *   start=<seconds>   autostart=1   seed=<integer>   botAccuracy=<0..1>   framelog=1
+ *   start=<seconds>   autostart=1   seed=<integer>   moves=<0..1>   botAccuracy=<0..1>   framelog=1
+ *
+ * `seed=` replaces the cue set's seed and plays without moves. `moves=` gives the share of
+ * phrases in busy music that hold a move, with a cue set or with `seed=`.
  */
 export function parseSettings(stored: unknown, query: string): Options {
   const settings = readStored(stored);
@@ -162,6 +170,7 @@ export function parseSettings(stored: unknown, query: string): Options {
   const thread = params.get('thread');
   const input = params.get('input');
   const seed = numberParam('seed');
+  const moves = numberParam('moves');
   return {
     settings,
     input: input === 'mouse' || input === 'bot' ? input : 'camera',
@@ -170,6 +179,7 @@ export function parseSettings(stored: unknown, query: string): Options {
     startSec: finiteOr(numberParam('start'), 0, 0, 86400),
     autostart: params.get('autostart') === '1',
     seed: seed !== undefined && Number.isInteger(seed) ? seed : undefined,
+    moves: moves !== undefined && Number.isFinite(moves) ? clamp(moves, 0, 1) : undefined,
     botAccuracy: finiteOr(numberParam('botAccuracy'), 1, 0, 1),
     frameLog: params.get('framelog') === '1',
   };

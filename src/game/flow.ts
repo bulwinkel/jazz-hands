@@ -2,10 +2,10 @@ import { errorText } from '../errorText';
 import { WORKER_LIMITS } from '../tracking/config';
 import type { FaceExpression, FaceRegions, TrackingFrame } from '../tracking/types';
 import { SongAudio } from './audio';
-import { cuesFrom, generateChart } from './chart';
+import { chartEntries, countMoves, cuesFrom, entriesFrom } from './chart';
 import { CUE_STYLE_NAMES, nextCueStyle } from './cueStyle';
-import { DEFAULT_SEED, FACE_EMOJI, HAND_MENU, MENU_TRACKER, SONGS, TIMING, TOAST } from './config';
-import { cueSetSeed } from './cueSet';
+import { CHART, DEFAULT_SEED, FACE_EMOJI, HAND_MENU, MENU_TRACKER, SONGS, TIMING, TOAST } from './config';
+import { cueSetMoveShare, cueSetSeed } from './cueSet';
 import { buildRunReport, newFaceObservation, newObservation, newTrackingStats } from './diagnostics';
 import type { RunReport, TrackingStats } from './diagnostics';
 import { isHandClick } from './dom';
@@ -107,6 +107,8 @@ export class DanceGame {
   private seed = DEFAULT_SEED;
   /** The cue set the seed came from. Null when the URL gave the seed. */
   private cueSet: number | null = null;
+  /** The share of phrases in busy music that hold a move: from the cue set, or from the URL. */
+  private moveShare = 0;
   private paused = false;
 
   /** Totals about tracking during the current run, and the report of the last finished run. */
@@ -285,15 +287,21 @@ export class DanceGame {
       }
 
       this.players = createPlayers(settings);
-      this.chooseSeed(manifest);
+      this.chooseCueSet(manifest);
       for (const player of this.players) {
-        const chart = generateChart(manifest, {
+        const chart = chartEntries(manifest, {
           level: player.level,
           shapes: player.shapes,
           seed: this.seed,
           endSec: this.endSec,
+          moves: this.moveShare,
+          // The round's first cue may come this late: no move starts before it, so the round
+          // never begins with the rest of a move.
+          movesFromSec: this.startSec + CHART.leadSec,
         });
-        player.cues = cuesFrom(chart, this.startSec);
+        const played = entriesFrom(chart, this.startSec);
+        player.cues = played.map((entry) => entry.cue);
+        player.moves = countMoves(played);
         if (player.faces) {
           const faceCues = generateFaceCues(manifest, this.seed, this.endSec);
           player.faceCues = cuesFrom(faceCues, this.startSec);
@@ -311,12 +319,13 @@ export class DanceGame {
   }
 
   /**
-   * Sets the chart seed of the round. A seed in the URL wins, for tests. Otherwise the cue set
-   * gives it, for the part of the song that the length plays. A start in the URL then keeps
-   * the cues of the real round.
+   * Sets the chart seed of the round and its share of moves. A seed in the URL wins, for tests,
+   * and plays without moves. Otherwise the cue set gives both: the seed for the part of the
+   * song that the length plays, so a start in the URL keeps the cues of the real round. A
+   * share in the URL wins over both.
    */
-  private chooseSeed(manifest: Manifest): void {
-    const { settings, seed } = this.options;
+  private chooseCueSet(manifest: Manifest): void {
+    const { settings, seed, moves } = this.options;
     this.cueSet = seed === undefined ? settings.cueSet : null;
     this.seed =
       seed ??
@@ -326,6 +335,8 @@ export class DanceGame {
         startSec: playStartSec(manifest, settings.length),
         endSec: this.endSec,
       });
+    const setShare = this.cueSet === null ? 0 : cueSetMoveShare(this.cueSet);
+    this.moveShare = moves ?? setShare;
   }
 
   /**
@@ -494,6 +505,7 @@ export class DanceGame {
         input: this.options.input,
         seed: this.seed,
         cueSet: this.cueSet,
+        moveShare: this.moveShare,
         inputLatencyMs: settings.inputLatencyMs,
         avOffsetMs: settings.avOffsetMs,
         audioOutputLatencyMs: Math.round((this.audio?.outputLatencySec ?? 0) * 1000),
