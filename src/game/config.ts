@@ -419,11 +419,9 @@ export const TIMING = {
   staleFrameMs: 500,
 } as const;
 
-/** An outline of the shrink cue style starts this many times larger than its cell. See cueStyle.ts. */
-export const SHRINK_START_SCALE = 2.2;
 /**
- * A block of the grow cue style starts at this share of its cell. Small, but large enough to
- * see. See cueStyle.ts.
+ * The timing mark of a cue, a block, starts at this share of its cell. Small, but large
+ * enough to see. See cueMark.ts.
  */
 export const GROW_START_SCALE = 0.15;
 

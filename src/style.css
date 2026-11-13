@@ -154,7 +154,7 @@ legend {
   border-radius: 16px;
 }
 /* The mark of the fist hold. It works as the timing mark of a cue in a round does (see
-   cueStyle.ts), so the menu teaches how a round reads: a block starts small in the middle of
+   cueMark.ts), so the menu teaches how a round reads: a block starts small in the middle of
    the item, and the item is chosen when the block fills it and its colour has reached the
    due colour. `--hold` goes from 0 to 1; ui.ts sets it. */
 .hand-hover::after {

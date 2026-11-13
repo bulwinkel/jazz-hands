@@ -1,6 +1,6 @@
 import type { GestureName, TrackingFrame } from '../tracking/types';
 import { cueColor, withAlpha } from './colors';
-import { markScale } from './cueStyle';
+import { markScale } from './cueMark';
 import { FACE_EMOJI, GESTURE_EMOJI, HANDS_UP_CELL, LEVELS, PLAYER_COLORS, TIMING } from './config';
 import { openFaceCue } from './faceJudgment';
 import { cellRect, containRect } from './geometry';
@@ -304,7 +304,7 @@ export class GameRenderer {
       return;
     }
     this.outline(rect, withAlpha(color, isNext ? 0.7 : 0.35), 2);
-    const block = scaleAboutCentre(rect, markScale('grow', remaining));
+    const block = scaleAboutCentre(rect, markScale(remaining));
     // Solid enough that a small block shows on the larger block of an earlier cue.
     this.outline(block, color, isNext ? 3 : 2, withAlpha(color, isNext ? 0.62 : 0.4));
   }
@@ -353,7 +353,7 @@ export class GameRenderer {
     const radius = emojiSize * FACE_RING_SCALE;
     const remaining = (state.cue.timeSec - nowSec) / LEVELS[player.level].approachSec;
     const color = cueColor(playerColor, remaining);
-    const markRadius = radius * markScale('grow', remaining);
+    const markRadius = radius * markScale(remaining);
     const ctx = this.ctx;
 
     ctx.save();
