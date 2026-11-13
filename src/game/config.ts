@@ -133,6 +133,16 @@ export const SONGS: readonly SongEntry[] = [
     title: 'Peace, Be Still',
     cover: '/songs/peace-be-still.jpg',
   },
+  {
+    manifest: '/songs/zaqueo.json',
+    title: 'Zaqueo',
+    cover: '/songs/zaqueo.jpg',
+  },
+  {
+    manifest: '/songs/for-such-a-time-as-this.json',
+    title: 'For Such a Time as This',
+    cover: '/songs/for-such-a-time-as-this.jpg',
+  },
 ];
 
 /** The part of a song that plays in the menu while the song is chosen. */
@@ -438,11 +448,9 @@ export const TIMING = {
   staleFrameMs: 500,
 } as const;
 
-/** An outline of the shrink cue style starts this many times larger than its cell. See cueStyle.ts. */
-export const SHRINK_START_SCALE = 2.2;
 /**
- * A block of the grow cue style starts at this share of its cell. Small, but large enough to
- * see. See cueStyle.ts.
+ * The timing mark of a cue, a block, starts at this share of its cell. Small, but large
+ * enough to see. See cueMark.ts.
  */
 export const GROW_START_SCALE = 0.15;
 
@@ -479,7 +487,7 @@ export const RECORDING = {
 
 /** Notes at the top of the screen. */
 export const TOAST = {
-  /** A short note, such as the name of the cue style after the V key, stays this long. */
+  /** A short note stays this long, when the code that shows it gives no time of its own. */
   shortMs: 1600,
   /** A note to read from the dance spot, such as "hand control stopped", stays this long. */
   longMs: 6000,

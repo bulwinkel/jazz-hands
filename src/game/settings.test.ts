@@ -23,7 +23,6 @@ describe('kept settings', () => {
       previews: false,
       handControl: false,
       record: true,
-      cueStyle: 'grow',
       cueSet: 4,
     };
     expect(parseSettings(kept, '').settings).toEqual(kept);
@@ -66,6 +65,12 @@ describe('kept settings', () => {
     expect(options.settings).toMatchObject({ playerCount: 2, levels: [2, 3], shapes: [false, false], length: 'full' });
     expect(options.settings.inputLatencyMs).toBe(140);
     expect(options.tracker).toBeUndefined();
+  });
+
+  it('ignore the cue style that older versions kept, and its URL parameter', () => {
+    const { settings } = parseSettings({ cueStyle: 'grow' }, '?cues=shrink');
+    expect(settings).toEqual(defaultSettings());
+    expect(settings).not.toHaveProperty('cueStyle');
   });
 
   it('ignore invalid values field by field', () => {
@@ -116,14 +121,6 @@ describe('URL parameters', () => {
     expect(parseSettings({ record: 'yes' }, '').settings.record).toBe(false);
     expect(parseSettings(null, '?record=1').settings.record).toBe(true);
     expect(parseSettings({ record: true }, '?record=0').settings.record).toBe(false);
-  });
-
-  it('keep the shrink cue style until a player picks another', () => {
-    expect(parseSettings(null, '').settings.cueStyle).toBe('shrink');
-    expect(parseSettings({ cueStyle: 'huge' }, '').settings.cueStyle).toBe('shrink');
-    expect(parseSettings(null, '?cues=grow').settings.cueStyle).toBe('grow');
-    expect(parseSettings({ cueStyle: 'grow' }, '?cues=shrink').settings.cueStyle).toBe('shrink');
-    expect(parseSettings({ cueStyle: 'grow' }, '?cues=other').settings.cueStyle).toBe('grow');
   });
 
   it('track on the default thread unless the URL names one', () => {
