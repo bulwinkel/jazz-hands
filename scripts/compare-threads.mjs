@@ -22,9 +22,9 @@
 // Exits 0 when both runs tracked frames on the thread they asked for with no page error, else 1.
 
 import { spawnSync } from 'node:child_process';
-import { closeSync, mkdirSync, mkdtempSync, openSync, readSync, writeFileSync } from 'node:fs';
+import { closeSync, mkdirSync, mkdtempSync, openSync, readSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { extname, join, resolve } from 'node:path';
+import { dirname, extname, join, resolve } from 'node:path';
 import { CAMERA_FILE_TYPES, openHeadlessChrome } from './headless-chrome.mjs';
 import { compareRuns, shiftCheck } from './thread-comparison.mjs';
 
@@ -46,13 +46,16 @@ const seconds = Number(flag('seconds') ?? 45);
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
-const cameraFile = cameraReadyFile(resolve(sourceFile));
+const sourcePath = resolve(sourceFile);
+const cameraFile = cameraReadyFile(sourcePath);
 const fps = Number(flag('fps') ?? y4mHeader(cameraFile)?.fps ?? 30);
 const aspect = frameAspect(cameraFile);
 console.log(`camera: ${cameraFile} · ${fps} fps · aspect ${aspect.toFixed(3)}`);
 
 const runs = [];
 for (const thread of THREADS) runs.push(await recordRun(thread));
+// A converted recording can take hundreds of megabytes.
+if (cameraFile !== sourcePath) rmSync(dirname(cameraFile), { recursive: true, force: true });
 for (const run of runs) printRun(run);
 
 const [main, worker] = runs;
@@ -60,7 +63,7 @@ const comparison = compareRuns(main.frames, worker.frames, { fps, aspect });
 const shifts = shiftCheck(main.frames, worker.frames, { fps, aspect });
 printComparison(comparison, shifts);
 
-const savedTo = saveResult({ cameraFile, fps, aspect, players, tracker, faces, seconds, runs, comparison, shifts });
+const savedTo = saveResult({ cameraFile: sourcePath, fps, aspect, players, tracker, faces, seconds, runs, comparison, shifts });
 console.log(`saved: ${savedTo}`);
 
 const ranAsAsked = runs.every((run) => run.frames.length > 0 && run.threads.length === 1 && run.threads[0] === run.thread);
