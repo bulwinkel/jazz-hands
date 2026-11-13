@@ -92,6 +92,9 @@ ratings show which sets the players like at each level.
 - Hold a fist on a star for 0.5 s, or click it. That star and every star below it light. A new
   choice replaces the one before.
 - An open hand or the mouse pointer on a star shows, lighter, what choosing it would light.
+- Each player's hands move a pointer of their own, on every screen that a hand can point at.
+  Both players can rate at the same time, each on either card. Two fists on one item choose it
+  once.
 - A rating is optional. A card with no choice saves nothing.
 - A round with a `seed=` in the URL has no set, and no rating row. A build with no dev server
   (`npm run build`) has no rating row either, because nothing can keep the rating there.
@@ -187,7 +190,11 @@ A click on it, or a fist held on it, plays the round with its sound in a player 
 the window. The player has buttons to switch between the game view and the camera view, to
 play the video on show again from its start (**↺ Restart**, also after it has ended), to
 download it, and to close. A real click also switches the browser to full
-screen. Space pauses and Esc closes. Under the preview are the download links of both videos.
+screen. Space pauses and Esc closes. Beside the preview are the download links of both videos.
+
+The recording sits beside the buttons, so a recorded round shows the results as large as a
+round with no recording. On a window of aspect 13:10 or narrower, which limits the results by
+its width, it goes under the buttons.
 
 The game keeps no history of recordings. It holds only the videos of the round whose results
 are on screen, in memory. When the results close, for any reason (Play again, Menu,
