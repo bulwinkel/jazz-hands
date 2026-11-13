@@ -4,22 +4,16 @@
 
 Created in [T3 Code](https://t3.codes).
 
-## Cue styles
+## How a cue shows
 
-A cue shows when its beat comes in one of two styles. Step through them with the **V** key,
-in the menu or in a round, or with the **Cues** switch in the top right corner of the menu.
-The game keeps the choice.
+A cue is a cell of a player's grid to touch on a beat. A block starts small in the middle of
+the cell and grows. It fills the cell on the beat, and never leaves the cell. Two cues for
+one cell nest: the larger block comes first.
 
-| Style | How a cue shows its beat |
-| --- | --- |
-| Shrink | An outline starts at 2.2 times the cell and shrinks onto its border. It meets the border on the beat. |
-| Grow | A block starts small in the middle of the cell and grows. It fills the cell on the beat, and never leaves the cell. |
+The cue fades from the player's colour to yellow, and is full yellow on the beat.
 
-In both styles the cue fades from the player's colour to yellow, and is full yellow on the beat.
-In the grow style, two cues for one cell nest: the larger block comes first.
-
-A fist held on a menu item shows its progress with the mark of the chosen style, so the
-menu teaches how a round reads.
+A fist held on a menu item shows its progress with the same block, so the menu teaches how a
+round reads.
 
 ## Cue sets
 
