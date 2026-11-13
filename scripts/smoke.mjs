@@ -3,6 +3,7 @@
 // Usage:
 //   node scripts/smoke.mjs <url> [--seconds=90] [--press=<phase>] [--until=<phase>]
 //                                [--shot=<phase>:<file>[:<delayMs>]] [--size=<width>x<height>]
+//                                [--camera-file=<path>]
 //
 //   --seconds  Give up after this long. Default 90.
 //   --press    Press Space once when the game reaches this phase (for example `ready`).
@@ -12,8 +13,10 @@
 //   --hover    Move the mouse pointer onto the element with this CSS selector, in the menu,
 //              and leave it there. With `input=mouse` the pointer is an open hand.
 //   --fist     With --hover: also hold the 1 key, which makes the pointer hand a fist.
+//   --camera-file  Play this .y4m or .mjpeg file as the camera, in a loop. Without it, the
+//              camera is Chrome's built-in test picture, which shows no hands.
 //
-// The camera is always Chrome's fake camera, never the real one. Sound is muted.
+// The camera is always a fake camera, never the real one. Sound is muted.
 // The game needs a dev server, for example: npx vite --port 5174 --strictPort
 //
 // Example: a simulated player on level 3, one player, starting 45 s into the song:
@@ -22,12 +25,9 @@
 // Prints the phases the game went through, the final `window.__dance` state and any page errors.
 // Exits 0 when the game reached the `--until` phase with no page error, else 1.
 
-import { spawn } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { writeFileSync } from 'node:fs';
+import { openHeadlessChrome } from './headless-chrome.mjs';
 
-const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const POLL_MS = 250;
 
 const [url, ...flags] = process.argv.slice(2);
@@ -40,59 +40,23 @@ const maxSeconds = Number(flag('seconds') ?? 90);
 const pressAtPhase = flag('press');
 const untilPhase = flag('until') ?? 'results';
 const [shotPhase, shotFile, shotDelayMs] = flag('shot')?.split(':') ?? [];
-const windowSize = (flag('size') ?? '1440x900').replace('x', ',');
+const windowSize = flag('size') ?? '1440x900';
 const hoverSelector = flag('hover');
 const makeFist = flags.includes('--fist');
+const cameraFile = flag('camera-file');
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// --- Start Chrome and connect to its DevTools port ---
+// --- Start Chrome and watch its page for errors ---
 
-const port = 9300 + Math.floor(Math.random() * 600);
-const chrome = spawn(
-  CHROME,
-  [
-    '--headless=new',
-    `--remote-debugging-port=${port}`,
-    `--user-data-dir=${mkdtempSync(join(tmpdir(), 'dance-smoke-'))}`,
-    '--autoplay-policy=no-user-gesture-required',
-    '--use-fake-ui-for-media-stream',
-    '--use-fake-device-for-media-stream',
-    `--window-size=${windowSize}`,
-    '--no-first-run',
-    '--mute-audio',
-    'about:blank',
-  ],
-  { stdio: 'ignore' },
-);
-
-async function findPage() {
-  for (let attempt = 0; attempt < 40; attempt++) {
-    await sleep(250);
-    try {
-      const targets = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
-      const page = targets.find((target) => target.type === 'page');
-      if (page) return page;
-    } catch {
-      // Chrome is still starting.
-    }
-  }
-  throw new Error('Chrome did not start.');
-}
-
-const socket = new WebSocket((await findPage()).webSocketDebuggerUrl);
-await new Promise((resolve) => socket.addEventListener('open', resolve));
-
-let nextId = 0;
-const pending = new Map();
+const chrome = await openHeadlessChrome({ windowSize, cameraFile }).catch((error) => {
+  console.error(error.message);
+  process.exit(2);
+});
+const { send, evaluate } = chrome;
 const pageErrors = [];
 
-socket.addEventListener('message', (event) => {
-  const message = JSON.parse(event.data);
-  if (message.id && pending.has(message.id)) {
-    pending.get(message.id)(message.result);
-    pending.delete(message.id);
-  }
+chrome.onEvent((message) => {
   if (message.method === 'Runtime.exceptionThrown') {
     const details = message.params.exceptionDetails;
     pageErrors.push(details.exception?.description ?? details.text);
@@ -103,19 +67,6 @@ socket.addEventListener('message', (event) => {
     if (!text.startsWith('INFO:')) pageErrors.push(`console.error: ${text}`);
   }
 });
-
-function send(method, params = {}) {
-  return new Promise((resolve) => {
-    const id = ++nextId;
-    pending.set(id, resolve);
-    socket.send(JSON.stringify({ id, method, params }));
-  });
-}
-
-async function evaluate(expression) {
-  const reply = await send('Runtime.evaluate', { expression, returnByValue: true });
-  return reply.result?.value;
-}
 
 async function pressSpace() {
   const key = { key: ' ', code: 'Space', windowsVirtualKeyCode: 32 };
@@ -183,6 +134,5 @@ console.log('phases:', phasesSeen.map((seen) => `${seen.atSec}s ${seen.phase}`).
 console.log('final:', await evaluate('JSON.stringify({ ...window.__dance, report: undefined })'));
 console.log('errors:', pageErrors.length ? pageErrors : 'none');
 
-socket.close();
-chrome.kill();
+chrome.close();
 process.exit(reached && pageErrors.length === 0 ? 0 : 1);
