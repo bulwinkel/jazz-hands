@@ -175,11 +175,13 @@ game drew during play (`tracking.drawnPerSec`) next to the tracking rate.
 
 `scripts/smoke.mjs` runs the game in headless Chrome against a dev server or a preview build.
 `--camera-file=<path>` plays a `.y4m` or `.mjpeg` file as the camera, in a loop. Without it
-the camera is Chrome's test picture, which shows no hands.
+the camera is Chrome's test picture, which shows no hands. The game picks a cue set at random
+for each round, so a check that needs the same chart on every run names one: `set=1`, or a
+`seed=`.
 
 ```
 npx vite --port 5192 --strictPort
-node scripts/smoke.mjs "http://localhost:5192/?input=camera&autostart=1&players=2&start=75" \
+node scripts/smoke.mjs "http://localhost:5192/?input=camera&autostart=1&players=2&start=75&set=1" \
   --press=ready --camera-file=/path/to/recording.mjpeg
 ```
 
