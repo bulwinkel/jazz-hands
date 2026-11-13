@@ -1,4 +1,4 @@
-"""Unit tests for the song tool: how it measures the drums, how it chooses the bar start, and --compare.
+"""Unit tests for the song tool: the beat grid, the drums, the bar start, and --compare.
 
 Run them with `npm run test-songs`. They read no audio file and start no browser: the drum tests make
 their own sound.
@@ -423,9 +423,11 @@ SONGS = [
     MeasuredSong('The Valley Waits', (0,), rises=(3, 2, 2, 2), chords=(1.548, 0.797, 0.757, 0.897),
                  kick=(43.2, 18.3, 14.9, 23.6), snare=(21.8, 28.8, 24.3, 25),
                  chord_beats=(0,), choice=0, confidence='medium'),
-    MeasuredSong('Part the Sea', (2,), rises=(3, 2, 5, 0), chords=(0.933, 1.125, 1.169, 0.771),
-                 kick=(25.4, 24.8, 26.1, 23.8), snare=(25.1, 24.5, 24.3, 26.1),
-                 chord_beats=(), choice=2, confidence='medium'),
+    # The beats now come from window anchors. Bar start 0 here is the same bar as the ear-verified
+    # beat 2 of the old constant grid.
+    MeasuredSong('Part the Sea', (0,), rises=(5, 0, 2, 1), chords=(2.254, 0.458, 0.494, 0.793),
+                 kick=(32.2, 22.3, 22.1, 23.5), snare=(24.6, 24.8, 25.3, 25.3),
+                 chord_beats=(0,), choice=0, confidence='high'),
     MeasuredSong('Hey-Ho, Jonah', (2,), rises=(1, 2, 0, 0), chords=(1.105, 0.735, 1.289, 0.874),
                  kick=(25.1, 24.6, 25.5, 24.8), snare=(21.1, 27.2, 25.3, 26.4),
                  chord_beats=(2,), choice=2, confidence='medium'),
@@ -535,25 +537,26 @@ class RuleSteps:
 # the songs that flip there. None: no song flips in the range tried.
 #
 # In words:
-# - The weights need only their order, song start < level rises < chords. Part the Sea needs the rises to
-#   outweigh the song start, and Hey-Ho, Jonah needs the chords to outweigh the rises (which point to
-#   beat 1 there). Each weight may move by just under a factor of 2 before the order breaks.
+# - The song-start weight may rise from 0.5 to 1.95. At 2, All Aboard, Hey-Ho, Jonah, Joseph's Coat of
+#   Many Colors and Nebuchadnezzar's Dream flip. Hey-Ho, Jonah also flips when the level-rises weight
+#   reaches 2 or the chord weight falls to 1. Its rises point to beat 1, against its chords on beat 2.
 # - The drums, their weight and their two ratios change no choice of the 15 songs. They only make Job,
 #   Hold On certain.
 # - CHORD_DECISIVE_RATIO sits in a narrow gap: Todo Bueno's chords lean to beat 1, the wrong beat, by
 #   1.16, and Nebuchadnezzar's Dream needs its chords, which pick beat 1 by 1.35. The ratio may move only
 #   from 1.25 down to 1.17 or up to 1.35.
 # - CHORD_HALF_BAR_RATIO may rise only to 1.16: Hey-Ho, Jonah's chords tell beat 2 from beat 0 by 1.17.
-# - The rises' two thresholds: Jericho Fell's rises lean to beat 2, the half bar, and Part the Sea needs
-#   its rises to decide.
+# - Jericho Fell's rises become decisive for beat 2, the wrong half bar, when the one-beat-early weight
+#   falls to 0.2 or the decisive ratio falls to 1.12. Neither has an upper edge in the range tried.
 # - The confidence thresholds change no choice.
 EDGES = {
-    'START_WEIGHT': (None, (1.0, {'Part the Sea'})),
-    'RISES_WEIGHT': ((0.5, {'Part the Sea'}), (2.0, {'Hey-Ho, Jonah'})),
+    'START_WEIGHT': (None, (2.0, {'All Aboard', 'Hey-Ho, Jonah', "Joseph's Coat of Many Colors",
+                                 "Nebuchadnezzar's Dream"})),
+    'RISES_WEIGHT': (None, (2.0, {'Hey-Ho, Jonah'})),
     'CHORDS_WEIGHT': ((1.0, {'Hey-Ho, Jonah'}), None),
     'DRUMS_WEIGHT': (None, None),
-    'RISE_ONE_EARLY_WEIGHT': ((0.2, {'Jericho Fell'}), (0.8, {'Part the Sea'})),
-    'RISE_DECISIVE_RATIO': ((1.12, {'Jericho Fell'}), (1.72, {'Part the Sea'})),
+    'RISE_ONE_EARLY_WEIGHT': ((0.2, {'Jericho Fell'}), None),
+    'RISE_DECISIVE_RATIO': ((1.12, {'Jericho Fell'}), None),
     'CHORD_DECISIVE_RATIO': ((1.16, {'Todo Bueno'}), (1.36, {"Nebuchadnezzar's Dream"})),
     'CHORD_HALF_BAR_RATIO': (None, (1.17, {'Hey-Ho, Jonah'})),
     'KICK_DECISIVE_RATIO': (None, None),
@@ -596,14 +599,10 @@ class MarginTest(unittest.TestCase):
 # sets an edge, a rule fitted to the other 14 could choose it wrong. These are the edges each song sets
 # alone, and where the edge would be without that song.
 LONE_EDGES = {
-    ('START_WEIGHT', 'Part the Sea'): (1.0, 2.0),
-    ('RISES_WEIGHT', 'Part the Sea'): (0.5, None),
     ('RISES_WEIGHT', 'Hey-Ho, Jonah'): (2.0, None),
     ('CHORDS_WEIGHT', 'Hey-Ho, Jonah'): (1.0, 0.5),
     ('RISE_ONE_EARLY_WEIGHT', 'Jericho Fell'): (0.2, 0.0),
-    ('RISE_ONE_EARLY_WEIGHT', 'Part the Sea'): (0.8, None),
     ('RISE_DECISIVE_RATIO', 'Jericho Fell'): (1.12, 1.0),
-    ('RISE_DECISIVE_RATIO', 'Part the Sea'): (1.72, None),
     ('CHORD_DECISIVE_RATIO', 'Todo Bueno'): (1.16, None),
     ('CHORD_DECISIVE_RATIO', "Nebuchadnezzar's Dream"): (1.36, 1.46),
     ('CHORD_HALF_BAR_RATIO', 'Hey-Ho, Jonah'): (1.17, 1.5),
@@ -612,11 +611,10 @@ LONE_EDGES = {
 # The four weights tried together: each from 0.5 to 4 in steps of 0.5.
 WEIGHT_GRID = (0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0)
 # Of the weight sets that choose the other 14 songs right, the share that also chooses each song right.
-# 13 songs follow from the others under every such set. Part the Sea and Hey-Ho, Jonah do not: they alone
-# fix the order of the weights.
+# 14 songs follow from the others under every such set. Only Hey-Ho, Jonah does not: it chooses right
+# in 1120 of the 1722 weight sets that choose the other 14 right.
 SHARE_RIGHT_FROM_THE_OTHERS = {
-    'Part the Sea': 0.4,
-    'Hey-Ho, Jonah': 0.427,
+    'Hey-Ho, Jonah': 0.650,
 }
 
 
@@ -652,6 +650,62 @@ class LeaveOneOutTest(unittest.TestCase):
                 fit_the_others = np.delete(right, index, axis=1).all(axis=1)
                 share = float(right[fit_the_others, index].mean())
                 self.assertAlmostEqual(share, SHARE_RIGHT_FROM_THE_OTHERS.get(song.title, 1.0), places=3)
+
+
+class KickDriftTest(unittest.TestCase):
+    """A constant tempo needs a clear kick across enough of the song, not just in one short part."""
+
+    def test_clear_blocks_bunched_at_either_end_cannot_tell(self) -> None:
+        # A Feast for All has 3 clear blocks from 160 s to the end of its 212.8 s.
+        for clear_indices in ((0, 1, 2), (8, 9, 10)):
+            with self.subTest(clear_indices=clear_indices):
+                blocks = [add_song.BlockPhase(index * 20.0, min((index + 1) * 20.0, 212.8),
+                                              0.002 * (index % 3),
+                                              5.0 if index in clear_indices else 2.0)
+                          for index in range(11)]
+                self.assertIsNone(add_song.kick_drift_sec(blocks, 212.8))
+
+    def test_two_clear_blocks_spread_across_the_song_give_the_drift(self) -> None:
+        blocks = [add_song.BlockPhase(0.0, 20.0, 0.010, 5.0),
+                  add_song.BlockPhase(200.0, 212.8, 0.014, 5.0)]
+        self.assertAlmostEqual(add_song.kick_drift_sec(blocks, 212.8), 0.002)
+
+    def test_drift_uses_the_median_of_only_clear_blocks(self) -> None:
+        blocks = [add_song.BlockPhase(0.0, 20.0, 0.010, 5.0),
+                  add_song.BlockPhase(20.0, 40.0, 0.200, 2.0),
+                  add_song.BlockPhase(100.0, 120.0, 0.012, 5.0),
+                  add_song.BlockPhase(200.0, 212.8, 0.030, 5.0)]
+        self.assertAlmostEqual(add_song.kick_drift_sec(blocks, 212.8), 0.018)
+
+    def test_span_at_the_limit_is_enough_but_just_below_is_not(self) -> None:
+        blocks = [add_song.BlockPhase(0.0, 20.0, 0.010, 5.0),
+                  add_song.BlockPhase(80.0, 100.0, 0.014, 5.0)]
+        duration_sec = 100.0 / add_song.MIN_CLEAR_SPAN_SHARE
+        self.assertAlmostEqual(add_song.kick_drift_sec(blocks, duration_sec), 0.002)
+        # Use the full duration, also when the block measurement leaves a short tail out.
+        self.assertIsNone(add_song.kick_drift_sec(blocks, duration_sec + 0.001))
+
+    def test_fewer_than_two_clear_blocks_cannot_tell(self) -> None:
+        for blocks in ([], [add_song.BlockPhase(0.0, 20.0, 0.010, 5.0)],
+                       [add_song.BlockPhase(0.0, 20.0, 0.010, 2.0)]):
+            with self.subTest(blocks=blocks):
+                self.assertIsNone(add_song.kick_drift_sec(blocks, 200.0))
+
+    def test_report_says_when_the_clear_span_is_too_short(self) -> None:
+        blocks = [add_song.BlockPhase(160.0, 180.0, 0.010, 5.0),
+                  add_song.BlockPhase(180.0, 200.0, 0.014, 5.0)]
+        report = mock.Mock(spec=add_song.Report)
+        add_song.report_grid_test(report, add_song.ConstantGrid(125.0, 0.0), blocks,
+                                  add_song.kick_drift_sec(blocks, 212.8))
+        report.line.assert_any_call(
+            f'The clear blocks span less than {add_song.MIN_CLEAR_SPAN_SHARE:.0%} of the song, '
+            'too little to show a constant tempo.')
+
+    def test_report_keeps_the_reason_for_too_few_clear_blocks(self) -> None:
+        report = mock.Mock(spec=add_song.Report)
+        add_song.report_grid_test(report, add_song.ConstantGrid(125.0, 0.0), [],
+                                  add_song.kick_drift_sec([], 212.8))
+        report.line.assert_any_call('Too few blocks have a clear kick to show a constant tempo.')
 
 
 class BeatListEndsTest(unittest.TestCase):

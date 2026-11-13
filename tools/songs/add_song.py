@@ -135,13 +135,16 @@ GRID_COARSE_STEP_BPM = 0.02
 GRID_FINE_RANGE_BPM = 0.06
 GRID_FINE_STEP_BPM = 0.002
 GRID_PHASE_STEP_SEC = 0.002
-# The tempo is constant when, in every block, the kick stays this close to its usual place
+# The tempo is constant when, in every clear block, the kick stays this close to its usual place
 # on the grid.
 BLOCK_SEC = 20.0
 MAX_KICK_DRIFT_SEC = 0.015
 # A block has a clear beat when its best phase scores this many times its median phase.
 CLEAR_BLOCK_CONTRAST = 4.0
 MIN_CLEAR_BLOCKS = 2
+# Clear blocks must span at least this share of the song to test a constant tempo.
+# A short span can hide tempo drift: A Feast for All has clear kicks only from 160 s to 212.8 s.
+MIN_CLEAR_SPAN_SHARE = 0.5
 
 # --- Tracked beats ---
 
@@ -925,16 +928,20 @@ def kick_phase_by_block(kick: np.ndarray, grid: ConstantGrid, duration_sec: floa
     return blocks
 
 
-def kick_drift_sec(blocks: list[BlockPhase]) -> float | None:
+def kick_drift_sec(blocks: list[BlockPhase], duration_sec: float) -> float | None:
     """Returns how far the kick moves from its usual place on the grid, over the clear blocks.
 
     The usual place is the median offset: the kick envelope may lead or lag the other envelopes
     by a fixed amount, and only a change over time means the tempo changes. Returns None when
-    too few blocks have a clear beat to tell.
+    too few blocks have a clear beat, or their span covers too little of the song to tell.
     """
-    clear_offsets = np.array([block.offset_sec for block in blocks if block.clear])
-    if len(clear_offsets) < MIN_CLEAR_BLOCKS:
+    clear_blocks = [block for block in blocks if block.clear]
+    if len(clear_blocks) < MIN_CLEAR_BLOCKS:
         return None
+    span_sec = clear_blocks[-1].end_sec - clear_blocks[0].start_sec
+    if span_sec < MIN_CLEAR_SPAN_SHARE * duration_sec:
+        return None
+    clear_offsets = np.array([block.offset_sec for block in clear_blocks])
     return float(np.abs(clear_offsets - np.median(clear_offsets)).max())
 
 
@@ -947,8 +954,11 @@ def report_grid_test(report: Report, grid: ConstantGrid, blocks: list[BlockPhase
         report.line(f'  {block.start_sec:4.0f} to {block.end_sec:4.0f} s   {offset}')
 
     limit_ms = MAX_KICK_DRIFT_SEC * 1000
-    if drift_sec is None:
+    if sum(block.clear for block in blocks) < MIN_CLEAR_BLOCKS:
         report.line('Too few blocks have a clear kick to show a constant tempo.')
+    elif drift_sec is None:
+        report.line(f'The clear blocks span less than {MIN_CLEAR_SPAN_SHARE:.0%} of the song, '
+                    'too little to show a constant tempo.')
     elif drift_sec <= MAX_KICK_DRIFT_SEC:
         report.line(f'The kick stays within {drift_sec * 1000:.0f} ms of its usual place (limit {limit_ms:.0f} ms): '
                     'the tempo is constant.')
@@ -2441,7 +2451,7 @@ def find_beat_grid(report: Report, envelopes: Envelopes, amplitude: np.ndarray, 
     """
     grid = fit_constant_grid(envelopes, duration_sec, tempo.bpm)
     blocks = kick_phase_by_block(envelopes.kick, grid, duration_sec)
-    drift_sec = kick_drift_sec(blocks)
+    drift_sec = kick_drift_sec(blocks, duration_sec)
     report_grid_test(report, grid, blocks, drift_sec)
     # Soft percussion shows in these two envelopes, with or without a kick.
     percussion = envelopes.percussive + envelopes.full

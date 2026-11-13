@@ -238,7 +238,7 @@ The tool now finds the bar start of the last four by itself, from the chords and
 | --- | --- | --- |
 | Job, Hold On | `--half-beat shift` | The kick is syncopated (beat 1 and the "and" of 2), so it sits on the beats and between them alike, and the tool could not tell which pulses are the beats. The snare on beats 2 and 4 shows them. After the shift, every section has a clear kick on the beat and the music starts on the first beat. |
 | The Wilderness Knows | `--beats tools/songs/given-beats/the-wilderness-knows.json` | The opening is loose and the kick is soft. The tool's own grid lost the beat in the first 30 s. The given beats come from a comb on the eighth-note pulse (about 186 per minute), fitted in 10 s windows from the clearest window outward. |
-| A Feast for All | `--beats tools/songs/given-beats/a-feast-for-all.json` | The kick is clear only from 160 s to the end, and 3 clear blocks pass the constant-tempo test, so the tool chose one grid at 125.1 BPM. The tempo rises smoothly from 122.9 to 125.4 BPM, so the early beats were off. The given beats come from the tool's own window anchors (`fit_windows` and `join_windows` on the percussive and full envelopes, about 124 BPM): all 101 windows hold a clear beat, 5.9 ms RMS from the smooth curve. |
+| A Feast for All | `--beats tools/songs/given-beats/a-feast-for-all.json` | The tool now finds these beats by itself with window anchors. The kick is clear only from 160 s to the end of the 212.8 s song. Those 3 blocks span 52.8 s, less than the 50% needed to test a constant tempo. The tempo rises smoothly from 122.9 to 125.4 BPM. The given beats came from the tool's own `fit_windows` and `join_windows` on the percussive and full envelopes, about 124 BPM. That fit held a clear beat in all 101 windows. Its anchors lie 5.9 ms RMS from the smooth curve. |
 | All Aboard | `--first-downbeat 2` | The tool chose beat 3 with low confidence, from the level rises alone. The chords and the bass change on beat 2, and with bars from beat 2 the kick falls on beats 1 and 3 and the snare on 2 and 4. |
 | Nebuchadnezzar's Dream | `--first-downbeat 1` | The tool chose beat 0 with low confidence, because the music starts there. The chords and the bass change on beat 1, and with bars from beat 1 the kick falls on beat 1 and on the "and" of 3, as in the other songs of this style. |
 | Hey-Ho, Jonah | `--first-downbeat 2` | The tool chose beat 1 with low confidence, from three level rises alone. The kick and the clap are equally strong on every beat, so they do not show the bar. The chords and the bass change most on beat 2 and least on beat 1. |
@@ -274,7 +274,7 @@ The tool picks one of three methods for the beat grid:
 
 | Method | When |
 | --- | --- |
-| Constant grid | The kick stays within 15 ms of one grid for the whole song. |
+| Constant grid | At least 2 blocks have a clear kick. The span from the first clear block's start to the last clear block's end covers at least 50% of the song. The kick stays within 15 ms of its usual place on one grid in every clear block. |
 | Window anchors | The tempo drifts. Tempo and phase are fitted in 12 s windows and joined. This follows soft percussion. |
 | Tracked beats | The tempo drifts and the kick is clear in most of the song. Used only when the tracked beats stay near the anchors and follow the kick more closely. |
 
@@ -318,11 +318,24 @@ song start pick one. The report then names the tie.
 | Low | The chords or the drums are against the choice, or another beat has as much weight. |
 
 The unit tests keep the clue numbers of the 15 songs in `public/songs` with their verified bar
-starts, and check how far each weight and threshold can move before a song comes out wrong. The
-weights need only their order: song start, then level rises, then chords. Two thresholds sit close to
-an edge. The chords' 1.25 against the next beat may move only from 1.17 to 1.35 (Todo Bueno and
-Nebuchadnezzar's Dream), and the half-bar ratio of 1.1 must stay below 1.17 (Hey-Ho, Jonah). On 15
-songs, the drum clue changes no choice: it only makes Job, Hold On certain.
+starts. They check how far each weight and threshold can move before a song comes out wrong.
+The margin tests move one weight or threshold at a time.
+
+The song-start weight may rise from 0.5 to 1.95.
+At 2, All Aboard, Hey-Ho, Jonah, Joseph's Coat of Many Colors and Nebuchadnezzar's Dream choose the
+wrong bar start. Hey-Ho, Jonah also chooses wrong when the level-rises weight reaches 2 or the chord
+weight falls to 1.
+
+Two chord thresholds sit close to an edge. The chord ratio of 1.25 against the next beat may move
+only from 1.17 to 1.35 (Todo Bueno and Nebuchadnezzar's Dream).
+The half-bar ratio of 1.1 must stay below 1.17 (Hey-Ho, Jonah).
+Jericho Fell chooses the wrong half bar when the one-beat-early weight falls to 0.2 or the
+level-rises decisive ratio falls to 1.12.
+On 15 songs, the drum clue changes no choice. It only makes Job, Hold On certain.
+
+The tests also vary all four weights together. When they leave one song out, all the weight sets
+that choose the other 14 right also choose that song right, except for Hey-Ho, Jonah. It chooses
+right in 1120 of the 1722 weight sets that choose the other 14 right.
 
 ### Listen to the check clips
 
