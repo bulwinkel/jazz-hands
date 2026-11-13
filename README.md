@@ -19,9 +19,22 @@ round reads.
 ## Cue sets
 
 A song has 6 cue sets. Each set gives other cues for the same song, and the same cues on
-every run, so **Play again** repeats them. Step through the sets with the **🎲 Set** switch
-in the top right corner of the menu. Both players play the same set. The game keeps the
-choice.
+every run. Both players play the same set.
+
+The **🎲 Set** switch in the top right corner of the menu steps through `random`, 1, 2, …, 6,
+and back to `random`. A new player starts with `random`. The game keeps the choice. A set that
+an earlier version kept stays chosen, set 1 too: step the switch on to `random`.
+
+- With `random`, each round that starts from the menu plays one of the 6 sets, each with the
+  same chance. It never plays the set that the same song played last in this visit to the
+  page, so two rounds of one song in a row differ. The game keeps the last set of each song
+  in memory only: a new visit can start with any set.
+- **Play again** (a raised hand or Space on the results) and **R** during a round keep the
+  set of the round before, and repeat its cues.
+- The results show the set that the round played (`🎲 Set 3`) in the top right corner, where
+  the menu has the switch. Each player's card shows the moves of their chart
+  (`3 points · 1 circle`), and no line for a chart with no moves. A recorded video shows both
+  on its end card.
 
 The sets differ by their share of moves (see [Moves](#moves)). Two sets for each share let
 players compare two charts of each kind and rate which share they like.
@@ -53,10 +66,19 @@ for, or how the slides split between normal and slow.
 The typical mix is not the level rules: at levels 4 and 5 a slide never follows an off-beat
 tap, so their charts have about a third fewer slides than the rules say.
 
-A `seed=` in the URL replaces the set, for tests, and plays without moves. `moves=<0 to 1>`
-gives the share of moves, with a set or with `seed=`. The run report names the seed, the set
-and the share of moves (`settings.moveShare`), and counts each player's moves by name
-(`players[].moves`).
+`set=random` or `set=1` to `set=6` in the URL gives the choice of the switch. A `seed=` in
+the URL replaces the set, for tests, and plays without moves: the results then show no set.
+`moves=<0 to 1>` gives the share of moves, with a set or with `seed=`.
+
+The run report names:
+
+| Field | What it holds |
+| --- | --- |
+| `settings.seed` | The chart seed of the round. |
+| `settings.cueSet` | The set that the round played. Null with a `seed=` from the URL. |
+| `settings.cueSetRandom` | True when the game picked the set at random. |
+| `settings.moveShare` | The share of moves of the round. |
+| `players[].moves` | Each player's moves, counted by name. |
 
 ## Moves
 
