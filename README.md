@@ -230,7 +230,7 @@ A song with no picture shows its title on a plain cover. To give it a picture:
 
 ### Songs that needed a correction by hand
 
-Six songs did not come out right from the tool alone. These command options make their manifests again.
+Seven songs did not come out right from the tool alone. These command options make their manifests again.
 The tool now finds the bar start of the last four by itself, from the chords and the drums (see
 [How the tool finds the bar start](#how-the-tool-finds-the-bar-start)). The table keeps them as a record.
 
@@ -238,6 +238,7 @@ The tool now finds the bar start of the last four by itself, from the chords and
 | --- | --- | --- |
 | Job, Hold On | `--half-beat shift` | The kick is syncopated (beat 1 and the "and" of 2), so it sits on the beats and between them alike, and the tool could not tell which pulses are the beats. The snare on beats 2 and 4 shows them. After the shift, every section has a clear kick on the beat and the music starts on the first beat. |
 | The Wilderness Knows | `--beats tools/songs/given-beats/the-wilderness-knows.json` | The opening is loose and the kick is soft. The tool's own grid lost the beat in the first 30 s. The given beats come from a comb on the eighth-note pulse (about 186 per minute), fitted in 10 s windows from the clearest window outward. |
+| A Feast for All | `--beats tools/songs/given-beats/a-feast-for-all.json` | The kick is clear only from 160 s to the end, and 3 clear blocks pass the constant-tempo test, so the tool chose one grid at 125.1 BPM. The tempo rises smoothly from 122.9 to 125.4 BPM, so the early beats were off. The given beats come from the tool's own window anchors (`fit_windows` and `join_windows` on the percussive and full envelopes, about 124 BPM): all 101 windows hold a clear beat, 5.9 ms RMS from the smooth curve. |
 | All Aboard | `--first-downbeat 2` | The tool chose beat 3 with low confidence, from the level rises alone. The chords and the bass change on beat 2, and with bars from beat 2 the kick falls on beats 1 and 3 and the snare on 2 and 4. |
 | Nebuchadnezzar's Dream | `--first-downbeat 1` | The tool chose beat 0 with low confidence, because the music starts there. The chords and the bass change on beat 1, and with bars from beat 1 the kick falls on beat 1 and on the "and" of 3, as in the other songs of this style. |
 | Hey-Ho, Jonah | `--first-downbeat 2` | The tool chose beat 1 with low confidence, from three level rises alone. The kick and the clap are equally strong on every beat, so they do not show the bar. The chords and the bass change most on beat 2 and least on beat 1. |

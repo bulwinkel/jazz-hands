@@ -118,6 +118,21 @@ export const SONGS: readonly SongEntry[] = [
     title: 'Jericho Fell',
     cover: '/songs/jericho-fell.jpg',
   },
+  {
+    manifest: '/songs/build-your-house-upon-the-rock.json',
+    title: 'Build Your House Upon the Rock',
+    cover: '/songs/build-your-house-upon-the-rock.jpg',
+  },
+  {
+    manifest: '/songs/a-feast-for-all.json',
+    title: 'A Feast for All',
+    cover: '/songs/a-feast-for-all.jpg',
+  },
+  {
+    manifest: '/songs/peace-be-still.json',
+    title: 'Peace, Be Still',
+    cover: '/songs/peace-be-still.jpg',
+  },
 ];
 
 /** The part of a song that plays in the menu while the song is chosen. */
