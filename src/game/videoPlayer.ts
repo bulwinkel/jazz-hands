@@ -18,6 +18,14 @@ const PLAYER_HTML = `
     <button type="button" id="player-close" data-hand="player-close">✕ Close · Esc</button>
   </div>`;
 
+/** What the open player shows. */
+interface Showing {
+  round: RoundVideos;
+  kind: VideoKind;
+  /** This player switched the page to full screen, so closing it leaves full screen too. */
+  ownsFullscreen: boolean;
+}
+
 /**
  * The video player: it fills the window and plays a recorded round with its sound.
  * While it is open, it is the whole page for the keyboard: everything behind it is inert,
@@ -27,7 +35,7 @@ export class VideoPlayer {
   private readonly element: HTMLElement;
   private readonly video: HTMLVideoElement;
   /** What the player shows now. Unset while it is closed. */
-  private playing?: { round: RoundVideos; kind: VideoKind; ownsFullscreen: boolean };
+  private playing?: Showing;
   /** The element that had the focus before the player opened. It gets the focus back on close. */
   private returnFocus?: HTMLElement;
   /** The elements behind the player that it made inert. */
@@ -70,10 +78,9 @@ export class VideoPlayer {
   open(round: RoundVideos, byHand: boolean): void {
     const first = round.videos.find((video) => video.kind === 'game') ?? round.videos[0];
     if (!first) return;
-    const ownsFullscreen = !byHand && !document.fullscreenElement;
-    // The whole page goes to full screen, not the player alone, so the hand rings still show.
-    if (ownsFullscreen) void document.documentElement.requestFullscreen().catch(() => {});
-    this.playing = { round, kind: first.kind, ownsFullscreen };
+    const playing: Showing = { round, kind: first.kind, ownsFullscreen: !byHand && !document.fullscreenElement };
+    this.playing = playing;
+    if (playing.ownsFullscreen) this.enterFullscreen(playing);
     this.element.hidden = false;
     this.holdFocus();
     this.playFrom(0);
@@ -100,6 +107,19 @@ export class VideoPlayer {
     else this.video.pause();
   }
 
+  /**
+   * Switches the whole page to full screen, not the player alone, so the hand rings still show.
+   * The switch takes a moment. A player that closed meanwhile wants no full screen any more.
+   */
+  private enterFullscreen(playing: Showing): void {
+    document.documentElement.requestFullscreen().then(
+      () => {
+        if (this.playing !== playing) void document.exitFullscreen().catch(() => {});
+      },
+      () => {},
+    );
+  }
+
   /** Makes everything behind the player inert, and moves the focus into the player. */
   private holdFocus(): void {
     const focused = document.activeElement;
@@ -122,11 +142,12 @@ export class VideoPlayer {
   }
 
   /**
-   * In full screen, Chrome keeps the first Esc for itself and only leaves full screen. A player
-   * that switched the page to full screen closes when full screen ends, so one Esc does both.
+   * In full screen, Chrome keeps the first Esc for itself and only leaves full screen. The
+   * player closes whenever full screen ends, so one Esc does both: also when the page was in
+   * full screen before the player opened.
    */
   private onFullscreenChange = (): void => {
-    if (this.playing?.ownsFullscreen && !document.fullscreenElement) this.close();
+    if (this.playing && !document.fullscreenElement) this.close();
   };
 
   /** Switches between the game view and the camera view, at the same moment of the round. */
