@@ -4,7 +4,6 @@ import { nextCueSet } from './cueSet';
 import { CUE_STYLE_NAMES, nextCueStyle } from './cueStyle';
 import type { CueStyle } from './cueStyle';
 import { find, isHandClick } from './dom';
-import { RECORDINGS_HTML } from './recordingsView';
 import type { Settings } from './settings';
 import type { Level, PlayerCount, PlayerIndex, SongLength } from './types';
 
@@ -53,8 +52,7 @@ export const MENU_HTML = `
     <span id="hand-hint">Point with an open hand ✋, then make a fist ✊ to choose · </span>Space or Enter to start · F fullscreen<br>
     <span id="stand-hint"></span>
     <span id="sound-hint" hidden><br>Click or press a key once, so the browser lets the music play.</span>
-  </p>
-  ${RECORDINGS_HTML}`;
+  </p>`;
 
 /**
  * Five switches in a top corner of the menu: previews, hand control, recording, the cue style

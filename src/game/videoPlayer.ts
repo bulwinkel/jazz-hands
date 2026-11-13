@@ -40,8 +40,8 @@ export class VideoPlayer {
   private returnFocus?: HTMLElement;
   /** The elements behind the player that it made inert. */
   private madeInert: HTMLElement[] = [];
-  /** Hears which round the player shows when it opens, and nothing when it closes. */
-  onChange?: (shown: RoundVideos | undefined) => void;
+  /** Hears when the player opens and when it closes. */
+  onChange?: () => void;
 
   /** Builds the player in `element`, which stays hidden while the player is closed. */
   constructor(element: HTMLElement) {
@@ -91,7 +91,7 @@ export class VideoPlayer {
     this.element.hidden = false;
     this.holdFocus();
     this.playFrom(0);
-    this.onChange?.(round);
+    this.onChange?.();
   }
 
   close(): void {
@@ -104,7 +104,7 @@ export class VideoPlayer {
     this.element.hidden = true;
     this.releaseFocus();
     if (playing.ownsFullscreen && document.fullscreenElement) void document.exitFullscreen().catch(() => {});
-    this.onChange?.(undefined);
+    this.onChange?.();
   }
 
   /** Space in the player: pause, or play on. */
@@ -143,7 +143,7 @@ export class VideoPlayer {
   private releaseFocus(): void {
     for (const element of this.madeInert) element.inert = false;
     this.madeInert = [];
-    // The element may have gone meanwhile, for example a list of rounds that was drawn again.
+    // The element may have gone meanwhile, for example with the panel it was on.
     if (this.returnFocus?.isConnected) this.returnFocus.focus({ preventScroll: true });
     this.returnFocus = undefined;
   }

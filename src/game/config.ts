@@ -420,8 +420,6 @@ export const RECORDING = {
    * after the results show. The recording then goes on for the delay and this margin at least.
    */
   soundTailMarginSec: 0.5,
-  /** The game keeps the videos of this many rounds. Older ones are dropped, to free memory. */
-  keepRounds: 3,
 } as const;
 
 /** Notes at the top of the screen. */

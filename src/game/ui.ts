@@ -7,7 +7,7 @@ import { buildMenu, MENU_HTML, MENU_SWITCHES_HTML } from './menuView';
 import type { MenuControls } from './menuView';
 import type { PlayerRun } from './player';
 import { RECORDINGS_HTML, removePreview, showRecordings } from './recordingsView';
-import type { RecordingsList } from './recordingsView';
+import type { RecordingsView } from './roundRecordings';
 import { playerHeading, RESULTS_HEADING } from './resultText';
 import { accuracy, stars } from './scoring';
 import type { Settings } from './settings';
@@ -154,12 +154,12 @@ export class GameUI {
   }
 
   /**
-   * Shows the recorded rounds on the open panel, newest first, with the preview of a round
-   * above them. Does nothing on a panel with no place for them.
+   * Shows the recording of the round on the results: the placeholder while its videos are
+   * made, then its preview and download links. Does nothing on a panel with no place for it.
    */
-  showRecordings(list: RecordingsList): void {
+  showRecordings(view: RecordingsView): void {
     const block = this.panel.querySelector<HTMLElement>('.recordings');
-    if (block) showRecordings(block, list, (round, byHand) => this.player.open(round, byHand));
+    if (block) showRecordings(block, view, (round, byHand) => this.player.open(round, byHand));
   }
 
   /** In the menu: chooses the next song (1) or the previous one (-1). After the last comes the first. */

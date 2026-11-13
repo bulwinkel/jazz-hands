@@ -24,7 +24,6 @@ import { MenuPreview } from './preview';
 import type { PreviewState } from './preview';
 import { GameRenderer } from './render';
 import type { Feedback } from './render';
-import type { RoundVideos } from './recording';
 import { resultLines } from './recordingScene';
 import { judgePlayers } from './roundJudging';
 import { recordingTailSec, RoundRecordings } from './roundRecordings';
@@ -111,7 +110,7 @@ export class DanceGame {
 
   private switchingTracker = false;
 
-  /** Records the rounds while recording is on, and keeps the videos of the last few. */
+  /** Records the rounds while recording is on, and holds the videos of the round on the results. */
   private readonly recordings = new RoundRecordings(() => this.onRecordingsChange());
   private readonly preview = new MenuPreview();
 
@@ -173,7 +172,6 @@ export class DanceGame {
     this.ui.resumeButton.hidden = true;
     this.setPhase('menu');
     this.ui.showMenu(this.options.settings, (byHand) => void this.start(byHand), this.onMenuChange);
-    this.showRecordings();
     this.followPreview();
     // A menu that opens is a new chance for the camera, as if hand control had just been turned on.
     this.menuHandControl = false;
@@ -341,35 +339,28 @@ export class DanceGame {
   // --- Recording a round as video ---
 
   /**
-   * Ends the recording of this round, if one runs. A round that reached its results keeps
-   * its videos. A round that stopped part-way (a restart, the menu, an error) does not.
+   * The results close, or a round stops part-way (a restart, the menu, an error). The game
+   * keeps no videos: the round's recording is thrown away, with its videos. The video player
+   * closes first, so it plays no video that goes.
    */
   private endRecording(): void {
-    this.recordings.end(this.phase === 'results');
+    this.ui.player.close();
+    this.recordings.drop();
   }
 
-  /** A recording started or ended, or the list of recorded rounds changed. */
+  /** A recording started or ended, or its videos moved on a stage. */
   private onRecordingsChange(): void {
     this.ui.showRecordingMark(this.recordings.active);
-    this.showRecordings();
-  }
-
-  /** Shows the recorded rounds on the menu or the results, whichever is open. */
-  private showRecordings(): void {
-    const { rounds, status, lastRound } = this.recordings.view;
-    // The results show the videos of their own round as a preview.
-    this.ui.showRecordings({ rounds, status, preview: this.phase === 'results' ? lastRound : undefined });
+    this.ui.showRecordings(this.recordings.view(performance.now()));
   }
 
   /**
    * The video player opened or closed. While it is open, a raised hand must not start a new
-   * round, and the menu's song preview must not play over the video. The recordings keep the
-   * videos of the round it shows alive.
+   * round, and the menu's song preview must not play over the video.
    */
-  private onPlayerChange = (shown: RoundVideos | undefined): void => {
+  private onPlayerChange = (): void => {
     clearHolds(this.players);
     this.followPreview();
-    this.recordings.playerShows(shown);
   };
 
   // --- Song preview in the menu ---
@@ -449,7 +440,7 @@ export class DanceGame {
     this.recordings.begin({
       sound: audio.recordingStreams(),
       video: this.inputs.input?.video,
-      song: { id: this.manifest?.id ?? 'song', title: this.manifest?.title ?? '' },
+      songId: this.manifest?.id ?? 'song',
     });
   }
 
@@ -476,8 +467,8 @@ export class DanceGame {
     this.setPhase('results');
     this.ui.showResults(this.players, this.beginCountdown, this.showMenu, (byHand) => this.refit(byHand));
     // A recording goes on for a few seconds: the cheer, and the result card in the game view.
-    this.recordings.endAfter(recordingTailSec(this.audio?.soundDelays ?? { game: 0, camera: 0 }));
-    this.showRecordings();
+    const tailSec = recordingTailSec(this.audio?.soundDelays ?? { game: 0, camera: 0 });
+    this.recordings.endAfter(tailSec, performance.now());
     if (import.meta.env.DEV) void this.saveReport(this.report);
   }
 
@@ -1003,6 +994,8 @@ export class DanceGame {
   private dispose(): void {
     this.session++;
     cancelAnimationFrame(this.animationId);
+    // The player closes first: it hears no more of a video that goes, and of a preview that ends.
+    this.ui.player.close();
     this.inputs.dispose();
     this.audio?.close();
     this.preview.dispose();
