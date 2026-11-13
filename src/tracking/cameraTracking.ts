@@ -176,6 +176,17 @@ export class CameraTracking {
     this.offer({ picture: new VideoFrame(video), timeMs: performance.now(), faceRegions, onFrame, onError });
   }
 
+  /**
+   * The page time of the oldest camera frame whose result may still come for the tracker in
+   * use: out in its worker, or held. Undefined when there is none, and always on the main
+   * thread, where a frame is tracked at once.
+   */
+  pendingFrameMs(): number | undefined {
+    const tracker = this.trackers.current;
+    if (tracker.runs.thread !== 'worker') return undefined;
+    return this.handOver.oldest(tracker)?.timeMs;
+  }
+
   dispose(): void {
     this.handOver.close()?.picture.close();
     this.trackers.dispose();

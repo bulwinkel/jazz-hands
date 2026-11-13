@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { GestureName, TrackedHand } from '../tracking/types';
 import { LEVELS } from './config';
 import { cellCentre, defaultGrid } from './geometry';
-import { frameSongTime, judgeFrame, newCueState } from './judgment';
+import { closingSongTime, frameSongTime, judgeFrame, newCueState } from './judgment';
 import type { CueState } from './judgment';
 import type { Cue, Level, Rating } from './types';
 
@@ -198,5 +198,26 @@ describe('slides', () => {
 describe('frameSongTime', () => {
   it('takes the frame age and the input delay off the song time', () => {
     expect(frameSongTime(10, 1200, 1000, 100)).toBeCloseTo(9.7);
+  });
+});
+
+describe('closingSongTime', () => {
+  const NO_LIMIT = Number.POSITIVE_INFINITY;
+
+  it('closes windows at the song time of now, less the input delay, with no frame to wait for', () => {
+    expect(closingSongTime(10, 2000, 100, undefined, NO_LIMIT)).toBeCloseTo(9.899);
+  });
+
+  it('keeps windows open for a frame still in a worker, up to its song time', () => {
+    // The frame was taken 60 ms ago: it shows the song 60 ms back.
+    expect(closingSongTime(10, 2000, 100, 1940, NO_LIMIT)).toBeCloseTo(9.839);
+  });
+
+  it('waits for no frame older than the limit', () => {
+    expect(closingSongTime(10, 2000, 100, 1940, 50)).toBeCloseTo(9.899);
+  });
+
+  it('never closes later than now for a frame that came in the future of the song clock', () => {
+    expect(closingSongTime(10, 2000, 100, 2010, NO_LIMIT)).toBeCloseTo(9.899);
   });
 });

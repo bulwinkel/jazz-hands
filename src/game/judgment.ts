@@ -16,6 +16,11 @@ export interface CueState {
 }
 
 const EPSILON_MS = 1e-6;
+/**
+ * The draw loop closes windows this far behind the song time it may close them at, so that a
+ * frame taken in the same moment still finds its window open.
+ */
+const CLOSE_MARGIN_SEC = 0.001;
 
 export function newCueState(cue: Cue): CueState {
   return { cue, marks: cue.cells.map(() => null) };
@@ -32,6 +37,26 @@ export function frameSongTime(
   inputLatencyMs: number,
 ): number {
   return songTimeNowSec - (nowMs - frameTimeMs) / 1000 - inputLatencyMs / 1000;
+}
+
+/**
+ * The song time up to which the draw loop closes judging windows when no frame came: the song
+ * time of "now", less the input latency. A camera frame that a tracking worker still works on
+ * can show a hit up to its own song time, so the windows stay open for it until it is judged.
+ * A frame that has waited more than `maxWaitMs` holds nothing back: its worker is stuck.
+ * The small margin keeps a window open for a frame taken at the very moment.
+ */
+export function closingSongTime(
+  songTimeNowSec: number,
+  nowMs: number,
+  inputLatencyMs: number,
+  pendingFrameMs: number | undefined,
+  maxWaitMs: number,
+): number {
+  const closeAtSec = songTimeNowSec - inputLatencyMs / 1000 - CLOSE_MARGIN_SEC;
+  if (pendingFrameMs === undefined || nowMs - pendingFrameMs > maxWaitMs) return closeAtSec;
+  const pendingSec = frameSongTime(songTimeNowSec, nowMs, pendingFrameMs, inputLatencyMs);
+  return Math.min(closeAtSec, pendingSec - CLOSE_MARGIN_SEC);
 }
 
 /** True when a time offset from a cue's due time lies inside a timing window, edges included. */

@@ -1,3 +1,4 @@
+import { WORKER_LIMITS } from '../tracking/config';
 import type { FaceExpression, FaceRegions, TrackingFrame } from '../tracking/types';
 import { SongAudio } from './audio';
 import { cuesFrom, generateChart } from './chart';
@@ -18,7 +19,7 @@ import { newHandMenuState, stepHandMenu } from './handMenu';
 import { clearHolds, stepHandsUp } from './handsUp';
 import type { InputView } from './input';
 import { InputHost } from './inputHost';
-import { frameSongTime, newCueState } from './judgment';
+import { closingSongTime, frameSongTime, newCueState } from './judgment';
 import { fetchManifest, playEndSec, playStartSec } from './manifest';
 import { createPlayers, summariseChart } from './player';
 import type { ChartSummary, PlayerRun } from './player';
@@ -886,9 +887,12 @@ export class DanceGame {
       this.askForClick('The music stopped. Click to carry on.');
     }
     if (this.paused) return;
-    const timeSec = this.songTime();
-    // Close judging windows even when the camera stops sending frames. Old hands are never reused.
-    this.judge(timeSec - this.options.settings.inputLatencyMs / 1000 - 0.001);
+    // Close judging windows even when the camera stops sending frames. Old hands are never
+    // reused. A frame that a tracking worker still works on keeps the windows open for it, up
+    // to the limit after which the worker counts as stuck.
+    const pendingFrameMs = this.inputs.input?.pendingFrameMs?.();
+    const { inputLatencyMs } = this.options.settings;
+    this.judge(closingSongTime(this.songTime(), performance.now(), inputLatencyMs, pendingFrameMs, WORKER_LIMITS.frameMs));
     // End with the sound itself. The song clock includes the picture offset and can run
     // ahead of the sound, which would cut the ending short.
     if (this.audio?.ended) this.finish();

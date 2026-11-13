@@ -36,6 +36,11 @@ export interface GameInput {
   readonly faceDelegate?: string;
   /** Where the trackers run. Unset for a test input, which does no tracking. */
   readonly thread?: TrackingThread;
+  /**
+   * The page time of the oldest camera frame whose tracking result is still to come. Judging
+   * keeps windows open for it. Unset, or undefined, when every result is in.
+   */
+  pendingFrameMs?(): number | undefined;
   init(): Promise<void>;
   start(
     view: () => InputView,
@@ -70,6 +75,10 @@ export class CameraInput implements GameInput {
   /** Where the tracker in use runs. */
   get thread(): TrackingThread {
     return this.tracking.current.thread;
+  }
+
+  pendingFrameMs(): number | undefined {
+    return this.running ? this.tracking.pendingFrameMs() : undefined;
   }
 
   get mode(): string {

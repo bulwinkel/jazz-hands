@@ -100,7 +100,7 @@ describe('the fallback to the main thread', () => {
     expect(tracking.current).toMatchObject({ mode: 'hands-split', thread: 'main', delegate: 'GPU' });
   });
 
-  it('tracks on the main thread at once after a fallback', async () => {
+  it('tracks on the main thread at once after a fallback, with no frame to wait for', async () => {
     FakeWorker.failToStart = true;
     const tracking = new CameraTracking('hands-full', false, 'worker');
     await tracking.init();
@@ -108,6 +108,7 @@ describe('the fallback to the main thread', () => {
     tracking.track(video, noFaces, onFrame, vi.fn());
     expect(onFrame).toHaveBeenCalledTimes(1);
     expect(FakeVideoFrame.made).toHaveLength(0);
+    expect(tracking.pendingFrameMs()).toBeUndefined();
   });
 
   it('does not fall back for a tracker that was disposed while its worker loaded', async () => {
@@ -227,6 +228,20 @@ describe('a camera frame in a worker', () => {
     expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'The tracking worker failed: lost the GPU' }));
     // The held frame went to the broken tracker, which let it go on the page.
     expect(FakeVideoFrame.made[1].closes).toBe(1);
+  });
+
+  it('names the time of the oldest frame whose result is still to come', async () => {
+    const { tracking, worker, frameComes } = await trackingInWorker();
+    expect(tracking.pendingFrameMs()).toBeUndefined();
+    frameComes(100);
+    frameComes(133);
+    expect(tracking.pendingFrameMs()).toBe(100);
+    worker.answerLastFrame();
+    await settle();
+    expect(tracking.pendingFrameMs()).toBe(133);
+    worker.answerLastFrame();
+    await settle();
+    expect(tracking.pendingFrameMs()).toBeUndefined();
   });
 
   it('lets every picture go exactly once: closed on the page, or moved to the worker', async () => {

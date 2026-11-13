@@ -17,8 +17,8 @@
  * whatever the caller needs to send a camera frame later.
  */
 export class FrameHandOver<Tracker, Frame> {
-  /** The frame that is out: its number, and the tracker it went to. */
-  private out?: { number: number; tracker: Tracker };
+  /** The frame that is out: its number, the tracker it went to, and the frame. */
+  private out?: { number: number; tracker: Tracker; frame: Frame };
   /** The newest camera frame that came while one was out. */
   private held?: Frame;
   private lastNumber = 0;
@@ -39,8 +39,16 @@ export class FrameHandOver<Tracker, Frame> {
       return { sendAs: null, dropped };
     }
     this.lastNumber++;
-    this.out = { number: this.lastNumber, tracker };
+    this.out = { number: this.lastNumber, tracker, frame };
     return { sendAs: this.lastNumber };
+  }
+
+  /**
+   * The oldest frame whose answer can still count for `inUse`: the frame that is out, when it
+   * went to `inUse`, else the held frame, which goes to the tracker in use when it goes.
+   */
+  oldest(inUse: Tracker): Frame | undefined {
+    return this.out?.tracker === inUse ? this.out.frame : this.held;
   }
 
   /**

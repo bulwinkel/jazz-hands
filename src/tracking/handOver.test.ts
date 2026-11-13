@@ -72,6 +72,29 @@ describe('the latest tracker wins', () => {
   });
 });
 
+describe('the oldest frame whose answer is still to come', () => {
+  it('is the frame that is out, while a newer frame is held', () => {
+    const frames = handOver();
+    frames.offer('hands-full', 1);
+    frames.offer('hands-full', 2);
+    expect(frames.oldest('hands-full')).toBe(1);
+  });
+
+  it('is the held frame when the frame that is out went to a tracker no longer in use', () => {
+    const frames = handOver();
+    frames.offer('hands-full', 1);
+    frames.offer('hands-split', 2);
+    expect(frames.oldest('hands-split')).toBe(2);
+  });
+
+  it('is none when every answer is in', () => {
+    const frames = handOver();
+    const { sendAs } = frames.offer('hands-full', 1);
+    frames.settle(sendAs as number, 'hands-full');
+    expect(frames.oldest('hands-full')).toBeUndefined();
+  });
+});
+
 describe('closing the hand-over', () => {
   it('drops the answer of the frame that was out, and hands back the held frame to let go', () => {
     const frames = handOver();

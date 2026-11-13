@@ -3,7 +3,7 @@ import type { TrackedFace, TrackedHand, TrackingFrame } from '../tracking/types'
 import { newFaceObservation, newObservation } from './diagnostics';
 import { newFaceCueState } from './faceJudgment';
 import { cellRect } from './geometry';
-import { newCueState } from './judgment';
+import { closingSongTime, frameSongTime, newCueState } from './judgment';
 import { createPlayers } from './player';
 import type { PlayerRun } from './player';
 import { judgePlayers } from './roundJudging';
@@ -80,5 +80,52 @@ describe('judging a round', () => {
     const feedback = judgePlayers([player], 10, frameWith([], smile), 7);
     expect(feedback).toEqual([{ player: 0, target: 'face', result: 'perfect', atMs: 7 }]);
     expect(player.score).toMatchObject({ perfect: 1, total: 1 });
+  });
+});
+
+describe('a frame that a tracking worker delivers late', () => {
+  /**
+   * Level 3: a hand enters the cell 320 ms after the beat, and the Good window ends at 350 ms.
+   * The frame is taken at page time 1000 ms and reaches the game at 1060 ms. The draw loop
+   * runs at 1030 and 1050 ms meanwhile, and at 1050 ms the song is past the window.
+   */
+  const BEAT_SEC = 10;
+  const TAKEN_MS = 1000;
+  const songAt = (nowMs: number): number => BEAT_SEC + 0.32 + (nowMs - TAKEN_MS) / 1000;
+
+  function levelThreePlayer(): PlayerRun {
+    const [player] = createPlayers(parseSettings(null, '?players=1&p0=3').settings);
+    const cues = [tap(4, BEAT_SEC)];
+    player.cues = cues;
+    player.states = cues.map(newCueState);
+    player.observations = cues.map(newObservation);
+    return player;
+  }
+
+  function drawLoop(player: PlayerRun, nowMs: number, pendingFrameMs: number | undefined): void {
+    judgePlayers([player], closingSongTime(songAt(nowMs), nowMs, 0, pendingFrameMs, 5000), undefined, nowMs);
+  }
+
+  function deliverFrame(player: PlayerRun, nowMs: number): void {
+    const frame = { ...frameWith([handIn(player, 4)]), timeMs: TAKEN_MS };
+    judgePlayers([player], frameSongTime(songAt(nowMs), nowMs, frame.timeMs, 0), frame, nowMs);
+  }
+
+  it('still scores when the draw loop passed the end of the window meanwhile', () => {
+    const player = levelThreePlayer();
+    drawLoop(player, 1030, TAKEN_MS);
+    drawLoop(player, 1050, TAKEN_MS);
+    expect(player.states[0].result).toBeUndefined();
+    deliverFrame(player, 1060);
+    drawLoop(player, 1070, undefined);
+    expect(player.states[0].result).toBe('good');
+  });
+
+  it('was a miss when the draw loop did not wait for the frame', () => {
+    const player = levelThreePlayer();
+    drawLoop(player, 1030, undefined);
+    drawLoop(player, 1050, undefined);
+    deliverFrame(player, 1060);
+    expect(player.states[0].result).toBe('miss');
   });
 });
