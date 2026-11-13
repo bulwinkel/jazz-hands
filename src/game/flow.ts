@@ -5,6 +5,8 @@ import { SongAudio } from './audio';
 import { chartEntries, countMoves, cuesFrom, entriesFrom } from './chart';
 import { CHART, DEFAULT_SEED, FACE_EMOJI, HAND_MENU, MENU_TRACKER, SONGS, TIMING, TOAST } from './config';
 import { chartMix, cueSetMoveShare, cueSetSeed, CueSetPicker, RANDOM_CUE_SET } from './cueSet';
+import { fileNameOf, ratedRoundOf, ratingRecord, saveRating } from './cueSetRating';
+import type { RatedRound, SetRating } from './cueSetRating';
 import { buildRunReport, newFaceObservation, newObservation, newTrackingStats } from './diagnostics';
 import type { RunReport, TrackingStats } from './diagnostics';
 import { isHandClick } from './dom';
@@ -117,6 +119,8 @@ export class DanceGame {
   /** Totals about tracking during the current run, and the report of the last finished run. */
   private trackingStats: TrackingStats = newTrackingStats(0);
   private report?: RunReport;
+  /** What the ratings of the last finished round share. Null when that round has nothing to rate. */
+  private ratedRound: RatedRound | null = null;
   /** With `framelog=1`: every tracking frame, for scripts that compare runs. */
   private readonly frameLog: LoggedFrame[] = [];
 
@@ -492,14 +496,49 @@ export class DanceGame {
   private finish(): void {
     this.judge(this.endSec + 1); // Closes every cue that is still open.
     this.report = this.buildReport();
+    this.ratedRound = this.roundToRate();
     this.audio?.stop();
     this.setPhase('results');
-    this.ui.showResults(this.players, this.cueSet, this.beginCountdown, this.showMenu, (byHand) => this.refit(byHand));
+    this.ui.showResults(this.players, this.cueSet, {
+      onReplay: this.beginCountdown,
+      onMenu: this.showMenu,
+      onRefit: (byHand) => this.refit(byHand),
+      onRate: this.ratedRound ? this.rate : undefined,
+    });
     // A recording goes on for a few seconds: the cheer, and the result card in the game view.
     const tailSec = recordingTailSec(this.audio?.soundDelays ?? { game: 0, camera: 0 });
     this.recordings.endAfter(tailSec, performance.now());
-    if (import.meta.env.DEV) void this.saveReport(this.report);
+    if (import.meta.env.DEV) void this.saveReport(this.report, this.ratedRound);
   }
+
+  /**
+   * What the players' ratings of the round that just ended share. Null when there is nothing
+   * to rate: a round with no cue set. Null in a build with no dev server, too, which could not
+   * keep a rating.
+   */
+  private roundToRate(): RatedRound | null {
+    if (!import.meta.env.DEV) return null;
+    const { settings } = this.options;
+    const ended = {
+      endedAt: new Date(),
+      songId: this.manifest?.id ?? '',
+      length: settings.length,
+      playerCount: settings.playerCount,
+      cueSet: this.cueSet,
+      seed: this.seed,
+      cueSetRandom: this.cueSetRandom,
+      moveShare: this.moveShare,
+    };
+    return ratedRoundOf(ended, Math.random);
+  }
+
+  /** Saves a player's rating of the round's cue set at once. Answers whether the dev server kept it. */
+  private rate = (index: PlayerIndex, rating: SetRating): Promise<boolean> => {
+    const round = this.ratedRound;
+    const player = this.players.find((candidate) => candidate.index === index);
+    if (!round || !player) return Promise.resolve(false);
+    return saveRating(ratingRecord(round, player, rating, new Date()));
+  };
 
   private buildReport(): RunReport {
     const { settings } = this.options;
@@ -535,9 +574,10 @@ export class DanceGame {
 
   /**
    * Dev server only: saves the run report to `test-results/` on disk and offers it for copying,
-   * so a run can be studied afterwards without reading numbers off the screen.
+   * so a run can be studied afterwards without reading numbers off the screen. The ratings of
+   * the round name the report's file once it is saved.
    */
-  private async saveReport(report: RunReport): Promise<void> {
+  private async saveReport(report: RunReport, round: RatedRound | null): Promise<void> {
     const json = JSON.stringify(report);
     this.ui.showDiagnostics(json, 'Saving diagnostics…');
     try {
@@ -548,6 +588,7 @@ export class DanceGame {
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const saved: { path: string } = await response.json();
+      if (round) round.runReport = fileNameOf(saved.path);
       this.ui.showDiagnostics(json, `Diagnostics saved: ${saved.path}`);
     } catch (error) {
       this.ui.showDiagnostics(json, `Diagnostics not saved (${errorText(error)}). Copy them instead.`);

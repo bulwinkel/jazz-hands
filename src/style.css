@@ -621,6 +621,57 @@ canvas {
   font-weight: 500;
   color: var(--text-soft);
 }
+/* The row of stars with which a player rates the round's cue set (see ratingView.ts). Each
+   star is a target for a hand from across the room: its button is much larger than the star,
+   and the buttons touch, so a hand between two stars is always on one. The stars must not
+   read as the score's stars: they are larger, and an outline or a fill in the player's
+   colour, not yellow. */
+.rating {
+  margin-top: 8px;
+}
+.rating-label {
+  margin: 0;
+  font-size: 16px;
+  line-height: 20px;
+  font-weight: 700;
+  color: var(--text-soft);
+}
+.rating-note {
+  color: #fda4af;
+}
+.rating-stars {
+  display: flex;
+  justify-content: center;
+}
+.rating-star {
+  display: grid;
+  place-items: center;
+  width: 78px;
+  height: 68px;
+  padding: 0;
+  border: 0;
+  border-radius: 14px;
+  background: none;
+}
+.rating-star svg {
+  width: 54px;
+  height: 54px;
+  fill: transparent;
+  stroke: var(--player);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+}
+.rating-star[data-look="preview"] svg {
+  fill: color-mix(in srgb, var(--player) 38%, transparent);
+}
+.rating-star[data-look="lit"] svg {
+  fill: var(--player);
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--player) 60%, transparent));
+}
+/* The hand's highlight stays inside its star, which touches the next one. */
+.rating-star.hand-hover {
+  outline-offset: -4px;
+}
 /* Each card's bar fills while its player holds a hand up to play again. */
 .replay-hold {
   height: 14px;

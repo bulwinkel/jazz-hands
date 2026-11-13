@@ -5,6 +5,8 @@ import type { HandTarget, MenuHand } from './handMenu';
 import { buildMenu, MENU_HTML, MENU_SWITCHES_HTML } from './menuView';
 import type { MenuControls } from './menuView';
 import type { PlayerRun } from './player';
+import { buildRatingRows, ratingRowHtml } from './ratingView';
+import type { RateHandler, RatingRows } from './ratingView';
 import { RECORDINGS_HTML, removePreview, showRecordings } from './recordingsView';
 import type { RecordingsView } from './roundRecordings';
 import { cueSetLine, movesLine, playerHeading, RESULTS_HEADING } from './resultText';
@@ -31,8 +33,9 @@ const SHELL_HTML = `
 /**
  * One player's result card. The line of the chart's moves is there for every player, empty
  * for a chart with no moves, so the cards of two players line up and no round moves them.
+ * `rated` adds the row of stars that rates the cue set, under the moves.
  */
-function resultCard(player: PlayerRun): HTMLElement {
+function resultCard(player: PlayerRun, rated: boolean): HTMLElement {
   const { score } = player;
   const starCount = stars(score);
   const card = document.createElement('section');
@@ -53,6 +56,7 @@ function resultCard(player: PlayerRun): HTMLElement {
       <span>${score.miss} Miss</span>
     </div>
     <p class="result-moves">${movesLine(player.moves) ?? ''}</p>
+    ${rated ? ratingRowHtml(player.index) : ''}
     <div class="replay-hold" data-player="${player.index}" role="progressbar"
       aria-label="Player ${player.index + 1} replay hold" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
       <span></span>
@@ -67,6 +71,16 @@ function resultCard(player: PlayerRun): HTMLElement {
 function setCorner(cueSet: number | null): string {
   const line = cueSetLine(cueSet);
   return line === null ? '' : `<div class="corner"><p class="result-set">${line}</p></div>`;
+}
+
+/** What the buttons and the stars of the results call. */
+export interface ResultHandlers {
+  onReplay: () => void;
+  onMenu: () => void;
+  /** Hears whether a pointing hand chose it, and not a mouse. */
+  onRefit: (byHand: boolean) => void;
+  /** Saves a player's rating of the cue set. Without it, the cards have no rating row. */
+  onRate?: RateHandler;
 }
 
 /** The page around the canvas: menu, results, messages and buttons. */
@@ -93,6 +107,8 @@ export class GameUI {
   private readonly fitObserver = new ResizeObserver(() => this.fitPanel());
   /** The open menu. Unset while the menu is closed. */
   private menu?: MenuControls;
+  /** The rating rows of the open results. Unset while the results have none. */
+  private ratings?: RatingRows;
 
   constructor(root: HTMLElement) {
     // The stylesheet takes these values from the game's code, so one change reaches the page
@@ -178,17 +194,9 @@ export class GameUI {
     this.menu = buildMenu(this.panel, settings, { onStart, onChange });
   }
 
-  /**
-   * `cueSet` is the set that the round played, or null for a round with no set.
-   * `onRefit` hears whether a pointing hand chose it, and not a mouse.
-   */
-  showResults(
-    players: readonly PlayerRun[],
-    cueSet: number | null,
-    onReplay: () => void,
-    onMenu: () => void,
-    onRefit: (byHand: boolean) => void,
-  ): void {
+  /** `cueSet` is the set that the round played, or null for a round with no set. */
+  showResults(players: readonly PlayerRun[], cueSet: number | null, handlers: ResultHandlers): void {
+    const { onReplay, onMenu, onRefit, onRate } = handlers;
     const teamScore = players.reduce((sum, player) => sum + player.score.score, 0);
     const team =
       players.length > 1
@@ -214,7 +222,9 @@ export class GameUI {
       </div>`,
       setCorner(cueSet),
     );
-    find(this.panel, '.result-players').append(...players.map(resultCard));
+    const cards = players.map((player) => resultCard(player, onRate !== undefined));
+    find(this.panel, '.result-players').append(...cards);
+    if (onRate) this.ratings = buildRatingRows(this.panel, onRate);
     find(this.panel, '#replay').addEventListener('click', onReplay);
     find(this.panel, '#menu').addEventListener('click', onMenu);
     find(this.panel, '#refit-results').addEventListener('click', (event) => onRefit(isHandClick(event)));
@@ -274,6 +284,7 @@ export class GameUI {
     for (const element of this.root.querySelectorAll<HTMLElement>('.hand-hover')) {
       if (element.dataset.hand !== hoveredId) element.classList.remove('hand-hover');
     }
+    this.ratings?.showHandOn(hoveredId);
     const hovered = hoveredId ? this.root.querySelector<HTMLElement>(`[data-hand="${hoveredId}"]`) : undefined;
     if (!hovered) return;
     hovered.classList.add('hand-hover');
@@ -313,6 +324,7 @@ export class GameUI {
   private openPanel(className: string, html: string, outsideHtml = ''): void {
     removePreview(this.panel);
     this.closeMenu();
+    this.ratings = undefined;
     this.panel.className = className;
     this.panel.innerHTML = `<div class="fit">${html}</div>${outsideHtml}`;
     this.panel.hidden = false;
