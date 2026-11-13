@@ -1752,7 +1752,7 @@ def chords_clue(change: np.ndarray) -> BarClue:
     neighbours = max(change[(best - 1) % BEATS_PER_BAR], change[(best + 1) % BEATS_PER_BAR])
     neighbour_ratio = change[best] / max(float(neighbours), 1e-9)
     half_bar_ratio = change[best] / max(float(change[partner]), 1e-9)
-    best_text = f'Beat {best} changes {neighbour_ratio:.2f} times as much as the beats next to it'
+    best_text = f'Beat {best} changes at least {neighbour_ratio:.2f} times as much as each beat next to it'
     half_bar_text = f'{half_bar_ratio:.2f} times as much as beat {partner}, half a bar away'
     if change[best] <= 0:
         beats, reason = (), 'The chords and the bass do not change.'

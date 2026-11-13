@@ -458,7 +458,8 @@ class SongTableTest(unittest.TestCase):
                 self.assertIn(choice.first_downbeat, song.right)
 
     def test_a_half_bar_tie_is_named(self) -> None:
-        choice = choose_bar_start(SONGS[-1].clues())
+        jericho = next(song for song in SONGS if song.title == 'Jericho Fell')
+        choice = choose_bar_start(jericho.clues())
         self.assertEqual(choice.doubt, 'The music does not tell beat 0 from beat 2, half a bar away.')
 
 
