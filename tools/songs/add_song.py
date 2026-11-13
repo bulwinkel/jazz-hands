@@ -19,7 +19,7 @@ The steps, in order:
   4. Put the beats on the pulses that carry the kick and the chord changes, then move them
      onto the kick drum's onset.
   5. Find the first and last beat of the music, where the beat stops being clear, and the
-     beat that starts the bars.
+     beat that starts the bars: from the chords, the drums, the level rises and the song start.
   6. Rate the energy of each bar, set the pace from it, and choose where the Short round starts.
   7. Write two click-check clips, the audio copy and the manifest.
 
@@ -246,11 +246,24 @@ CHORD_DECISIVE_RATIO = 1.25
 CHROMA_HOP = 512
 # Chroma is read this far inside each beat, away from the note changes at its edges.
 CHROMA_INSET_SEC = 0.04
-# How much each clue counts when the bar start is chosen.
-START_WEIGHT = 1.0
-RISES_WEIGHT = 2.0
-CHORDS_WEIGHT = 1.0
-# The bar start is certain when the clues for it weigh this much and no clue is against it.
+# The snare and the clap. Their crack is loudest here, above the kick and the bass.
+SNARE_BAND_HZ = (1500.0, 6000.0)
+# The drums point to a pair of beats only when the kick hits that pair this many times as hard
+# as the other pair.
+DRUMS_DECISIVE_RATIO = 1.25
+# How much each clue counts when the bar start is chosen. The chords and the drums read every
+# bar of the song, so they count most. The level rises are a few section starts, and a pickup or
+# a fill can move a rise by a beat. The song start is a habit of the songs, not a sound: a song
+# that opens with a pickup breaks it.
+START_WEIGHT = 0.5
+RISES_WEIGHT = 1.0
+CHORDS_WEIGHT = 2.0
+DRUMS_WEIGHT = 2.0
+# A clue of this weight is strong. A strong clue against the choice makes the choice uncertain.
+STRONG_WEIGHT = 2.0
+# A clue lighter than this, against the choice, is not a real disagreement: the song start.
+MINOR_WEIGHT = 1.0
+# The bar start is certain when the clues for it weigh this much and only a minor clue is against it.
 CERTAIN_WEIGHT = 3.0
 
 # --- Intensity ---
@@ -1570,9 +1583,16 @@ class BarClue:
 
     name: str
     weight: float
-    # The beat, 0 to 3, this clue says starts a bar. None when the clue does not decide.
-    choice: int | None
+    # The beats, 0 to 3, that this clue says may start a bar: one beat, or for the drums two beats
+    # half a bar apart. Empty when the clue does not decide.
+    beats: tuple[int, ...]
+    # The numbers behind the clue, for the report. Each line of it is one line of the report.
     detail: str
+
+    @property
+    def verdict(self) -> str:
+        """Returns the clue's answer in a few words: 'beat 2', 'beat 0 or 2' or 'undecided'."""
+        return 'beat ' + ' or '.join(str(beat) for beat in self.beats) if self.beats else 'undecided'
 
 
 @dataclass(frozen=True)
@@ -1582,15 +1602,17 @@ class BarChoice:
     first_downbeat: int
     # 'high', 'medium' or 'low'.
     confidence: str
-    # True when a clue points to another beat.
-    disagrees: bool
-    # Which clues are for the choice, against it, and undecided.
+    # The weight of the clues for each beat, 0 to 3.
+    votes: tuple[float, ...]
+    # Which clues are for the choice, against it, and undecided, and any beat that ties with it.
     statement: str
+    # Why the choice is not certain, in one sentence. Empty when it is certain.
+    doubt: str
 
 
 def start_clue() -> BarClue:
-    """The music starts on a bar start. Songs made with Suno do."""
-    return BarClue('song start', START_WEIGHT, 0, 'the music starts on beat 0')
+    """Many songs start on a bar start. A song that opens with a pickup does not."""
+    return BarClue('song start', START_WEIGHT, (0,), 'the music starts on beat 0')
 
 
 def level_rises(level_db: np.ndarray) -> list[tuple[int, float]]:
@@ -1626,9 +1648,19 @@ def rises_clue(rises: list[tuple[int, float]]) -> BarClue:
     for index, _ in rises:
         scores[index % BEATS_PER_BAR] += 1
         scores[(index + 1) % BEATS_PER_BAR] += RISE_ONE_EARLY_WEIGHT
+    choice = decisive_choice(scores, RISE_DECISIVE_RATIO)
     detail = 'rises that fit, if bars start on   ' + '   '.join(
         f'beat {beat}: {score:g}' for beat, score in enumerate(scores))
-    return BarClue('level rises', RISES_WEIGHT, decisive_choice(scores, RISE_DECISIVE_RATIO), detail)
+    return BarClue('level rises', RISES_WEIGHT, () if choice is None else (choice,), detail)
+
+
+def by_bar_position(values: np.ndarray) -> np.ndarray:
+    """Returns the mean of one value per beat on each beat of the bar, 0 to 3.
+
+    The bars are counted from the first value, the first beat of the music.
+    """
+    position = np.arange(len(values)) % BEATS_PER_BAR
+    return np.array([values[position == beat].mean() for beat in range(BEATS_PER_BAR)])
 
 
 def chroma_change_by_beat(chroma: np.ndarray, beats: np.ndarray) -> np.ndarray:
@@ -1660,50 +1692,99 @@ def harmony_change(harmony: tuple[np.ndarray, np.ndarray], beats: np.ndarray) ->
     return change
 
 
-def chords_clue(harmony: tuple[np.ndarray, np.ndarray], beats: np.ndarray) -> BarClue:
-    """Chords and bass notes change on bar starts."""
-    change = harmony_change(harmony, beats)
-    position = np.arange(len(beats)) % BEATS_PER_BAR
-    scores = np.array([change[position == beat].mean() for beat in range(BEATS_PER_BAR)])
+def chords_clue(change: np.ndarray) -> BarClue:
+    """Chords and bass notes change on bar starts.
+
+    `change` holds the mean change of chords and bass on each beat of the bar, 0 to 3.
+    """
+    choice = decisive_choice(change, CHORD_DECISIVE_RATIO)
     detail = 'chord and bass change, on   ' + '   '.join(
-        f'beat {beat}: {score:.2f}' for beat, score in enumerate(scores))
-    return BarClue('chord changes', CHORDS_WEIGHT, decisive_choice(scores, CHORD_DECISIVE_RATIO), detail)
+        f'beat {beat}: {score:.2f}' for beat, score in enumerate(change))
+    return BarClue('chord changes', CHORDS_WEIGHT, () if choice is None else (choice,), detail)
+
+
+def drums_clue(kick: np.ndarray, snare: np.ndarray) -> BarClue:
+    """The kick falls on beats 1 and 3 of the bar, the snare or the clap on beats 2 and 4.
+
+    `kick` and `snare` hold the mean onset strength in each band on each beat of the bar, 0 to 3.
+    The drums tell the two beats that carry the kick from the two that carry the snare, so they
+    point to a pair of beats half a bar apart. They often cannot tell which of the two starts the
+    bar: the chords can. The kick leads, and must hit one pair clearly harder than the other. The
+    snare band also holds hi-hats, shakers, strummed guitars and the voice, so the snare only
+    confirms: as a backbeat it must be stronger on the other pair. A kick on every beat, or no
+    clear drums, decides nothing.
+    """
+    kick_share = 100 * kick / max(float(kick.sum()), 1e-9)
+    snare_share = 100 * snare / max(float(snare.sum()), 1e-9)
+    # Pair 0 is beats 0 and 2, pair 1 is beats 1 and 3.
+    kick_pairs = kick_share[:2] + kick_share[2:]
+    snare_pairs = snare_share[:2] + snare_share[2:]
+    strong = int(np.argmax(kick_pairs))
+    weak = 1 - strong
+    kick_ratio = kick_pairs[strong] / max(float(kick_pairs[weak]), 1e-9)
+
+    def pair(index: int) -> str:
+        """Returns the two beats of a pair, as text."""
+        return f'beats {index} and {index + 2}'
+
+    if kick_ratio < DRUMS_DECISIVE_RATIO:
+        beats, reason = (), (f'The kick hits {pair(strong)} only {kick_ratio:.2f} times as hard as {pair(weak)} '
+                             f'(it must be {DRUMS_DECISIVE_RATIO:g}): no clear kick pattern.')
+    elif snare_pairs[weak] <= snare_pairs[strong]:
+        beats, reason = (), (f'The kick hits {pair(strong)} {kick_ratio:.2f} times as hard as {pair(weak)}, '
+                             f'but the snare is not stronger on {pair(weak)}: no backbeat.')
+    else:
+        beats, reason = (strong, strong + 2), (f'The kick hits {pair(strong)} {kick_ratio:.2f} times as hard as '
+                                               f'{pair(weak)}, and the snare answers on {pair(weak)}.')
+    detail = '\n'.join([
+        'kick, share on    ' + '   '.join(f'beat {beat}: {share:.0f}%' for beat, share in enumerate(kick_share)),
+        'snare, share on   ' + '   '.join(f'beat {beat}: {share:.0f}%' for beat, share in enumerate(snare_share)),
+        reason,
+    ])
+    return BarClue('drums', DRUMS_WEIGHT, beats, detail)
 
 
 def choose_bar_start(clues: list[BarClue]) -> BarChoice:
     """Returns the beat that starts the bars, with a plain statement of how sure the clues are.
 
-    Each clue that decides votes with its weight, and a tie goes to the earlier beat.
-    Confidence is high when the clues for the winner weigh CERTAIN_WEIGHT and none is against
-    it, low when a full-weight clue is against it.
+    Each clue that decides adds its weight to each beat it points to, and the beat with the most
+    weight wins. A tie goes to the earlier beat. So the drums can narrow the choice to two beats
+    and the chords pick one of them, and the song start decides only what the music leaves open.
+    Confidence is high when the clues for the winner weigh CERTAIN_WEIGHT and only a minor clue
+    is against it. It is low when a strong clue is against the winner or another beat has as much
+    weight. Otherwise it is medium.
     """
     votes = np.zeros(BEATS_PER_BAR)
     for clue in clues:
-        if clue.choice is not None:
-            votes[clue.choice] += clue.weight
+        for beat in clue.beats:
+            votes[beat] += clue.weight
     winner = int(np.argmax(votes))
+    tied = [beat for beat in range(BEATS_PER_BAR) if beat != winner and np.isclose(votes[beat], votes[winner])]
 
-    agreeing = [clue for clue in clues if clue.choice == winner]
-    against = [clue for clue in clues if clue.choice not in (None, winner)]
-    undecided = [clue for clue in clues if clue.choice is None]
+    agreeing = [clue for clue in clues if winner in clue.beats]
+    against = [clue for clue in clues if clue.beats and winner not in clue.beats]
+    undecided = [clue for clue in clues if not clue.beats]
+    strong_against = [clue for clue in against if clue.weight >= STRONG_WEIGHT]
 
-    if any(clue.weight >= 1 for clue in against):
-        confidence = 'low'
-    elif against or sum(clue.weight for clue in agreeing) < CERTAIN_WEIGHT:
-        confidence = 'medium'
+    if strong_against:
+        confidence, doubt = 'low', 'Strong bar-start clues disagree.'
+    elif tied:
+        confidence, doubt = 'low', f'The clues do not tell beat {winner} from beat {tied[0]}.'
+    elif (sum(clue.weight for clue in agreeing) >= CERTAIN_WEIGHT
+          and all(clue.weight < MINOR_WEIGHT for clue in against)):
+        confidence, doubt = 'high', ''
     else:
-        confidence = 'high'
+        confidence, doubt = 'medium', 'The bar start is not certain.'
 
     def names(group: list[BarClue]) -> str:
         """Returns the names of the clues in a group, as text."""
         return ', '.join(clue.name for clue in group) or 'none'
 
-    return BarChoice(
-        first_downbeat=winner,
-        confidence=confidence,
-        disagrees=bool(against),
-        statement=f'For beat {winner}: {names(agreeing)}. Against: {names(against)}. Undecided: {names(undecided)}.',
-    )
+    statement = f'For beat {winner}: {names(agreeing)}. Against: {names(against)}. Undecided: {names(undecided)}.'
+    if tied:
+        statement += ' Beat ' + ' and '.join(str(beat) for beat in tied) + ' has as much weight.'
+    return BarChoice(first_downbeat=winner, confidence=confidence, votes=tuple(float(vote) for vote in votes),
+                     statement=statement, doubt=doubt)
 
 
 def meter_repeat_scores(envelopes: Envelopes, beats: np.ndarray) -> tuple[float, float]:
@@ -1737,17 +1818,21 @@ def report_bars(report: Report, rises: list[tuple[int, float]], clues: list[BarC
     report.line(f'A rise on a bar start fits (1). A rise one beat early fits in part ({RISE_ONE_EARLY_WEIGHT:g}).')
     report.line('Which beat starts the bars, counted from the first beat of the music:')
     for clue in clues:
-        verdict = 'undecided' if clue.choice is None else f'beat {clue.choice}'
-        report.line(f'  {clue.name:15s} {verdict:11s} {clue.detail}')
+        first, *more = clue.detail.split('\n')
+        report.line(f'  {clue.name:15s} {clue.verdict:11s} {first}')
+        for line in more:
+            report.line(f'  {"":15s} {"":11s} {line}')
+    report.line('Each clue that decides adds its weight to its beats:   '
+                + '   '.join(f'{clue.name} {clue.weight:g}' for clue in clues))
+    report.line('Weight for each beat:   ' + '   '.join(f'beat {beat}: {vote:g}' for beat, vote in enumerate(choice.votes)))
 
     report.line(f'The tool chooses firstDownbeat {choice.first_downbeat}. Confidence: {choice.confidence}. '
                 f'{choice.statement}')
-    if choice.disagrees:
-        report.warn(f'The bar-start evidence disagrees. {choice.statement} Listen for the high click in the '
-                    'check clips, and give --first-downbeat if it is on the wrong beat.')
-    elif choice.confidence != 'high':
-        report.warn(f'The bar start is not certain. {choice.statement} Listen for the high click in the '
-                    'check clips.')
+    if choice.confidence == 'low':
+        report.warn(f'{choice.doubt} {choice.statement} Listen for the high click in the check clips, and give '
+                    '--first-downbeat if it is on the wrong beat.')
+    elif choice.confidence == 'medium':
+        report.warn(f'{choice.doubt} {choice.statement} Listen for the high click in the check clips.')
     if override is not None:
         report.line(f'--first-downbeat {override} overrules the tool.')
 
@@ -2342,10 +2427,19 @@ def align_to_kick(report: Report, amplitude: np.ndarray, beats: np.ndarray) -> t
 
 
 def choose_bars(report: Report, job: Job, samples: np.ndarray, harmony: tuple[np.ndarray, np.ndarray],
-                envelopes: Envelopes, sounding: np.ndarray) -> int:
-    """Returns firstDownbeat for the beats with sound: the tool's choice, or the user's."""
+                envelopes: Envelopes, snare: np.ndarray, sounding: np.ndarray) -> int:
+    """Returns firstDownbeat for the beats with sound: the tool's choice, or the user's.
+
+    `snare` is the onset envelope of the snare band, on the frame clock of the envelopes.
+    """
     rises = level_rises(beat_level_db(samples, sounding))
-    clues = [start_clue(), rises_clue(rises), chords_clue(harmony, sounding)]
+    clues = [
+        start_clue(),
+        rises_clue(rises),
+        chords_clue(by_bar_position(harmony_change(harmony, sounding))),
+        drums_clue(by_bar_position(beat_onset_strength(envelopes.kick, sounding)),
+                   by_bar_position(beat_onset_strength(snare, sounding))),
+    ]
     choice = choose_bar_start(clues)
     report_bars(report, rises, clues, choice, job.first_downbeat, meter_repeat_scores(envelopes, sounding))
     return choice.first_downbeat if job.first_downbeat is None else job.first_downbeat
@@ -2381,6 +2475,8 @@ def add_song(job: Job, work_dir: Path, report: Report) -> None:
 
     harmonic, percussive = librosa.effects.hpss(audio.samples)
     envelopes = onset_envelopes(audio.samples, percussive)
+    # Read from the drum part, so held notes of the voice and the guitars in the band count less.
+    snare = band_flux(percussive, SNARE_BAND_HZ)
     amplitude = kick_amplitude(audio.samples)
     if job.given_beats is None:
         tempo = estimate_tempo(envelopes, audio.duration_sec)
@@ -2410,7 +2506,7 @@ def add_song(job: Job, work_dir: Path, report: Report) -> None:
     if clear_beats is not None:
         sounding, onset_strength = sounding[:clear_beats], onset_strength[:clear_beats]
 
-    first_downbeat = choose_bars(report, job, audio.samples, harmony, envelopes, sounding)
+    first_downbeat = choose_bars(report, job, audio.samples, harmony, envelopes, snare, sounding)
     last, stops_at = last_listed_beat(onset_strength, first_downbeat, music_goes_on=clear_beats is not None)
     if last + 1 - first_downbeat < BEATS_PER_BAR or last + 1 < MIN_BEATS:
         raise SongError(f'firstDownbeat {first_downbeat} leaves too few beats: the list would have {last + 1}.')
