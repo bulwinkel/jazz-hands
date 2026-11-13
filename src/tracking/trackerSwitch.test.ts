@@ -90,6 +90,23 @@ describe('the latest call wins', () => {
     expect(created[1].dispose).not.toHaveBeenCalled();
   });
 
+  it('keeps the face models when an older load of the same mode without them ends later', async () => {
+    const { create, created } = fakeTrackers();
+    const trackers = new TrackerSwitch(create, 'hands-full', false);
+    const withoutFaces = trackers.setMode('hands-split', false);
+    const withFaces = trackers.setMode('hands-split', true);
+    created[2].finishLoad(); // The newer load, with faces, ends first.
+    await withFaces;
+    created[1].finishLoad();
+    await withoutFaces;
+    expect(trackers.current).toBe(created[2]);
+    expect(created[2].dispose).not.toHaveBeenCalled();
+    expect(created[1].dispose).toHaveBeenCalled();
+    // The tracker with faces stays in the cache: a later call for the mode needs no load.
+    await trackers.setMode('hands-split', true);
+    expect(created).toHaveLength(3);
+  });
+
   it('puts a tracker with face models in place of the same tracker without them', async () => {
     const { create, created } = fakeTrackers();
     const trackers = new TrackerSwitch(create, 'hands-full', false);

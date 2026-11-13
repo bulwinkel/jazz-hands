@@ -42,13 +42,14 @@ export class TrackerSwitch<Tracker extends SwitchableTracker> {
    * where the game asks for one.
    *
    * A load can end after a newer call has switched to another tracker. The loaded tracker then
-   * stays in the cache, and the newer choice stays on.
+   * stays in the cache, and the newer choice stays on. A load that ends after a tracker of the
+   * same mode that serves at least as much has loaded is let go: it never takes the face models
+   * away from the newer choice.
    */
   async setMode(mode: TrackerMode, faces = false): Promise<void> {
     const call = ++this.modeCalls;
     const loaded = this.loaded.get(mode);
-    const isUsable = loaded !== undefined && (!faces || loaded.faceDelegate !== 'uninitialized');
-    if (isUsable) {
+    if (loaded && serves(loaded, faces)) {
       this.inUse = loaded;
       return;
     }
@@ -65,6 +66,12 @@ export class TrackerSwitch<Tracker extends SwitchableTracker> {
       return;
     }
     const replaced = this.loaded.get(mode);
+    if (replaced && serves(replaced, faces)) {
+      // A newer call loaded this mode first, with the face models if this load has them.
+      next.dispose();
+      if (call === this.modeCalls) this.inUse = replaced;
+      return;
+    }
     this.loaded.set(mode, next);
     // A tracker that only adds the face models to the one in use takes its place in any case:
     // it serves the same mode, and the one without faces is let go.
@@ -77,4 +84,9 @@ export class TrackerSwitch<Tracker extends SwitchableTracker> {
     this.disposed = true;
     for (const tracker of this.loaded.values()) tracker.dispose();
   }
+}
+
+/** True when `tracker` serves a call for its mode: it has the face models if the call needs them. */
+function serves(tracker: SwitchableTracker, faces: boolean): boolean {
+  return !faces || tracker.faceDelegate !== 'uninitialized';
 }
