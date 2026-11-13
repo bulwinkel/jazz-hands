@@ -16,7 +16,7 @@ import { isHandClick } from './dom';
 import { generateFaceCues } from './faceChart';
 import { judgeFaceFrame, needsFace, newFaceCueState } from './faceJudgment';
 import { fitMomentAt, planFit } from './fitTiming';
-import type { FitBegunBy, FitPlan } from './fitTiming';
+import type { FitPlan } from './fitTiming';
 import { cellRect, containRect, defaultGrid, faceRegion, fitGrid, insideCell } from './geometry';
 import { newHandMenuState, stepHandMenu } from './handMenu';
 import type { InputView } from './input';
@@ -93,8 +93,8 @@ export class DanceGame {
   private readonly inputs: InputHost;
   /** Whether hand control was on at the last look from the menu. See `syncMenuInput`. */
   private menuHandControl = false;
-  /** Who began the next or current reach fit. It sets the fit's timing: see `planFit`. */
-  private fitBegunBy: FitBegunBy = 'not-by-hand';
+  /** True when a pointing hand began the next or current reach fit. It sets the fit's timing: see `planFit`. */
+  private fitBegunByHand = false;
   /** Which item a hand is on and how far its fist hold has come, in the menu and on the results screen. */
   private handMenu = newHandMenuState();
   private manifest?: Manifest;
@@ -251,7 +251,7 @@ export class DanceGame {
   /** Loads the song and the tracker for this round, then begins the reach fit. */
   private async start(byHand = false): Promise<void> {
     if (this.phase !== 'menu') return;
-    this.fitBegunBy = byHand ? 'start-by-hand' : 'not-by-hand';
+    this.fitBegunByHand = byHand;
     this.saveSettings();
     this.preview.follow(null);
     this.setPhase('loading');
@@ -379,7 +379,7 @@ export class DanceGame {
     const inRound = ['fit', 'ready', 'countdown', 'play', 'results'].includes(this.phase);
     if (!inRound || this.switchingTracker) return;
     this.resetRound();
-    this.fitBegunBy = byHand ? 'recalibrate-by-hand' : 'not-by-hand';
+    this.fitBegunByHand = byHand;
     this.beginFit();
   }
 
@@ -978,7 +978,7 @@ export class DanceGame {
 
   /** The timing of the reach fit, from who began it. Test inputs need no time to walk back. */
   private fitPlan(): FitPlan {
-    return planFit(this.fitBegunBy, this.options.input === 'camera');
+    return planFit(this.fitBegunByHand, this.options.input === 'camera');
   }
 
   private inputView = (): InputView => ({

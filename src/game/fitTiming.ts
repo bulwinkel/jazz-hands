@@ -6,14 +6,12 @@ import { TIMING } from './config';
  */
 
 /**
- * After a recalibration chosen by hand, hands count only after this long. The fist that chose
- * the button is still on it, and with two players the button sits between the grids.
+ * After a fit begun by hand, hands count only after this long. The fist that chose Start or
+ * Recalibrate is still near the button, and its positions would pull a grid toward it. With
+ * two players the Recalibrate button sits between the grids.
  */
 // Belongs in config.ts: move it there when that file is free.
-export const REFIT_SETTLE_SEC = 1;
-
-/** Who began the fit: a key or a mouse, a hand on Start, or a hand on Recalibrate. */
-export type FitBegunBy = 'not-by-hand' | 'start-by-hand' | 'recalibrate-by-hand';
+export const HAND_SETTLE_SEC = 1;
 
 export interface FitPlan {
   /** Time to walk from the laptop to the spot. The screen counts it down. */
@@ -33,12 +31,15 @@ export interface FitMoment {
   handsCount: boolean;
 }
 
-/** `usesCamera` is false for the test inputs: they need no walk. */
-export function planFit(begunBy: FitBegunBy, usesCamera: boolean): FitPlan {
+/**
+ * `byHand` says that a pointing hand began the fit, with Start or Recalibrate. `usesCamera` is
+ * false for the test inputs: they need no walk.
+ */
+export function planFit(byHand: boolean, usesCamera: boolean): FitPlan {
   return {
     // Players who chose by hand stand at their spots already.
-    walkSec: usesCamera && begunBy === 'not-by-hand' ? TIMING.walkBackSec : 0,
-    settleSec: begunBy === 'recalibrate-by-hand' ? REFIT_SETTLE_SEC : 0,
+    walkSec: usesCamera && !byHand ? TIMING.walkBackSec : 0,
+    settleSec: byHand ? HAND_SETTLE_SEC : 0,
     drawSec: TIMING.fitSec,
   };
 }
