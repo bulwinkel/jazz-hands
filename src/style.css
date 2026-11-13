@@ -664,7 +664,7 @@ canvas {
   stroke-linejoin: round;
 }
 .rating-star[data-look="preview"] svg {
-  fill: color-mix(in srgb, var(--player) 38%, transparent);
+  fill: color-mix(in srgb, var(--player) 50%, transparent);
 }
 .rating-star[data-look="lit"] svg {
   fill: var(--player);
