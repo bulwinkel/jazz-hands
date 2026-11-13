@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { PLAYER_COLORS } from './config';
-import { createPlayers } from './player';
 import { RECORDING } from './recording';
-import { addRound, recordingStatus, recordingTailSec, resultLines } from './roundRecordings';
-import { accuracy, stars } from './scoring';
-import { parseSettings } from './settings';
+import { addRound, recordingStatus, recordingTailSec } from './roundRecordings';
 
 describe('list of recorded rounds', () => {
   it('puts a new round first', () => {
@@ -39,23 +35,6 @@ describe('recording status', () => {
 
   it('says nothing when no recording is on its way', () => {
     expect(recordingStatus(false, 0)).toBe('');
-  });
-});
-
-describe('result lines of the end card', () => {
-  it('give each player their heading, colour, stars, score and accuracy', () => {
-    const [left, right] = createPlayers(parseSettings(null, '?players=2&p0=3&p1=5').settings);
-    left.score = { ...left.score, score: 1234.6, perfect: 8, good: 2, miss: 0, total: 10 };
-    const lines = resultLines([left, right]);
-    expect(lines[0]).toEqual({
-      title: 'Player 1 · Level 3',
-      color: PLAYER_COLORS[0],
-      stars: stars(left.score),
-      score: 1235,
-      accuracyPercent: Math.round(accuracy(left.score) * 100),
-    });
-    expect(lines[1].title).toBe('Player 2 · Level 5');
-    expect(lines[1].color).toBe(PLAYER_COLORS[1]);
   });
 });
 

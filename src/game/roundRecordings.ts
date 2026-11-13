@@ -1,11 +1,7 @@
 import type { RecordingDelays } from './audio';
-import { PLAYER_COLORS } from './config';
-import type { PlayerRun } from './player';
 import { RECORDING, RoundRecorder, videoFileName } from './recording';
 import type { RoundVideos } from './recording';
-import type { RecordingScene, ResultLine } from './recordingScene';
-import { playerHeading } from './resultText';
-import { accuracy, stars } from './scoring';
+import type { RecordingScene } from './recordingScene';
 
 /** What the list of recorded rounds shows. */
 export interface RecordingsView {
@@ -45,17 +41,6 @@ export function addRound<T>(rounds: readonly T[], round: T, keep: number): { kep
 export function recordingStatus(isRecording: boolean, finishing: number): string {
   if (isRecording) return 'Recording the last seconds…';
   return finishing > 0 ? 'Finishing the video…' : '';
-}
-
-/** Each player's result, as the end card of the game view shows it. */
-export function resultLines(players: readonly PlayerRun[]): ResultLine[] {
-  return players.map((player) => ({
-    title: playerHeading(player),
-    color: PLAYER_COLORS[player.index],
-    stars: stars(player.score),
-    score: Math.round(player.score.score),
-    accuracyPercent: Math.round(accuracy(player.score) * 100),
-  }));
 }
 
 /**

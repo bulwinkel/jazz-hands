@@ -1,4 +1,8 @@
-import { RESULTS_HEADING } from './resultText';
+import { VEIL } from './colors';
+import { PLAYER_COLORS } from './config';
+import type { PlayerRun } from './player';
+import { playerHeading, RESULTS_HEADING } from './resultText';
+import { accuracy, stars } from './scoring';
 import type { Rect } from './types';
 
 /** One player's result, as the game view shows it at the end of the video. */
@@ -8,6 +12,17 @@ export interface ResultLine {
   stars: number;
   score: number;
   accuracyPercent: number;
+}
+
+/** Each player's result, as the end card of the game view shows it. */
+export function resultLines(players: readonly PlayerRun[]): ResultLine[] {
+  return players.map((player) => ({
+    title: playerHeading(player),
+    color: PLAYER_COLORS[player.index],
+    stars: stars(player.score),
+    score: Math.round(player.score.score),
+    accuracyPercent: Math.round(accuracy(player.score) * 100),
+  }));
 }
 
 /** What the game view shows in one frame. */
@@ -25,8 +40,6 @@ export interface RecordingScene {
 }
 
 const BACKGROUND = '#080d20';
-/** The veil over the camera picture, so the cues stand out. The screen has the same one (see ui.ts). */
-export const VEIL = 'rgba(5, 7, 27, 0.4)';
 const RESULT_VEIL = 'rgba(8, 12, 32, 0.84)';
 const FONT = 'system-ui, sans-serif';
 

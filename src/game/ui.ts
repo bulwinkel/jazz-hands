@@ -1,4 +1,4 @@
-import { DUE_COLOR } from './colors';
+import { DUE_COLOR, VEIL } from './colors';
 import { HAND_MENU, PLAYER_COLORS } from './config';
 import { GROW_START_SCALE, SHRINK_START_SCALE } from './cueStyle';
 import type { CueStyle } from './cueStyle';
@@ -9,7 +9,6 @@ import type { MenuControls } from './menuView';
 import type { PlayerRun } from './player';
 import { RECORDINGS_HTML, removePreview, showRecordings } from './recordingsView';
 import type { RecordingsList } from './recordingsView';
-import { VEIL } from './recordingScene';
 import { playerHeading, RESULTS_HEADING } from './resultText';
 import { accuracy, stars } from './scoring';
 import type { Settings } from './settings';

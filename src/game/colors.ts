@@ -5,6 +5,12 @@ import { clamp01 } from './numbers';
 /** A cue has this colour on its beat. Before that, it fades toward it from the player's colour. */
 export const DUE_COLOR = '#fde047';
 
+/**
+ * The veil over the camera picture, so the cues stand out. The screen puts it there (the
+ * stylesheet takes it from ui.ts), and the game view of a recording draws the same one.
+ */
+export const VEIL = 'rgba(5, 7, 27, 0.4)';
+
 const toHexByte = (value: number): string => Math.round(value).toString(16).padStart(2, '0');
 
 /** A colour with an alpha from 0 to 1, as `#rrggbbaa`. */
