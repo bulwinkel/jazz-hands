@@ -800,6 +800,7 @@ export class DanceGame {
     if (this.phase === 'fit') this.updateFit(elapsedSec);
     else if (this.phase === 'countdown') this.updateCountdown(elapsedSec);
     else if (this.phase === 'play') this.updatePlay();
+    if (this.phase === 'play' && !this.paused) this.trackingStats.drawnFrames++;
     if (this.phase === 'results') this.ui.updateHold(this.players);
 
     this.feedback = this.feedback.filter((item) => nowMs - item.atMs < TIMING.feedbackSec * 1000);

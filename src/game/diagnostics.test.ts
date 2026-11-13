@@ -191,6 +191,15 @@ describe('run report', () => {
     expect(run.players[0].handsSeen).toEqual({ none: 0.1, one: 0.2, two: 0.7 });
   });
 
+  it('reports how many frames the game drew per second of play', () => {
+    const stats = newTrackingStats(0);
+    stats.frames = 40;
+    stats.drawnFrames = 120;
+    const run = report([playOneCue(tap(), () => [hand(4)])], stats);
+    // The report helper ends the run 2 seconds after play started.
+    expect(run.tracking).toMatchObject({ framesPerSec: 20, drawnPerSec: 60 });
+  });
+
   it('lists every cue with its result and what the tracker showed', () => {
     const [cue] = report([playOneCue(tap('fist'), () => [hand(4, 'fist')])]).players[0].cues;
     expect(cue).toMatchObject({ kind: 'tap', gesture: 'fist', result: 'perfect', marks: ['perfect'] });

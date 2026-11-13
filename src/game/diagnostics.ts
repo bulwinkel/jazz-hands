@@ -133,17 +133,19 @@ export function observeFaceFrame(
   }
 }
 
-/** Running totals about tracking during play. */
+/** Running totals about tracking during play, and about the drawing it competes with. */
 export interface TrackingStats {
   frames: number;
   inferenceMs: number[];
   /** Per player slot: frames with 0, 1 and 2 hands. */
   handCounts: [number[], number[]];
+  /** Frames the game drew on the canvas. Tracking on the main thread takes time from these. */
+  drawnFrames: number;
   playStartedMs: number;
 }
 
 export function newTrackingStats(nowMs: number): TrackingStats {
-  return { frames: 0, inferenceMs: [], handCounts: [[0, 0, 0], [0, 0, 0]], playStartedMs: nowMs };
+  return { frames: 0, inferenceMs: [], handCounts: [[0, 0, 0], [0, 0, 0]], drawnFrames: 0, playStartedMs: nowMs };
 }
 
 const round1 = (value: number): number => Math.round(value * 10) / 10;
@@ -246,6 +248,8 @@ export interface RunReport {
     frames: number;
     framesPerSec: number;
     inferenceMs: { mean: number | null; p95: number | null };
+    /** Frames the game drew per second during play. The display's rate when nothing holds the page up. */
+    drawnPerSec: number;
   };
   players: PlayerReport[];
 }
@@ -378,6 +382,7 @@ export function buildRunReport(context: RunContext): RunReport {
       frames: stats.frames,
       framesPerSec: playSec > 0 ? round1(stats.frames / playSec) : 0,
       inferenceMs: { mean: mean(stats.inferenceMs), p95: percentile(stats.inferenceMs, 0.95) },
+      drawnPerSec: playSec > 0 ? round1(stats.drawnFrames / playSec) : 0,
     },
     players: context.players.map((player) => playerReport(player, stats)),
   };
