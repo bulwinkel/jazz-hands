@@ -1644,12 +1644,21 @@ def decisive_choice(scores: np.ndarray, ratio: float) -> int | None:
     return int(order[0]) if best > 0 and best >= ratio * second else None
 
 
-def rises_clue(rises: list[tuple[int, float]]) -> BarClue:
-    """Level rises fall on bar starts, or one beat before them after a pickup or a fill."""
-    scores = np.zeros(BEATS_PER_BAR)
+def rises_by_bar_position(rises: list[tuple[int, float]]) -> np.ndarray:
+    """Returns how many of the rises fall on each beat of the bar, 0 to 3, counted from the first beat."""
+    counts = np.zeros(BEATS_PER_BAR)
     for index, _ in rises:
-        scores[index % BEATS_PER_BAR] += 1
-        scores[(index + 1) % BEATS_PER_BAR] += RISE_ONE_EARLY_WEIGHT
+        counts[index % BEATS_PER_BAR] += 1
+    return counts
+
+
+def rises_clue(counts: np.ndarray) -> BarClue:
+    """Level rises fall on bar starts, or one beat before them after a pickup or a fill.
+
+    `counts` holds how many rises fall on each beat of the bar, 0 to 3. A bar start on a beat fits
+    the rises on that beat, and in part the rises on the beat before it.
+    """
+    scores = counts + RISE_ONE_EARLY_WEIGHT * np.roll(counts, 1)
     choice = decisive_choice(scores, RISE_DECISIVE_RATIO)
     detail = 'rises that fit, if bars start on   ' + '   '.join(
         f'beat {beat}: {score:g}' for beat, score in enumerate(scores))
@@ -1663,6 +1672,30 @@ def by_bar_position(values: np.ndarray) -> np.ndarray:
     """
     position = np.arange(len(values)) % BEATS_PER_BAR
     return np.array([values[position == beat].mean() for beat in range(BEATS_PER_BAR)])
+
+
+def shares(values: np.ndarray) -> np.ndarray:
+    """Returns each value as a percentage of their sum. All are 0 when the sum is 0."""
+    return 100 * values / max(float(values.sum()), 1e-9)
+
+
+def snare_envelope(percussive: np.ndarray) -> np.ndarray:
+    """Returns the onset envelope of the snare band, read from the drum part.
+
+    The drum part holds less of the voice and the guitars than the mix, so their held notes in the
+    band count less.
+    """
+    return band_flux(percussive, SNARE_BAND_HZ)
+
+
+def drum_shares(kick: np.ndarray, snare: np.ndarray, beats: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Returns the share of the kick and of the snare on each beat of the bar, 0 to 3, in percent.
+
+    `kick` and `snare` are onset envelopes on the frame clock of the envelopes. A beat's hit is the
+    largest envelope value near it. The bars are counted from the first of `beats`.
+    """
+    return (shares(by_bar_position(beat_onset_strength(kick, beats))),
+            shares(by_bar_position(beat_onset_strength(snare, beats))))
 
 
 def chroma_change_by_beat(chroma: np.ndarray, beats: np.ndarray) -> np.ndarray:
@@ -1713,7 +1746,8 @@ def chords_clue(change: np.ndarray) -> BarClue:
 def drums_clue(kick: np.ndarray, snare: np.ndarray) -> BarClue:
     """The kick falls on beats 1 and 3 of the bar, the snare or the clap on beats 2 and 4.
 
-    `kick` and `snare` hold the mean onset strength in each band on each beat of the bar, 0 to 3.
+    `kick` and `snare` hold how hard each band hits each beat of the bar, 0 to 3: shares in percent,
+    or mean onset strengths, which the clue turns into shares.
     The drums tell the two beats that carry the kick from the two that carry the snare, so they
     point to a pair of beats half a bar apart. They often cannot tell which of the two starts the
     bar: the chords can. The kick leads, and must hit one pair clearly harder than the other. The
@@ -1722,8 +1756,7 @@ def drums_clue(kick: np.ndarray, snare: np.ndarray) -> BarClue:
     clear drums, decides nothing.
     """
     half = BEATS_PER_BAR // 2
-    kick_share = 100 * kick / max(float(kick.sum()), 1e-9)
-    snare_share = 100 * snare / max(float(snare.sum()), 1e-9)
+    kick_share, snare_share = shares(kick), shares(snare)
     # Pair 0 is beats 0 and 2, pair 1 is beats 1 and 3.
     kick_pairs = kick_share[:half] + kick_share[half:]
     snare_pairs = snare_share[:half] + snare_share[half:]
@@ -2447,10 +2480,9 @@ def choose_bars(report: Report, job: Job, samples: np.ndarray, harmony: tuple[np
     rises = level_rises(beat_level_db(samples, sounding))
     clues = [
         start_clue(),
-        rises_clue(rises),
+        rises_clue(rises_by_bar_position(rises)),
         chords_clue(by_bar_position(harmony_change(harmony, sounding))),
-        drums_clue(by_bar_position(beat_onset_strength(envelopes.kick, sounding)),
-                   by_bar_position(beat_onset_strength(snare, sounding))),
+        drums_clue(*drum_shares(envelopes.kick, snare, sounding)),
     ]
     choice = choose_bar_start(clues)
     report_bars(report, rises, clues, choice, job.first_downbeat, meter_repeat_scores(envelopes, sounding))
@@ -2487,8 +2519,7 @@ def add_song(job: Job, work_dir: Path, report: Report) -> None:
 
     harmonic, percussive = librosa.effects.hpss(audio.samples)
     envelopes = onset_envelopes(audio.samples, percussive)
-    # Read from the drum part, so held notes of the voice and the guitars in the band count less.
-    snare = band_flux(percussive, SNARE_BAND_HZ)
+    snare = snare_envelope(percussive)
     amplitude = kick_amplitude(audio.samples)
     if job.given_beats is None:
         tempo = estimate_tempo(envelopes, audio.duration_sec)
