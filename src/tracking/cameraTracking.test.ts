@@ -244,6 +244,14 @@ describe('a camera frame in a worker', () => {
     expect(tracking.pendingFrameMs()).toBeUndefined();
   });
 
+  it('names no frame taken before a given time, such as the end of a pause', async () => {
+    const { tracking, frameComes } = await trackingInWorker();
+    frameComes(100);
+    frameComes(133);
+    expect(tracking.pendingFrameMs(120)).toBe(133);
+    expect(tracking.pendingFrameMs(140)).toBeUndefined();
+  });
+
   it('lets every picture go exactly once: closed on the page, or moved to the worker', async () => {
     const { tracking, worker, frameComes } = await trackingInWorker();
     for (let i = 0; i < 12; i++) {

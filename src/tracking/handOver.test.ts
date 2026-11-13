@@ -72,26 +72,26 @@ describe('the latest tracker wins', () => {
   });
 });
 
-describe('the oldest frame whose answer is still to come', () => {
-  it('is the frame that is out, while a newer frame is held', () => {
+describe('the frames whose answers are still to come', () => {
+  it('are the frame that is out and the held frame, oldest first', () => {
     const frames = handOver();
     frames.offer('hands-full', 1);
     frames.offer('hands-full', 2);
-    expect(frames.oldest('hands-full')).toBe(1);
+    expect(frames.waiting('hands-full')).toEqual([1, 2]);
   });
 
-  it('is the held frame when the frame that is out went to a tracker no longer in use', () => {
+  it('leave out the frame that went to a tracker no longer in use', () => {
     const frames = handOver();
     frames.offer('hands-full', 1);
     frames.offer('hands-split', 2);
-    expect(frames.oldest('hands-split')).toBe(2);
+    expect(frames.waiting('hands-split')).toEqual([2]);
   });
 
-  it('is none when every answer is in', () => {
+  it('are none when every answer is in', () => {
     const frames = handOver();
     const { sendAs } = frames.offer('hands-full', 1);
     frames.settle(sendAs as number, 'hands-full');
-    expect(frames.oldest('hands-full')).toBeUndefined();
+    expect(frames.waiting('hands-full')).toEqual([]);
   });
 });
 

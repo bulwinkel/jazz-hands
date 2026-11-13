@@ -44,11 +44,12 @@ export class FrameHandOver<Tracker, Frame> {
   }
 
   /**
-   * The oldest frame whose answer can still count for `inUse`: the frame that is out, when it
-   * went to `inUse`, else the held frame, which goes to the tracker in use when it goes.
+   * The frames whose answers can still count for `inUse`, oldest first: the frame that is out,
+   * when it went to `inUse`, and the held frame, which goes to the tracker in use when it goes.
    */
-  oldest(inUse: Tracker): Frame | undefined {
-    return this.out?.tracker === inUse ? this.out.frame : this.held;
+  waiting(inUse: Tracker): Frame[] {
+    const out = this.out?.tracker === inUse ? [this.out.frame] : [];
+    return this.held === undefined ? out : [...out, this.held];
   }
 
   /**

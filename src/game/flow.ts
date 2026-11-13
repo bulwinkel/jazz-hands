@@ -903,8 +903,10 @@ export class DanceGame {
     if (this.paused) return;
     // Close judging windows even when the camera stops sending frames. Old hands are never
     // reused. A frame that a tracking worker still works on keeps the windows open for it, up
-    // to the limit after which the worker counts as stuck.
-    const pendingFrameMs = this.inputs.input?.pendingFrameMs?.();
+    // to the limit after which the worker counts as stuck. A frame from before this stretch of
+    // play is not judged, so it keeps nothing open.
+    const stretchStartedMs = this.trackingStats.play.stretchStartedMs ?? performance.now();
+    const pendingFrameMs = this.inputs.input?.pendingFrameMs?.(stretchStartedMs);
     const { inputLatencyMs } = this.options.settings;
     this.judge(closingSongTime(this.songTime(), performance.now(), inputLatencyMs, pendingFrameMs, WORKER_LIMITS.frameMs));
     // End with the sound itself. The song clock includes the picture offset and can run
