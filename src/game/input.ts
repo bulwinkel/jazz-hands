@@ -1,4 +1,5 @@
 import { startCamera } from '../tracking';
+import { CameraTracking } from '../tracking/cameraTracking';
 import type {
   FaceRegions,
   GestureName,
@@ -7,7 +8,6 @@ import type {
   TrackingFrame,
   TrackingThread,
 } from '../tracking/types';
-import { CameraTracking } from '../tracking/cameraTracking';
 import { botPlayer } from './bot';
 import { DEFAULT_SEED } from './config';
 import { containRect } from './geometry';

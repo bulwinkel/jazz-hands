@@ -72,7 +72,6 @@ function readStoredSettings(): unknown {
   }
 }
 
-
 /**
  * Runs the game through its phases:
  * menu → loading → fit (walk back, then reach fit) → ready → countdown → play → results.
