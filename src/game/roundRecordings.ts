@@ -13,6 +13,9 @@ export interface RecordingsView {
   lastRound?: RoundVideos;
 }
 
+/** What the recordings use of a recorder. */
+export type Recorder = Pick<RoundRecorder, 'active' | 'start' | 'drawFrame' | 'pause' | 'resume' | 'stop' | 'discard'>;
+
 /** What a recording of a round needs. */
 export interface RecordingSource {
   /** The song's sound for each video, each with its own delay. */
@@ -49,8 +52,9 @@ export function recordingStatus(isRecording: boolean, finishing: number): string
  */
 export class RoundRecordings {
   private readonly onChange: () => void;
+  private readonly createRecorder: () => Recorder | null;
   /** Records the round that runs now. */
-  private recorder?: RoundRecorder;
+  private recorder?: Recorder;
   private song = { id: 'song', title: '' };
   private stopTimer = 0;
   /** Recordings that have ended and are not yet ready to download. */
@@ -66,9 +70,14 @@ export class RoundRecordings {
   /** Rounds that left the list while the video player showed them. They wait until it shows them no more. */
   private droppedOnShow: RoundVideos[] = [];
 
-  /** `onChange` hears when a recording starts or ends, and when the list changes. */
-  constructor(onChange: () => void) {
+  /**
+   * `onChange` hears when a recording starts or ends, and when the list changes.
+   * `createRecorder` makes the recorder of a round, or null when the browser cannot record.
+   * Tests give a stand-in.
+   */
+  constructor(onChange: () => void, createRecorder: () => Recorder | null = () => RoundRecorder.create()) {
     this.onChange = onChange;
+    this.createRecorder = createRecorder;
   }
 
   /** True while a round is recorded. */
@@ -88,7 +97,7 @@ export class RoundRecordings {
     this.roundNumber++;
     this.lastRound = undefined;
     if (!source) return;
-    const recorder = RoundRecorder.create();
+    const recorder = this.createRecorder();
     if (!recorder) return;
 
     try {
@@ -162,7 +171,7 @@ export class RoundRecordings {
   }
 
   /** Finishes the videos of a round and puts them in the list to download. */
-  private async keep(recorder: RoundRecorder, song: { id: string; title: string }): Promise<void> {
+  private async keep(recorder: Recorder, song: { id: string; title: string }): Promise<void> {
     const endedAt = new Date();
     const roundNumber = this.roundNumber;
     this.finishing++;
