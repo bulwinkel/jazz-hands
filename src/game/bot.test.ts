@@ -92,6 +92,13 @@ describe('the bot outside play', () => {
       expect(hands[0]).toMatchObject(cellCentre(grid, HANDS_UP_CELL));
     }
   });
+
+  it('never makes a fist on the results, so it never chooses there, and never rates the set', () => {
+    for (const timeSec of [0, 1, 5, 30, 300]) {
+      const { hands } = botPlayer('results', timeSec, cues, grid, 1, SEED);
+      expect(hands.map((hand) => hand.gesture)).not.toContain('fist');
+    }
+  });
 });
 
 describe('a bot with accuracy below 1', () => {
