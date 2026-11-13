@@ -76,6 +76,16 @@ describe('input host', () => {
     expect(made[0].input.setMode).toHaveBeenCalledWith('hands-split', true);
   });
 
+  it('stops an input that is still opening as soon as the game stops wanting one', async () => {
+    const { host, made } = setUp();
+    const wanted = host.want(splitWithFaces);
+    await host.want(null);
+    expect(made[0].input.dispose).toHaveBeenCalled();
+    made[0].finishInit();
+    await wanted;
+    expect(host.input).toBeUndefined();
+  });
+
   it('closes an input that finished opening after the game stopped wanting one', async () => {
     const { host, made } = setUp();
     const wanted = host.want(splitWithFaces);
