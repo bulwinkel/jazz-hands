@@ -48,12 +48,20 @@ export function showRecordings(block: HTMLElement, view: RecordingsView, onWatch
  * and a looping video in it would go on decoding during the next round.
  */
 export function removePreview(root: ParentNode): void {
-  for (const video of root.querySelectorAll<HTMLVideoElement>('.preview video')) {
+  for (const slot of root.querySelectorAll<HTMLElement>('.preview-slot')) emptySlot(slot);
+}
+
+/**
+ * Empties the place of the preview. Its video is unloaded first: a video that is only taken
+ * off the page plays on until it is collected, and holds on to its file until then.
+ */
+function emptySlot(slot: HTMLElement): void {
+  for (const video of slot.querySelectorAll<HTMLVideoElement>('.preview video')) {
     video.pause();
     video.removeAttribute('src');
     video.load();
   }
-  for (const slot of root.querySelectorAll('.preview-slot')) slot.replaceChildren();
+  slot.replaceChildren();
 }
 
 /**
@@ -67,8 +75,8 @@ function showWait(slot: HTMLElement, view: WaitView): void {
     wait = document.createElement('div');
     wait.className = 'recording-wait';
     wait.innerHTML = '<p role="status"></p><div class="wait-bar"><span></span></div>';
-    removePreview(slot);
-    slot.replaceChildren(wait);
+    emptySlot(slot);
+    slot.append(wait);
   }
   // The bar runs on by itself. New times would start its fill again.
   if (wait.dataset.stage === view.stage) return;
@@ -84,12 +92,10 @@ function showWait(slot: HTMLElement, view: WaitView): void {
 /** The small silent video of a round. A click, or a fist, plays the round in the video player. */
 function showPreview(slot: HTMLElement, round: RoundVideos | undefined, onWatch: WatchHandler): void {
   const video = round && mainVideo(round);
-  if (!round || !video) {
-    slot.replaceChildren();
-    return;
-  }
   // Keep a preview that already plays this video: a new element would start it again.
-  if (slot.querySelector('video')?.src === video.url) return;
+  if (video && slot.querySelector('video')?.src === video.url) return;
+  emptySlot(slot);
+  if (!round || !video) return;
 
   const button = document.createElement('button');
   button.type = 'button';
@@ -106,7 +112,7 @@ function showPreview(slot: HTMLElement, round: RoundVideos | undefined, onWatch:
   label.textContent = '▶ Watch the round';
   button.append(picture, label);
   button.addEventListener('click', (event) => onWatch(round, isHandClick(event)));
-  slot.replaceChildren(button);
+  slot.append(button);
 }
 
 /** One row with a download link for each video of the round. Empty while there are none. */
