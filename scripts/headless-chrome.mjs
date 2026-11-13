@@ -19,7 +19,8 @@ const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
  * - `cameraFile`: a .y4m or .mjpeg file that Chrome plays as the camera, in a loop. Without it,
  *   the camera is Chrome's built-in test picture, which shows no hands.
  *
- * Returns `send` and `evaluate` for the page, `onEvent` for its DevTools events, and `close`.
+ * Returns `send` and `evaluate` for the page, `watchErrors` for the errors of the page and its
+ * workers, `pressSpace`, `onEvent` for its DevTools events, and `close`.
  */
 export async function openHeadlessChrome({ windowSize = '1440x900', cameraFile } = {}) {
   const profile = mkdtempSync(join(tmpdir(), 'dance-smoke-'));
@@ -109,11 +110,12 @@ function connect(socket, chrome) {
     if (message.method) for (const listener of listeners) listener(message);
   });
 
-  function send(method, params = {}) {
+  /** Sends a DevTools command to the page, or to a worker of it with that worker's `sessionId`. */
+  function send(method, params = {}, sessionId) {
     return new Promise((done) => {
       nextId++;
       pending.set(nextId, done);
-      socket.send(JSON.stringify({ id: nextId, method, params }));
+      socket.send(JSON.stringify({ id: nextId, method, params, ...(sessionId ? { sessionId } : {}) }));
     });
   }
 
@@ -122,10 +124,46 @@ function connect(socket, chrome) {
     return reply?.result?.value;
   }
 
+  /**
+   * Collects the errors of the page and of its workers: uncaught exceptions and console.error
+   * lines. Call it before the page loads. Returns the list, which fills as errors come.
+   */
+  async function watchErrors() {
+    const errors = [];
+    listeners.push((message) => {
+      const where = message.sessionId ? 'worker: ' : '';
+      if (message.method === 'Runtime.exceptionThrown') {
+        const details = message.params.exceptionDetails;
+        errors.push(`${where}${details.exception?.description ?? details.text}`);
+      }
+      if (message.method === 'Runtime.consoleAPICalled' && message.params.type === 'error') {
+        const text = message.params.args.map((arg) => arg.value ?? arg.description).join(' ');
+        // MediaPipe writes its INFO lines through console.error. They are not errors.
+        if (!text.startsWith('INFO:')) errors.push(`${where}console.error: ${text}`);
+      }
+      if (message.method === 'Target.attachedToTarget') {
+        // A new worker waits for the debugger, so that no early error goes unseen.
+        const { sessionId } = message.params;
+        void send('Runtime.enable', {}, sessionId).then(() => send('Runtime.runIfWaitingForDebugger', {}, sessionId));
+      }
+    });
+    await send('Runtime.enable');
+    await send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true });
+    return errors;
+  }
+
+  async function pressSpace() {
+    const key = { key: ' ', code: 'Space', windowsVirtualKeyCode: 32 };
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', ...key });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', ...key });
+  }
+
   return {
     send,
     evaluate,
-    /** Calls `listener` with every DevTools event of the page: `{ method, params }`. */
+    watchErrors,
+    pressSpace,
+    /** Calls `listener` with every DevTools event of the page and its workers: `{ method, params, sessionId }`. */
     onEvent: (listener) => listeners.push(listener),
     close() {
       socket.close();

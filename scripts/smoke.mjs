@@ -22,8 +22,9 @@
 // Example: a simulated player on level 3, one player, starting 45 s into the song:
 //   node scripts/smoke.mjs "http://localhost:5174/?input=bot&autostart=1&players=1&p0=3&start=45"
 //
-// Prints the phases the game went through, the final `window.__dance` state and any page errors.
-// Exits 0 when the game reached the `--until` phase with no page error, else 1.
+// Prints the phases the game went through, the final `window.__dance` state and any errors of
+// the page and its workers.
+// Exits 0 when the game reached the `--until` phase with no error, else 1.
 
 import { writeFileSync } from 'node:fs';
 import { openHeadlessChrome } from './headless-chrome.mjs';
@@ -47,32 +48,14 @@ const cameraFile = flag('camera-file');
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// --- Start Chrome and watch its page for errors ---
+// --- Start Chrome and watch its page and workers for errors ---
 
 const chrome = await openHeadlessChrome({ windowSize, cameraFile }).catch((error) => {
   console.error(error.message);
   process.exit(2);
 });
-const { send, evaluate } = chrome;
-const pageErrors = [];
-
-chrome.onEvent((message) => {
-  if (message.method === 'Runtime.exceptionThrown') {
-    const details = message.params.exceptionDetails;
-    pageErrors.push(details.exception?.description ?? details.text);
-  }
-  if (message.method === 'Runtime.consoleAPICalled' && message.params.type === 'error') {
-    const text = message.params.args.map((arg) => arg.value ?? arg.description).join(' ');
-    // MediaPipe writes its INFO lines through console.error. They are not errors.
-    if (!text.startsWith('INFO:')) pageErrors.push(`console.error: ${text}`);
-  }
-});
-
-async function pressSpace() {
-  const key = { key: ' ', code: 'Space', windowsVirtualKeyCode: 32 };
-  await send('Input.dispatchKeyEvent', { type: 'keyDown', ...key });
-  await send('Input.dispatchKeyEvent', { type: 'keyUp', ...key });
-}
+const { send, evaluate, pressSpace } = chrome;
+const pageErrors = await chrome.watchErrors();
 
 async function movePointerOnto(selector) {
   const centre = await evaluate(`(() => {
@@ -90,7 +73,6 @@ async function saveScreenshot(file) {
 
 // --- Load the game and watch it ---
 
-await send('Runtime.enable');
 await send('Page.enable');
 await send('Page.navigate', { url });
 
