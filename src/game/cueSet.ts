@@ -92,8 +92,8 @@ function shareOf(cues: readonly Cue[], matches: (cue: Cue) => boolean): number {
 
 /**
  * The mix of a chart. The level rules speak about cue beats in busy music, so the shares are
- * of the cues on such beats: no off-beat taps, and no taps for the other hand during a slow
- * slide. The number of cues counts every cue.
+ * of the cues of role 'beat' on such beats: no off-beat taps, no taps for the other hand
+ * during a slow slide, and no cues of a move. The number of cues counts every cue.
  */
 export function chartMix(manifest: Manifest, entries: readonly ChartEntry[], level: Level): ChartMix {
   const busyBeatCues = entries

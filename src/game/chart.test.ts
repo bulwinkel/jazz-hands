@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   chartEntries,
+  countMoves,
   cuesFrom,
   doubleCells,
+  entriesFrom,
   generateChart,
   masterCells,
   middleCell,
@@ -10,9 +12,11 @@ import {
   selectStride,
   slideTargets,
 } from './chart';
-import { CHART, LEVELS } from './config';
+import type { ChartEntry } from './chart';
+import { CHART, LEVELS, MOVES } from './config';
 import { cuesBeyondTwoHands, synthetic } from './fixtures';
 import { medianBeatInterval, playEndSec, tailStartSec } from './manifest';
+import { phraseBeats } from './moves';
 import type { Cue, Level, Manifest } from './types';
 
 const ALL_LEVELS: Level[] = [1, 2, 3, 4, 5];
@@ -496,5 +500,230 @@ describe('hand shapes', () => {
     const cues = chart(synthetic(100, 600), 3, 7, { shapes: true });
     const afterSlides = cues.filter((cue, i) => i > 0 && cue.gesture && cues[i - 1].kind === 'slide');
     expect(afterSlides.length).toBeGreaterThan(0);
+  });
+});
+
+describe('moves', () => {
+  /** A song that is busy for 4 phrases, then calm for 2, then busy at a level between, in turn. */
+  function changing(bpm: number): Manifest {
+    const song = synthetic(bpm, 600);
+    const pattern = [0.8, 0.8, 0.8, 0.8, 0.3, 0.3, 0.6, 0.6];
+    song.intensity = song.beats.map((_, beat) => pattern[Math.floor(beat / 16) % pattern.length]);
+    return song;
+  }
+  const SONGS_FOR_MOVES = [synthetic(95, 600), synthetic(100, 600), synthetic(128, 600), synthetic(180, 600), changing(100), changing(128)];
+
+  function withMoves(
+    manifest: Manifest,
+    level: Level,
+    moves: number,
+    extra: { seed?: number; shapes?: boolean; endSec?: number; movesFromSec?: number } = {},
+  ): ChartEntry[] {
+    return chartEntries(manifest, {
+      level,
+      seed: extra.seed ?? 42,
+      shapes: extra.shapes ?? false,
+      endSec: extra.endSec ?? manifest.durationSec,
+      moves,
+      movesFromSec: extra.movesFromSec,
+    });
+  }
+
+  /** The entries of each move, by the phrase it plays in. */
+  function byPhrase(entries: ChartEntry[]): Map<number, ChartEntry[]> {
+    const phrases = new Map<number, ChartEntry[]>();
+    for (const entry of entries) {
+      if (!entry.move) continue;
+      const cues = phrases.get(entry.move.phrase) ?? [];
+      cues.push(entry);
+      phrases.set(entry.move.phrase, cues);
+    }
+    return phrases;
+  }
+
+  /** Each move as its phrase, its name and its first cell: the same move laid out the same way. */
+  const moveKeys = (entries: ChartEntry[]): string[] =>
+    [...byPhrase(entries)].map(([phrase, cues]) => `${phrase} ${cues[0].move?.name} ${cues[0].cue.cells[0]}`);
+
+  it('leave a chart as it was with a share of 0: the same chart as with moves unset', () => {
+    for (const song of [synthetic(100, 600), changing(128)]) {
+      for (const level of ALL_LEVELS) {
+        const unset = chartEntries(song, { level, shapes: true, seed: 7, endSec: song.durationSec });
+        expect(withMoves(song, level, 0, { seed: 7, shapes: true, movesFromSec: 0 })).toEqual(unset);
+        expect(unset.some((entry) => entry.role === 'move')).toBe(false);
+      }
+    }
+  });
+
+  it('give the same chart for the same options', () => {
+    for (const level of ALL_LEVELS) {
+      expect(withMoves(changing(100), level, 0.7, { shapes: true })).toEqual(withMoves(changing(100), level, 0.7, { shapes: true }));
+    }
+  });
+
+  it('put the same move, laid out the same way, in the same phrases at all 5 levels', () => {
+    for (const song of SONGS_FOR_MOVES) {
+      for (const share of [0.35, 0.7, 1]) {
+        const keys = ALL_LEVELS.map((level) => moveKeys(withMoves(song, level, share)));
+        expect(keys[0].length).toBeGreaterThan(5);
+        for (const levelKeys of keys) expect(levelKeys).toEqual(keys[0]);
+      }
+    }
+  });
+
+  it('hold a move in about the share of phrases in busy music, and never the same move twice in a row', () => {
+    const song = synthetic(100, 1800);
+    const cueing = song.beats.filter((_, beat) => beat % phraseBeats(song) === 0 && song.beats[beat] < tailStartSec(song, song.durationSec));
+    for (const share of [0.35, 0.7]) {
+      const phrases = [...byPhrase(withMoves(song, 3, share))];
+      expect(phrases.length / cueing.length).toBeCloseTo(share, 1);
+      phrases.slice(1).forEach(([phrase, cues], i) => {
+        if (phrases[i][0] === phrase - 1) expect(cues[0].move?.name).not.toBe(phrases[i][1][0].move?.name);
+      });
+    }
+  });
+
+  it('start on the first beat of a phrase, in busy music, and end inside the phrase, clear of the last bar', () => {
+    for (const song of SONGS_FOR_MOVES) {
+      for (const endSec of [song.durationSec, playEndSec(song, 'short')]) {
+        for (const level of ALL_LEVELS) {
+          for (const [phrase, cues] of byPhrase(withMoves(song, level, 1, { endSec }))) {
+            const firstBeat = song.firstDownbeat + phrase * phraseBeats(song);
+            const nextPhraseSec = song.beats[firstBeat + phraseBeats(song)] ?? Infinity;
+            expect(cues[0].cue.beatIndex).toBe(firstBeat);
+            expect(song.intensity[firstBeat]).toBeGreaterThanOrEqual(CHART.busyIntensity);
+            for (const { cue } of cues) {
+              expect(lastTime(cue)).toBeLessThan(nextPhraseSec);
+              expect(lastTime(cue)).toBeLessThan(tailStartSec(song, endSec));
+            }
+          }
+        }
+      }
+    }
+  });
+
+  it('play a form of 8 intervals, or 4 taps where the phrase has room for 4 only, each at the pace of the level', () => {
+    // At 128 BPM a phrase has 16 beats. Level 1 has a cue on every 4th beat: room for 4.
+    // The other levels have a cue on every 2nd beat: room for 8.
+    const song = synthetic(128, 600);
+    const tailSec = tailStartSec(song, song.durationSec);
+    for (const level of ALL_LEVELS) {
+      for (const cues of byPhrase(withMoves(song, level, 1)).values()) {
+        // A move in the phrase before the last bar ends there: the last bar has no cues.
+        if ((song.beats[cues[0].cue.beatIndex + phraseBeats(song)] ?? Infinity) > tailSec) continue;
+        const gaps = cues.slice(1).map((entry, i) => entry.cue.beatIndex - cues[i].cue.beatIndex);
+        if (level === 1) expect(gaps).toEqual([4, 4, 4]);
+        else if (cues[0].cue.kind === 'slide') expect(gaps).toEqual([4, 4, 4]);
+        else expect(gaps).toEqual([2, 2, 2, 2, 2, 2, 2]);
+      }
+    }
+  });
+
+  it('are made of slides in about half the phrases at levels with slides, and of taps only at levels 1 and 2', () => {
+    const song = synthetic(100, 1800);
+    for (const level of ALL_LEVELS) {
+      const moves = [...byPhrase(withMoves(song, level, 1)).values()];
+      const slideShare = moves.filter((cues) => cues[0].cue.kind === 'slide').length / moves.length;
+      if (LEVELS[level].slideChance > 0) expect(slideShare).toBeCloseTo(MOVES.slideFormShare, 1);
+      else expect(slideShare).toBe(0);
+      for (const cues of moves) expect(new Set(cues.map((entry) => entry.cue.kind)).size).toBe(1);
+    }
+  });
+
+  it('make every slide a normal slide that crosses the grid legally and ends on the next cue beat', () => {
+    for (const song of SONGS_FOR_MOVES) {
+      const stride = selectStride(medianBeatInterval(song), CHART.fastIntervalSec);
+      for (const level of [3, 4, 5] as Level[]) {
+        const slides = withMoves(song, level, 1)
+          .filter((entry) => entry.role === 'move' && entry.cue.kind === 'slide')
+          .map((entry) => entry.cue);
+        expect(slides.length).toBeGreaterThan(10);
+        for (const cue of slides) {
+          const [from, to] = cue.cells;
+          expect(cue.speed).toBe('normal');
+          expect(cue.cells).toHaveLength(2);
+          expect(slideTargets(from)).toContain(to);
+          if (song.intensity[cue.beatIndex] >= LEVELS[level].fastFromIntensity) {
+            expect(cue.times).toEqual([song.beats[cue.beatIndex], song.beats[cue.beatIndex + stride]]);
+          }
+        }
+      }
+    }
+  });
+
+  it.each([95, 100, 109, 130, 180])('need no more than two hands at any level at %i BPM', (bpm) => {
+    for (const level of ALL_LEVELS) {
+      for (const share of [0.35, 1]) {
+        const cues = withMoves(synthetic(bpm, 600), level, share, { shapes: true }).map((entry) => entry.cue);
+        expect(cuesBeyondTwoHands(cues)).toEqual([]);
+      }
+    }
+  });
+
+  it('take the place of the other cues: no off-beat taps, no taps for the other hand and no switch shapes inside a move', () => {
+    for (const level of ALL_LEVELS) {
+      const entries = withMoves(synthetic(100, 600), level, 1, { shapes: true });
+      for (const cues of byPhrase(entries).values()) {
+        const startSec = cues[0].cue.timeSec;
+        const endSec = lastTime(cues[cues.length - 1].cue);
+        const inside = entries.filter((entry) => entry.cue.timeSec >= startSec && entry.cue.timeSec <= endSec);
+        expect(inside.every((entry) => entry.role === 'move')).toBe(true);
+        if (level < 5) expect(cues.every((entry) => entry.cue.gesture === undefined)).toBe(true);
+      }
+    }
+  });
+
+  it('keep the phrase shape at a level with a shape on every cue', () => {
+    const song = synthetic(100, 600);
+    const shapes = phraseShapes(song, 42);
+    const moveCues = withMoves(song, 5, 1).filter((entry) => entry.role === 'move');
+    expect(moveCues.length).toBeGreaterThan(100);
+    for (const { cue } of moveCues) expect(cue.gesture).toBe(shapes[cue.beatIndex]);
+  });
+
+  it('get a clear moment before them: no slide runs into a move, and no off-beat tap comes just before it', () => {
+    // At 100 BPM a beat is 0.6 s: the cue before a move ends at least a beat before it.
+    for (const level of ALL_LEVELS) {
+      const entries = withMoves(synthetic(100, 600), level, 0.7);
+      entries.forEach((entry, i) => {
+        if (entry.role !== 'move' || i === 0 || entries[i - 1].role === 'move') return;
+        expect(entries[i - 1].role).not.toBe('offbeat');
+        expect(entry.cue.timeSec - lastTime(entries[i - 1].cue)).toBeGreaterThan(0.55);
+      });
+    }
+  });
+
+  it('start no move before the time the options give, and keep the later ones', () => {
+    const song = synthetic(100, 600);
+    const fromSec = 200;
+    for (const level of ALL_LEVELS) {
+      const all = withMoves(song, level, 0.7);
+      const late = withMoves(song, level, 0.7, { movesFromSec: fromSec });
+      const lateMoves = late.filter((entry) => entry.role === 'move');
+      expect(lateMoves.every((entry) => entry.cue.timeSec >= fromSec)).toBe(true);
+      expect(moveKeys(late)).toEqual(moveKeys(all).filter((key) => song.beats[Number(key.split(' ')[0]) * 16] >= fromSec));
+    }
+  });
+
+  it('leave a round that starts inside the song without the rest of a move', () => {
+    // The round passes its start plus the lead seconds, where its first cue may come.
+    const song = synthetic(100, 600);
+    const startSec = 100;
+    for (const level of ALL_LEVELS) {
+      const played = entriesFrom(withMoves(song, level, 1, { movesFromSec: startSec + CHART.leadSec }), startSec);
+      for (const cues of byPhrase(played).values()) expect(cues[0].cue.beatIndex % phraseBeats(song)).toBe(0);
+      expect(played[0].cue.timeSec).toBeGreaterThanOrEqual(startSec + CHART.leadSec);
+    }
+  });
+
+  it('are counted by name, once each, however many cues they have', () => {
+    const entries = withMoves(synthetic(100, 600), 3, 0.7);
+    const phrases = [...byPhrase(entries).values()];
+    const counts = countMoves(entries);
+    expect(counts.point + counts.circle).toBe(phrases.length);
+    expect(counts.point).toBe(phrases.filter((cues) => cues[0].move?.name === 'point').length);
+    expect(counts.point).toBeGreaterThan(5);
+    expect(counts.circle).toBeGreaterThan(5);
+    expect(countMoves(withMoves(synthetic(100, 600), 3, 0))).toEqual({ point: 0, circle: 0 });
   });
 });

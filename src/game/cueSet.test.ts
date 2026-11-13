@@ -128,6 +128,11 @@ describe('the mix of a chart', () => {
     expect(chartMix(synthetic(60, 120), [...mixed(), ...extras], 3)).toMatchObject({ slides: 0.22, doubles: 0.45, cues: 102 });
   });
 
+  it('leaves the cues of a move out of its shares, and counts them in its number of cues', () => {
+    const moveCues = entries('slide', 10, 100).map((slide): ChartEntry => ({ ...slide, role: 'move', move: { name: 'point', phrase: 6 } }));
+    expect(chartMix(synthetic(60, 120), [...mixed(), ...moveCues], 3)).toMatchObject({ slides: 0.22, doubles: 0.45, cues: 110 });
+  });
+
   it('counts only cues in busy music in its shares, where the rules allow slides and doubles', () => {
     const song = synthetic(60, 200);
     song.intensity = song.beats.map((_, beat) => (beat < 100 ? 0.8 : 0.2));
