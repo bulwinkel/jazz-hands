@@ -9,6 +9,8 @@ import { isHandClick } from './dom';
 import { generateFaceCues } from './faceChart';
 import { needsFace, newFaceCueState } from './faceJudgment';
 import { fitMomentAt, planFit } from './fitTiming';
+import { logEntry } from './frameLog';
+import type { LoggedFrame } from './frameLog';
 import type { FitPlan } from './fitTiming';
 import { containRect, defaultGrid, faceRegion, fitGrid } from './geometry';
 import { newHandMenuState, stepHandMenu } from './handMenu';
@@ -48,6 +50,8 @@ interface PublicState {
   report?: RunReport;
   /** The song preview of the menu. */
   preview: PreviewState;
+  /** With `framelog=1`: every tracking frame since the page loaded. */
+  frameLog?: LoggedFrame[];
 }
 declare global {
   interface Window {
@@ -103,6 +107,8 @@ export class DanceGame {
   /** Totals about tracking during the current run, and the report of the last finished run. */
   private trackingStats: TrackingStats = newTrackingStats(0);
   private report?: RunReport;
+  /** With `framelog=1`: every tracking frame, for scripts that compare runs. */
+  private readonly frameLog: LoggedFrame[] = [];
 
   private switchingTracker = false;
 
@@ -527,6 +533,10 @@ export class DanceGame {
   // --- Tracking frames ---
 
   private onTrackingFrame = (raw: TrackingFrame): void => {
+    if (this.options.frameLog) {
+      const { input } = this.inputs;
+      this.frameLog.push(logEntry(raw, this.phase, { mode: input?.mode ?? '', thread: input?.thread ?? null }));
+    }
     const frame = this.options.settings.playerCount === 1 ? mergeForSolo(raw) : raw;
     const previous = this.frame;
     this.frame = frame;
@@ -966,6 +976,7 @@ export class DanceGame {
       phase: this.phase,
       songTime: this.songTime(),
       report: this.report,
+      frameLog: this.options.frameLog ? this.frameLog : undefined,
       // Read on demand: the preview changes between the moments this state is written.
       get preview() {
         return preview.state;

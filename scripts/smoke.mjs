@@ -130,8 +130,9 @@ while (elapsedSec() < maxSeconds) {
 }
 
 console.log('phases:', phasesSeen.map((seen) => `${seen.atSec}s ${seen.phase}`).join(' | '));
-// The run report is large: print the state without it. It is saved to test-results/ anyway.
-console.log('final:', await evaluate('JSON.stringify({ ...window.__dance, report: undefined })'));
+// The run report and the frame log are large: print the state without them. The dev server
+// saves the report to test-results/ anyway.
+console.log('final:', await evaluate('JSON.stringify({ ...window.__dance, report: undefined, frameLog: undefined })'));
 console.log('errors:', pageErrors.length ? pageErrors : 'none');
 
 chrome.close();

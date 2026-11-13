@@ -131,6 +131,11 @@ describe('URL parameters', () => {
     expect(parseSettings(null, '?thread=other').thread).toBe('worker');
   });
 
+  it('keep a frame log only when the URL asks for one', () => {
+    expect(parseSettings(null, '').frameLog).toBe(false);
+    expect(parseSettings(null, '?framelog=1').frameLog).toBe(true);
+  });
+
   it('set the one-off options', () => {
     const options = parseSettings(null, '?tracker=pose&input=bot&start=185&seed=42&botAccuracy=0.5&autostart=1');
     expect(options).toMatchObject({

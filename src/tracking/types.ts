@@ -50,9 +50,14 @@ export interface Region {
 export type FaceRegions = [Region | null, Region | null];
 
 export interface TrackingFrame {
-  /** performance.now() when the processed video frame was taken. */
+  /** The page's performance.now() when the processed video frame was taken. */
   timeMs: number;
   inferenceMs: number;
+  /**
+   * The camera frame's time on the camera stream's own clock, in seconds. The camera input
+   * sets it. Scripts use it to match the frames of two runs on one camera file.
+   */
+  videoTimeSec?: number;
   /** Player 0 occupies the left half of the mirrored display. */
   players: [PlayerTracking, PlayerTracking];
 }

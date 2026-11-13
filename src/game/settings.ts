@@ -45,6 +45,8 @@ export interface Options {
   seed: number;
   /** Share of cues the test bot plays. */
   botAccuracy: number;
+  /** Keep every tracking frame in `window.__dance.frameLog`, for scripts that compare runs. */
+  frameLog: boolean;
 }
 
 export const STORAGE_KEY = 'dance-game-v1';
@@ -119,7 +121,7 @@ function readStored(stored: unknown): Settings {
  *   length=short|full   song=<index from 0>   previews=1|0   hands=1|0   record=1|0
  *   cues=shrink|grow
  *   tracker=hands-full|hands-split|pose   input=camera|mouse|bot   thread=worker|main
- *   start=<seconds>   autostart=1   seed=<integer>   botAccuracy=<0..1>
+ *   start=<seconds>   autostart=1   seed=<integer>   botAccuracy=<0..1>   framelog=1
  */
 export function parseSettings(stored: unknown, query: string): Options {
   const settings = readStored(stored);
@@ -157,5 +159,6 @@ export function parseSettings(stored: unknown, query: string): Options {
     autostart: params.get('autostart') === '1',
     seed: seed !== undefined && Number.isInteger(seed) ? seed : DEFAULT_SEED,
     botAccuracy: finiteOr(numberParam('botAccuracy'), 1, 0, 1),
+    frameLog: params.get('framelog') === '1',
   };
 }

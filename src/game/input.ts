@@ -133,11 +133,12 @@ export class CameraInput implements GameInput {
       this.running = false;
       onError(error);
     };
-    const deliver = (frame: TrackingFrame): void => {
-      if (this.running) onFrame(frame);
-    };
-    const track = (): void => {
+    // `videoTimeSec` names the camera frame, so a test script can match frames between runs.
+    const track = (videoTimeSec: number): void => {
       if (!this.running) return;
+      const deliver = (frame: TrackingFrame): void => {
+        if (this.running) onFrame({ ...frame, videoTimeSec });
+      };
       try {
         this.tracking.track(video, () => view().faceRegions, deliver, fail);
       } catch (error) {
@@ -147,8 +148,8 @@ export class CameraInput implements GameInput {
 
     // Track each camera frame once. Chrome tells us when a new frame arrives.
     if (typeof video.requestVideoFrameCallback === 'function') {
-      const onVideoFrame = (): void => {
-        track();
+      const onVideoFrame = (_nowMs: number, frame: VideoFrameCallbackMetadata): void => {
+        track(frame.mediaTime);
         if (this.running) this.videoCallbackId = video.requestVideoFrameCallback(onVideoFrame);
       };
       this.videoCallbackId = video.requestVideoFrameCallback(onVideoFrame);
@@ -159,7 +160,7 @@ export class CameraInput implements GameInput {
       if (!this.running) return;
       if (video.currentTime !== this.lastVideoTime && video.readyState >= 2) {
         this.lastVideoTime = video.currentTime;
-        track();
+        track(video.currentTime);
       }
       this.animationId = requestAnimationFrame(onAnimationFrame);
     };
