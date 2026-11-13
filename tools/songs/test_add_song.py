@@ -62,7 +62,27 @@ class DrumsClueTest(unittest.TestCase):
     def test_snare_on_the_kick_beats_decides_nothing(self) -> None:
         clue = drums_clue(np.array([21.0, 4, 25, 4]), np.array([18.0, 10, 17, 10]))
         self.assertEqual(clue.beats, ())
-        self.assertIn('no backbeat', clue.detail)
+        self.assertIn('no clear backbeat', clue.detail)
+
+    def test_snare_must_answer_by_the_ratio(self) -> None:
+        kick = np.array([30.0, 10, 30, 10])
+        # 52 against 48 is 1.08 times: noise in the snare band, not a backbeat.
+        clue = drums_clue(kick, np.array([24.0, 26, 24, 26]))
+        self.assertEqual(clue.beats, ())
+        self.assertIn('the snare hits beats 1 and 3 1.08 times as hard as beats 0 and 2 (it must be 1.25): '
+                      'no clear backbeat.', clue.detail)
+        # 55.5 against 44.5 is 1.247 times: just too little. 56 against 44 is 1.27 times: enough.
+        self.assertEqual(drums_clue(kick, np.array([22.25, 27.75, 22.25, 27.75])).beats, ())
+        clue = drums_clue(kick, np.array([22.0, 28, 22, 28]))
+        self.assertEqual(clue.beats, (0, 2))
+        self.assertIn('1.27 times as hard as beats 0 and 2: a backbeat.', clue.detail)
+
+    def test_kick_pattern_with_a_weak_snare_decides_nothing(self) -> None:
+        # Nebuchadnezzar's Dream: a clear kick on beat 1, but the snare band leans on beats 0 and 2 by
+        # only 1.13 times. The old rule took any lean as a backbeat.
+        clue = drums_clue(np.array([15.9, 52.5, 13.9, 17.6]), np.array([27.1, 25.2, 25.9, 21.8]))
+        self.assertEqual(clue.beats, ())
+        self.assertIn('no clear backbeat', clue.detail)
 
     def test_snare_alone_decides_nothing(self) -> None:
         clue = drums_clue(np.array([1.0, 1.0, 1.0, 1.0]), np.array([1.0, 3.0, 1.0, 3.0]))

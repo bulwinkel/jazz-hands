@@ -251,8 +251,12 @@ CHROMA_INSET_SEC = 0.04
 # The snare and the clap. Their crack is loudest here, above the kick and the bass.
 SNARE_BAND_HZ = (1500.0, 6000.0)
 # The drums point to a pair of beats only when the kick hits that pair this many times as hard
-# as the other pair.
-DRUMS_DECISIVE_RATIO = 1.25
+# as the other pair, and the snare hits the other pair this many times as hard as the kick's pair.
+# The snare band also holds hi-hats, shakers, guitars and the voice. In four of the 15 songs it
+# leans 1.13 to 1.17 times toward the pair the kick leaves, with one beat of that pair no louder
+# than a beat of the kick's pair: that is not a backbeat. The clear backbeats read 1.37 or more.
+KICK_DECISIVE_RATIO = 1.25
+SNARE_DECISIVE_RATIO = 1.25
 # How much each clue counts when the bar start is chosen. The chords and the drums read every
 # bar of the song, so they count most. The level rises are a few section starts, and a pickup or
 # a fill can move a rise by a beat. The song start is a habit of the songs, not a sound: a song
@@ -1752,8 +1756,9 @@ def drums_clue(kick: np.ndarray, snare: np.ndarray) -> BarClue:
     point to a pair of beats half a bar apart. They often cannot tell which of the two starts the
     bar: the chords can. The kick leads, and must hit one pair clearly harder than the other. The
     snare band also holds hi-hats, shakers, strummed guitars and the voice, so the snare only
-    confirms: as a backbeat it must be stronger on the other pair. A kick on every beat, or no
-    clear drums, decides nothing.
+    confirms: as a backbeat it must hit the other pair clearly harder too. Without that test, noise
+    in the snare band would confirm any kick pattern about half the time. A kick on every beat, no
+    clear backbeat, or no clear drums, decides nothing.
     """
     half = BEATS_PER_BAR // 2
     kick_share, snare_share = shares(kick), shares(snare)
@@ -1763,20 +1768,20 @@ def drums_clue(kick: np.ndarray, snare: np.ndarray) -> BarClue:
     strong = int(np.argmax(kick_pairs))
     weak = 1 - strong
     kick_ratio = kick_pairs[strong] / max(float(kick_pairs[weak]), 1e-9)
+    snare_ratio = snare_pairs[weak] / max(float(snare_pairs[strong]), 1e-9)
 
     def pair(index: int) -> str:
         """Returns the two beats of a pair, as text."""
         return f'beats {index} and {index + half}'
 
-    if kick_ratio < DRUMS_DECISIVE_RATIO:
-        beats, reason = (), (f'The kick hits {pair(strong)} only {kick_ratio:.2f} times as hard as {pair(weak)} '
-                             f'(it must be {DRUMS_DECISIVE_RATIO:g}): no clear kick pattern.')
-    elif snare_pairs[weak] <= snare_pairs[strong]:
-        beats, reason = (), (f'The kick hits {pair(strong)} {kick_ratio:.2f} times as hard as {pair(weak)}, '
-                             f'but the snare is not stronger on {pair(weak)}: no backbeat.')
+    kick_text = f'The kick hits {pair(strong)} {kick_ratio:.2f} times as hard as {pair(weak)}'
+    snare_text = f'the snare hits {pair(weak)} {snare_ratio:.2f} times as hard as {pair(strong)}'
+    if kick_ratio < KICK_DECISIVE_RATIO:
+        beats, reason = (), f'{kick_text} (it must be {KICK_DECISIVE_RATIO:g}): no clear kick pattern.'
+    elif snare_ratio < SNARE_DECISIVE_RATIO:
+        beats, reason = (), f'{kick_text}, but {snare_text} (it must be {SNARE_DECISIVE_RATIO:g}): no clear backbeat.'
     else:
-        beats, reason = (strong, strong + half), (f'The kick hits {pair(strong)} {kick_ratio:.2f} times as hard as '
-                                                  f'{pair(weak)}, and the snare answers on {pair(weak)}.')
+        beats, reason = (strong, strong + half), f'{kick_text}, and {snare_text}: a backbeat.'
     detail = '\n'.join([
         'kick, share on    ' + '   '.join(f'beat {beat}: {share:.0f}%' for beat, share in enumerate(kick_share)),
         'snare, share on   ' + '   '.join(f'beat {beat}: {share:.0f}%' for beat, share in enumerate(snare_share)),
