@@ -28,9 +28,9 @@ export function recordingDelays(outputLatencySec: number, avOffsetMs: number, in
 }
 
 /**
- * A delay node can only make the sound later. A negative total would need the sound earlier
- * than the song plays it, which cannot be done: it applies as no delay, and the video's sound
- * is then early by that much.
+ * A delay node can only make the sound later. A negative total would ask for the sound earlier
+ * than the song plays it, which cannot be done: no shift is applied, and the video's sound is
+ * then late by that much.
  */
 function applicableDelay(sec: number): number {
   return Math.max(0, Math.min(MAX_RECORDING_DELAY_SEC, sec));

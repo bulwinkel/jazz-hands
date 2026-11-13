@@ -89,7 +89,7 @@ export class DanceGame {
   private session = 0;
 
   private audio?: SongAudio;
-  /** The camera, or a test input. */
+  /** The host of the input: it opens, switches and closes the camera or a test input. */
   private readonly inputs: InputHost;
   /** Whether hand control was on at the last look from the menu. See `syncMenuInput`. */
   private menuHandControl = false;
