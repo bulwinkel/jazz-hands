@@ -1,21 +1,27 @@
-"""Unit tests for how the song tool chooses the bar start: the clues and the choice, from given numbers.
+"""Unit tests for the song tool: how it measures the drums, how it chooses the bar start, and --compare.
 
-Run them with `npm run test-songs`. They read no audio and start no browser.
+Run them with `npm run test-songs`. They read no audio file and start no browser: the drum tests make
+their own sound.
 """
 
 import unittest
 
+import librosa
 import numpy as np
 
 from add_song import (
+    ANALYSIS_RATE,
     CHORDS_WEIGHT,
     DRUMS_WEIGHT,
     RISES_WEIGHT,
     BarClue,
+    beat_list_ends,
     choose_bar_start,
     chords_clue,
-    beat_list_ends,
+    drum_shares,
     drums_clue,
+    onset_envelopes,
+    snare_envelope,
     start_clue,
 )
 
@@ -248,6 +254,100 @@ class ChooseBarStartTest(unittest.TestCase):
         self.assertEqual(choice.confidence, 'high')
 
 
+# --- The drums, measured on synthetic sound ---
+
+BEAT_SEC = 0.5
+FIRST_BEAT_SEC = 0.5
+BARS = 8
+
+
+def click_track(thump_beats: tuple[int, ...], burst_beats: tuple[int, ...],
+                chord: bool = False) -> tuple[np.ndarray, np.ndarray]:
+    """Returns 8 bars of a synthetic drum part at 120 beats per minute, and its beat times.
+
+    A thump is a 60 Hz tone that dies away in about 0.1 s: a kick. A burst is noise that dies away in
+    about 0.05 s: a snare. They go on the beats of the bar, 0 to 3, in `thump_beats` and
+    `burst_beats`. With `chord`, a held chord of three tones sounds through the whole track.
+    """
+    beats = FIRST_BEAT_SEC + np.arange(BARS * 4) * BEAT_SEC
+    samples = np.zeros(int((beats[-1] + 1.0) * ANALYSIS_RATE))
+    thump_sec = np.arange(int(0.15 * ANALYSIS_RATE)) / ANALYSIS_RATE
+    thump = 0.8 * np.sin(2 * np.pi * 60 * thump_sec) * np.exp(-thump_sec / 0.04)
+    burst_sec = np.arange(int(0.08 * ANALYSIS_RATE)) / ANALYSIS_RATE
+    burst = 0.3 * np.random.default_rng(1).standard_normal(len(burst_sec)) * np.exp(-burst_sec / 0.02)
+    for index, beat in enumerate(beats):
+        at = int(beat * ANALYSIS_RATE)
+        if index % 4 in thump_beats:
+            samples[at:at + len(thump)] += thump
+        if index % 4 in burst_beats:
+            samples[at:at + len(burst)] += burst
+    if chord:
+        time_sec = np.arange(len(samples)) / ANALYSIS_RATE
+        tones = sum(np.sin(2 * np.pi * hz * time_sec) for hz in (220.0, 277.2, 329.6))
+        samples += 0.1 * tones * np.minimum(1, time_sec / 0.3)
+    return samples, beats
+
+
+def measured_shares(samples: np.ndarray, beats: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Returns the kick and snare shares on each beat of the bar, measured as the tool measures a song."""
+    _, percussive = librosa.effects.hpss(samples)
+    return drum_shares(onset_envelopes(samples, percussive).kick, snare_envelope(percussive), beats)
+
+
+class DrumSharesTest(unittest.TestCase):
+    """The tool's own measuring finds the drum pattern of a synthetic drum part."""
+
+    def assert_between(self, values: np.ndarray, low: float, high: float) -> None:
+        """Checks that every value lies between `low` and `high`."""
+        for value in values:
+            self.assertGreaterEqual(value, low)
+            self.assertLessEqual(value, high)
+
+    def test_kick_on_beats_0_and_2_and_snare_between(self) -> None:
+        kick, snare = measured_shares(*click_track((0, 2), (1, 3)))
+        self.assert_between(kick[[0, 2]], 35, 40)
+        self.assert_between(kick[[1, 3]], 10, 15)
+        self.assert_between(snare[[1, 3]], 40, 45)
+        self.assert_between(snare[[0, 2]], 5, 10)
+        self.assertEqual(drums_clue(kick, snare).beats, (0, 2))
+
+    def test_bars_are_counted_from_the_first_beat(self) -> None:
+        # The same track, with the music taken to start one beat later: the kick is now on beats 1 and 3.
+        samples, beats = click_track((0, 2), (1, 3))
+        kick, snare = measured_shares(samples, beats[1:])
+        self.assert_between(kick[[1, 3]], 35, 40)
+        self.assertEqual(drums_clue(kick, snare).beats, (1, 3))
+
+    def test_kick_on_every_beat_decides_nothing(self) -> None:
+        kick, snare = measured_shares(*click_track((0, 1, 2, 3), ()))
+        self.assert_between(kick, 24, 26)
+        clue = drums_clue(kick, snare)
+        self.assertEqual(clue.beats, ())
+        self.assertIn('no clear kick pattern', clue.detail)
+
+    def test_bursts_on_every_beat_are_no_backbeat(self) -> None:
+        # A clear kick on beats 0 and 2, and hi-hats on every beat: no backbeat to confirm the kick.
+        kick, snare = measured_shares(*click_track((0, 2), (0, 1, 2, 3)))
+        self.assert_between(kick[[0, 2]], 30, 40)
+        self.assert_between(snare, 20, 30)
+        clue = drums_clue(kick, snare)
+        self.assertEqual(clue.beats, ())
+        self.assertIn('no clear backbeat', clue.detail)
+
+    def test_held_chord_with_no_drums_decides_nothing(self) -> None:
+        kick, snare = measured_shares(*click_track((), (), chord=True))
+        clue = drums_clue(kick, snare)
+        self.assertEqual(clue.beats, ())
+        self.assertIn('no clear kick pattern', clue.detail)
+
+    def test_silence_decides_nothing(self) -> None:
+        kick, snare = measured_shares(*click_track((), ()))
+        self.assertEqual(list(kick), [0, 0, 0, 0])
+        clue = drums_clue(kick, snare)
+        self.assertEqual(clue.beats, ())
+        self.assertIn('no drums', clue.detail)
+
+
 class BeatListEndsTest(unittest.TestCase):
     """--compare tells how our beat list and theirs line up at both ends."""
 
@@ -257,7 +357,8 @@ class BeatListEndsTest(unittest.TestCase):
 
     def test_our_list_starts_later_and_ends_sooner(self) -> None:
         theirs = np.arange(10) * 0.5
-        self.assertEqual(beat_list_ends(theirs[2:8], theirs), 'Our first beat is their beat index 2, our last is their 7.')
+        self.assertEqual(beat_list_ends(theirs[2:8], theirs),
+                         'Our first beat is their beat index 2, our last is their 7.')
 
     def test_our_list_starts_earlier(self) -> None:
         # All Eyes on Us: the tool lists one beat before the manifest's first beat.
@@ -271,7 +372,8 @@ class BeatListEndsTest(unittest.TestCase):
     def test_half_their_tempo(self) -> None:
         # Drum and Bass Violins: our beats are their beats of even index.
         theirs = np.arange(20) * 0.25
-        self.assertEqual(beat_list_ends(theirs[::2], theirs), 'Our first beat is their beat index 0, our last is their 18.')
+        self.assertEqual(beat_list_ends(theirs[::2], theirs),
+                         'Our first beat is their beat index 0, our last is their 18.')
 
 
 if __name__ == '__main__':

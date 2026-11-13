@@ -1800,7 +1800,9 @@ def drums_clue(kick: np.ndarray, snare: np.ndarray) -> BarClue:
 
     kick_text = f'The kick hits {pair(strong)} {kick_ratio:.2f} times as hard as {pair(weak)}'
     snare_text = f'the snare hits {pair(weak)} {snare_ratio:.2f} times as hard as {pair(strong)}'
-    if kick_ratio < KICK_DECISIVE_RATIO:
+    if kick_pairs.sum() <= 0:
+        beats, reason = (), 'The kick band has no hits: no drums.'
+    elif kick_ratio < KICK_DECISIVE_RATIO:
         beats, reason = (), f'{kick_text} (it must be {KICK_DECISIVE_RATIO:g}): no clear kick pattern.'
     elif snare_ratio < SNARE_DECISIVE_RATIO:
         beats, reason = (), f'{kick_text}, but {snare_text} (it must be {SNARE_DECISIVE_RATIO:g}): no clear backbeat.'
