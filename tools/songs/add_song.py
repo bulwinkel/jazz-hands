@@ -2296,6 +2296,25 @@ def write_clips(job: Job, work_dir: Path, samples: np.ndarray, beats: np.ndarray
 # --- Comparison with an existing manifest ---
 
 
+def beat_list_ends(ours: np.ndarray, theirs: np.ndarray) -> str:
+    """Returns how the first and the last beats of our list and theirs line up, as text.
+
+    Each end of the list that starts earlier, or ends later, is given in the other list's numbering.
+    The nearest of their beats to a beat of ours before their first beat is their first beat, which
+    would hide how many beats we list before theirs.
+    """
+    half_beat = min(float(np.median(np.diff(ours))), float(np.median(np.diff(theirs)))) / 2
+    if ours[0] < theirs[0] - half_beat:
+        first = f'Their first beat is our beat index {nearest_beats(theirs[:1], ours)[0][0]}'
+    else:
+        first = f'Our first beat is their beat index {nearest_beats(ours[:1], theirs)[0][0]}'
+    if ours[-1] > theirs[-1] + half_beat:
+        last = f'their last is our {nearest_beats(theirs[-1:], ours)[0][0]}'
+    else:
+        last = f'our last is their {nearest_beats(ours[-1:], theirs)[0][0]}'
+    return f'{first}, {last}.'
+
+
 def report_comparison(report: Report, manifest: dict, reference: dict, reference_path: Path) -> None:
     """Prints how the new manifest differs from the reference: beats, bar starts, Short round, pacing.
 
@@ -2303,14 +2322,14 @@ def report_comparison(report: Report, manifest: dict, reference: dict, reference
     one manifest has half the tempo of the other or one more beat at the start.
     """
     ours = np.array(manifest['beats'])
-    nearest, difference_sec = nearest_beats(ours, np.array(reference['beats'], dtype=float))
+    theirs = np.array(reference['beats'], dtype=float)
+    nearest, difference_sec = nearest_beats(ours, theirs)
     difference_ms = difference_sec * 1000
 
     report.section(f'Compared with {reference_path}')
     for key in ('firstDownbeat', 'beatsPerBar', 'durationSec', 'shortStartSec'):
         report.line(f'{key}: {manifest.get(key, "none")} (theirs {reference.get(key, "none")})')
-    report.line(f'beats: {len(ours)} (theirs {len(reference["beats"])}). Our first beat is their beat index '
-                f'{nearest[0]}, our last is their {nearest[-1]}.')
+    report.line(f'beats: {len(ours)} (theirs {len(theirs)}). {beat_list_ends(ours, theirs)}')
     if round(float(np.median(np.diff(nearest)))) == 2:
         even = int((nearest % 2 == 0).sum())
         report.line(f'We write half their tempo: {even} of our {len(ours)} beats are their beats of even index, '

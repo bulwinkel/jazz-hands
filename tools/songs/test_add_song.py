@@ -14,6 +14,7 @@ from add_song import (
     BarClue,
     choose_bar_start,
     chords_clue,
+    beat_list_ends,
     drums_clue,
     start_clue,
 )
@@ -245,6 +246,32 @@ class ChooseBarStartTest(unittest.TestCase):
         choice = choose_bar_start([start_clue(), rises(0), chords(), drums(0, 2)])
         self.assertEqual(choice.first_downbeat, 0)
         self.assertEqual(choice.confidence, 'high')
+
+
+class BeatListEndsTest(unittest.TestCase):
+    """--compare tells how our beat list and theirs line up at both ends."""
+
+    def test_same_beats(self) -> None:
+        beats = np.arange(10) * 0.5
+        self.assertEqual(beat_list_ends(beats, beats), 'Our first beat is their beat index 0, our last is their 9.')
+
+    def test_our_list_starts_later_and_ends_sooner(self) -> None:
+        theirs = np.arange(10) * 0.5
+        self.assertEqual(beat_list_ends(theirs[2:8], theirs), 'Our first beat is their beat index 2, our last is their 7.')
+
+    def test_our_list_starts_earlier(self) -> None:
+        # All Eyes on Us: the tool lists one beat before the manifest's first beat.
+        ours = np.arange(10) * 0.5
+        self.assertEqual(beat_list_ends(ours, ours[1:]), 'Their first beat is our beat index 1, our last is their 8.')
+
+    def test_our_list_ends_later(self) -> None:
+        ours = np.arange(10) * 0.5
+        self.assertEqual(beat_list_ends(ours, ours[:7]), 'Our first beat is their beat index 0, their last is our 6.')
+
+    def test_half_their_tempo(self) -> None:
+        # Drum and Bass Violins: our beats are their beats of even index.
+        theirs = np.arange(20) * 0.25
+        self.assertEqual(beat_list_ends(theirs[::2], theirs), 'Our first beat is their beat index 0, our last is their 18.')
 
 
 if __name__ == '__main__':
