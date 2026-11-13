@@ -333,8 +333,12 @@ export const HANDS_UP_CELL = 1;
 export const TIMING = {
   /** Camera and tracking delay, taken off every tracking frame's time. Tuned with [ and ]. */
   inputLatencyMs: 100,
+  /** A kept camera delay is clamped into this range on load, as [lowest, highest]. */
+  inputLatencyRangeMs: [-1000, 2000],
   /** Extra delay between sound and picture. Tuned with , and . */
   avOffsetMs: 0,
+  /** A kept picture offset is clamped into this range on load, as [lowest, highest]. */
+  avOffsetRangeMs: [-2000, 2000],
   /** The Short length ends at the first bar start this long after its start. */
   shortSec: 90,
   fadeSec: 2,
@@ -343,12 +347,67 @@ export const TIMING = {
   /** Time to get from the laptop to the play spot before the reach fit. */
   walkBackSec: 8,
   fitSec: 6,
+  /**
+   * After a fit begun by hand, hands count only after this long. The fist that chose Start or
+   * Recalibrate is still near the button, and its positions would pull a grid toward it. With
+   * two players the Recalibrate button sits between the grids.
+   */
+  handSettleSec: 1,
   readyHoldSec: 1,
   replayHoldSec: 1.5,
   countdownSec: 3,
   feedbackSec: 0.6,
   /** A tracking frame older than this is stale: hands are hidden and holds reset. */
   staleFrameMs: 500,
+} as const;
+
+/** An outline of the shrink cue style starts this many times larger than its cell. See cueStyle.ts. */
+export const SHRINK_START_SCALE = 2.2;
+/**
+ * A block of the grow cue style starts at this share of its cell. Small, but large enough to
+ * see. See cueStyle.ts.
+ */
+export const GROW_START_SCALE = 0.15;
+
+/**
+ * Recording a round as video: the game view, with the grids, the cues and the score, and the
+ * camera view. See recording.ts.
+ */
+export const RECORDING = {
+  /** The game view is this high. Its width follows the camera's shape. */
+  gameHeight: 720,
+  frameRate: 30,
+  /**
+   * A display frame this close before a frame of the game view is due still draws it, so
+   * screen jitter skips none.
+   */
+  frameSlackMs: 4,
+  gameBitsPerSec: 4_000_000,
+  /** The camera view keeps the camera's own size, 1080p on a recent laptop. */
+  cameraBitsPerSec: 6_000_000,
+  audioBitsPerSec: 128_000,
+  /**
+   * Room for the speakers' own delay in a recording's sound, on top of the largest offsets the
+   * settings allow. Bluetooth speakers add about 0.3 s.
+   */
+  outputLatencyRoomSec: 1,
+  /** The recording goes on this long after the results show: the cheer, and the result card. */
+  tailSec: 4,
+  /**
+   * A video's sound is late by its delay, so the end of the song reaches the video that much
+   * after the results show. The recording then goes on for the delay and this margin at least.
+   */
+  soundTailMarginSec: 0.5,
+  /** The game keeps the videos of this many rounds. Older ones are dropped, to free memory. */
+  keepRounds: 3,
+} as const;
+
+/** Notes at the top of the screen. */
+export const TOAST = {
+  /** A short note, such as the name of the cue style after the V key, stays this long. */
+  shortMs: 1600,
+  /** A note to read from the dance spot, such as "hand control stopped", stays this long. */
+  longMs: 6000,
 } as const;
 
 /** The test bot holds each cue cell from `leadSec` before its due time until `holdSec` after. */

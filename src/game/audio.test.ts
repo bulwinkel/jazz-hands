@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_RECORDING_DELAY_SEC, recordingDelays } from './audio';
-import { AV_OFFSET_RANGE_MS, INPUT_LATENCY_RANGE_MS } from './settings';
+import { TIMING } from './config';
 
 describe('recording sound delays', () => {
   it('delay the game view by the speakers and the picture offset, and the camera view by the camera too', () => {
@@ -17,7 +17,7 @@ describe('recording sound delays', () => {
   });
 
   it('hold the largest offsets the settings allow, with room for slow speakers', () => {
-    const largest = recordingDelays(0.3, AV_OFFSET_RANGE_MS[1], INPUT_LATENCY_RANGE_MS[1]);
+    const largest = recordingDelays(0.3, TIMING.avOffsetRangeMs[1], TIMING.inputLatencyRangeMs[1]);
     expect(largest.game).toBeCloseTo(2.3);
     expect(largest.camera).toBeCloseTo(4.3);
     expect(largest.camera).toBeLessThan(MAX_RECORDING_DELAY_SEC);

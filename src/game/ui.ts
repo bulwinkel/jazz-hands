@@ -1,6 +1,5 @@
-import { DUE_COLOR } from './colors';
-import { HAND_MENU, PLAYER_COLORS } from './config';
-import { GROW_START_SCALE, SHRINK_START_SCALE } from './cueStyle';
+import { DUE_COLOR, VEIL } from './colors';
+import { GROW_START_SCALE, HAND_MENU, PLAYER_COLORS, SHRINK_START_SCALE, TOAST } from './config';
 import type { CueStyle } from './cueStyle';
 import { find, isHandClick } from './dom';
 import type { HandTarget, MenuHand } from './handMenu';
@@ -9,14 +8,11 @@ import type { MenuControls } from './menuView';
 import type { PlayerRun } from './player';
 import { RECORDINGS_HTML, removePreview, showRecordings } from './recordingsView';
 import type { RecordingsList } from './recordingsView';
-import { VEIL } from './recordingScene';
 import { playerHeading, RESULTS_HEADING } from './resultText';
 import { accuracy, stars } from './scoring';
 import type { Settings } from './settings';
 import { VideoPlayer } from './videoPlayer';
 
-/** A short note stays on screen this long. */
-const TOAST_MS = 1600;
 
 const SHELL_HTML = `
   <main id="stage" aria-label="Dance game">
@@ -126,7 +122,7 @@ export class GameUI {
   hidePanel(): void {
     removePreview(this.panel);
     this.panel.hidden = true;
-    this.menu = undefined;
+    this.closeMenu();
   }
 
   /**
@@ -138,12 +134,12 @@ export class GameUI {
     this.menu?.showCueStyle(style);
   }
 
-  /** Shows a short note at the top of the screen, which goes away by itself. */
-  showToast(text: string): void {
+  /** Shows a short note at the top of the screen, which goes away by itself after `durationMs`. */
+  showToast(text: string, durationMs: number = TOAST.shortMs): void {
     this.toast.textContent = text;
     this.toast.hidden = false;
     window.clearTimeout(this.toastTimer);
-    this.toastTimer = window.setTimeout(() => (this.toast.hidden = true), TOAST_MS);
+    this.toastTimer = window.setTimeout(() => (this.toast.hidden = true), durationMs);
   }
 
   /** The large message on screen now, or undefined when none shows. */
@@ -317,7 +313,7 @@ export class GameUI {
   /** Opens the panel with `html` as its content. `outsideHtml` sits beside the content, in the panel's own corners. */
   private openPanel(className: string, html: string, outsideHtml = ''): void {
     removePreview(this.panel);
-    this.menu = undefined;
+    this.closeMenu();
     this.panel.className = className;
     this.panel.innerHTML = `<div class="fit">${html}</div>${outsideHtml}`;
     this.panel.hidden = false;
@@ -328,6 +324,12 @@ export class GameUI {
     this.fitObserver.observe(this.panel);
     this.fitObserver.observe(find(this.panel, '.fit'));
     this.fitPanel();
+  }
+
+  /** The menu leaves the panel: its listeners outside the panel end. */
+  private closeMenu(): void {
+    this.menu?.close();
+    this.menu = undefined;
   }
 
   /**

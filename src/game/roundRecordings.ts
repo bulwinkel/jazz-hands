@@ -1,10 +1,8 @@
-import { PLAYER_COLORS } from './config';
-import type { PlayerRun } from './player';
-import { RECORDING, RoundRecorder, videoFileName } from './recording';
+import type { RecordingDelays } from './audio';
+import { RECORDING } from './config';
+import { RoundRecorder, videoFileName } from './recording';
 import type { RoundVideos } from './recording';
-import type { RecordingScene, ResultLine } from './recordingScene';
-import { playerHeading } from './resultText';
-import { accuracy, stars } from './scoring';
+import type { RecordingScene } from './recordingScene';
 
 /** What the list of recorded rounds shows. */
 export interface RecordingsView {
@@ -16,6 +14,9 @@ export interface RecordingsView {
   lastRound?: RoundVideos;
 }
 
+/** What the recordings use of a recorder. */
+export type Recorder = Pick<RoundRecorder, 'active' | 'start' | 'drawFrame' | 'pause' | 'resume' | 'stop' | 'discard'>;
+
 /** What a recording of a round needs. */
 export interface RecordingSource {
   /** The song's sound for each video, each with its own delay. */
@@ -26,12 +27,12 @@ export interface RecordingSource {
   song: { id: string; title: string };
 }
 
-/** What the recordings ask of the game. */
-export interface RecordingsHooks {
-  /** Hears when a recording starts or ends, and when the list changes. */
-  onChange: () => void;
-  /** True while the video player shows `round`. */
-  isOnShow: (round: RoundVideos) => boolean;
+/**
+ * How long a recording goes on after the results show: the cheer and the result card, and at
+ * least until the end of the song has reached the video with the longest sound delay.
+ */
+export function recordingTailSec(delays: RecordingDelays): number {
+  return Math.max(RECORDING.tailSec, Math.max(delays.game, delays.camera) + RECORDING.soundTailMarginSec);
 }
 
 /** Puts `round` first and keeps the newest `keep` rounds. Returns the kept rounds and the dropped ones. */
@@ -46,25 +47,15 @@ export function recordingStatus(isRecording: boolean, finishing: number): string
   return finishing > 0 ? 'Finishing the video…' : '';
 }
 
-/** Each player's result, as the end card of the game view shows it. */
-export function resultLines(players: readonly PlayerRun[]): ResultLine[] {
-  return players.map((player) => ({
-    title: playerHeading(player),
-    color: PLAYER_COLORS[player.index],
-    stars: stars(player.score),
-    score: Math.round(player.score.score),
-    accuracyPercent: Math.round(accuracy(player.score) * 100),
-  }));
-}
-
 /**
  * Records the rounds of a visit, while the players have recording on, and keeps the videos
  * of the last few. The game says when a round begins and ends, and whether its videos are kept.
  */
 export class RoundRecordings {
-  private readonly hooks: RecordingsHooks;
+  private readonly onChange: () => void;
+  private readonly createRecorder: () => Recorder | null;
   /** Records the round that runs now. */
-  private recorder?: RoundRecorder;
+  private recorder?: Recorder;
   private song = { id: 'song', title: '' };
   private stopTimer = 0;
   /** Recordings that have ended and are not yet ready to download. */
@@ -75,11 +66,19 @@ export class RoundRecordings {
   private roundNumber = 0;
   private lastRound?: RoundVideos;
   private nextRoundId = 1;
-  /** Rounds dropped from the list while the video player showed them. They are freed when it closes. */
+  /** The round the video player shows now, if any. */
+  private onShow?: RoundVideos;
+  /** Rounds that left the list while the video player showed them. They wait until it shows them no more. */
   private droppedOnShow: RoundVideos[] = [];
 
-  constructor(hooks: RecordingsHooks) {
-    this.hooks = hooks;
+  /**
+   * `onChange` hears when a recording starts or ends, and when the list changes.
+   * `createRecorder` makes the recorder of a round, or null when the browser cannot record.
+   * Tests give a stand-in.
+   */
+  constructor(onChange: () => void, createRecorder: () => Recorder | null = () => RoundRecorder.create()) {
+    this.onChange = onChange;
+    this.createRecorder = createRecorder;
   }
 
   /** True while a round is recorded. */
@@ -99,7 +98,7 @@ export class RoundRecordings {
     this.roundNumber++;
     this.lastRound = undefined;
     if (!source) return;
-    const recorder = RoundRecorder.create();
+    const recorder = this.createRecorder();
     if (!recorder) return;
 
     try {
@@ -111,7 +110,7 @@ export class RoundRecordings {
     }
     this.recorder = recorder;
     this.song = source.song;
-    this.hooks.onChange();
+    this.onChange();
   }
 
   /**
@@ -126,7 +125,7 @@ export class RoundRecordings {
       if (keep) void this.keep(recorder, this.song);
       else recorder.discard();
     }
-    this.hooks.onChange();
+    this.onChange();
   }
 
   /** Keeps the recording on for `delaySec`, then ends it and keeps its videos. */
@@ -151,15 +150,20 @@ export class RoundRecordings {
   }
 
   /**
-   * Frees the videos of the rounds that left the list, except a round the video player shows
-   * now: it is freed when the player closes. Call it then.
+   * The video player shows `round` now, or nothing. A round that left the list stays alive
+   * while the player shows it, and is freed once it shows it no more.
    */
-  freeDropped(): void {
-    const onShow = this.droppedOnShow.filter((round) => this.hooks.isOnShow(round));
+  playerShows(round: RoundVideos | undefined): void {
+    this.onShow = round;
+    this.freeDropped();
+  }
+
+  /** Frees the videos of the rounds that left the list, except the one the player shows. */
+  private freeDropped(): void {
     for (const round of this.droppedOnShow) {
-      if (!onShow.includes(round)) for (const video of round.videos) URL.revokeObjectURL(video.url);
+      if (round !== this.onShow) for (const video of round.videos) URL.revokeObjectURL(video.url);
     }
-    this.droppedOnShow = onShow;
+    this.droppedOnShow = this.droppedOnShow.filter((round) => round === this.onShow);
   }
 
   dispose(): void {
@@ -168,11 +172,11 @@ export class RoundRecordings {
   }
 
   /** Finishes the videos of a round and puts them in the list to download. */
-  private async keep(recorder: RoundRecorder, song: { id: string; title: string }): Promise<void> {
+  private async keep(recorder: Recorder, song: { id: string; title: string }): Promise<void> {
     const endedAt = new Date();
     const roundNumber = this.roundNumber;
     this.finishing++;
-    this.hooks.onChange();
+    this.onChange();
     const videos = await recorder.stop();
     this.finishing--;
 
@@ -196,6 +200,6 @@ export class RoundRecordings {
       // Until a newer round begins, its results may show these videos as a preview.
       if (roundNumber === this.roundNumber) this.lastRound = round;
     }
-    this.hooks.onChange();
+    this.onChange();
   }
 }

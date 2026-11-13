@@ -1,3 +1,4 @@
+import { RECORDING } from './config';
 import { clearScene, drawScene } from './recordingScene';
 import type { RecordingScene } from './recordingScene';
 
@@ -9,21 +10,8 @@ import type { RecordingScene } from './recordingScene';
  * - the camera view: the camera picture alone, not mirrored, to share as a plain video.
  *
  * Both carry the song. The browser's MediaRecorder writes them while the round runs.
+ * The values that tune a recording are in RECORDING, in config.ts.
  */
-
-export const RECORDING = {
-  /** The game view is this high. Its width follows the camera's shape. */
-  gameHeight: 720,
-  frameRate: 30,
-  gameBitsPerSec: 4_000_000,
-  /** The camera view keeps the camera's own size, 1080p on a recent laptop. */
-  cameraBitsPerSec: 6_000_000,
-  audioBitsPerSec: 128_000,
-  /** The recording goes on this long after the results show: the cheer, and the result card. */
-  tailSec: 4,
-  /** The game keeps the videos of this many rounds. Older ones are dropped, to free memory. */
-  keepRounds: 3,
-} as const;
 
 export type VideoKind = 'game' | 'camera';
 
@@ -69,16 +57,13 @@ export function sizeText(bytes: number): string {
   return megabytes < 10 ? `${megabytes.toFixed(1)} MB` : `${Math.round(megabytes)} MB`;
 }
 
-/** A display frame this close before a video frame's time still draws it, so screen jitter skips none. */
-const FRAME_SLACK_MS = 4;
-
 /**
  * Paces the drawing of the game view to its video. The screen refreshes 60 times a second or
  * more, and a 720p frame takes time to draw, but the video takes only `frameRate` frames a
  * second. Returns the time the next frame is due when one is due at `nowMs`, else null.
  */
 export function nextFrameDue(dueMs: number, nowMs: number, frameRate: number): number | null {
-  if (nowMs + FRAME_SLACK_MS < dueMs) return null;
+  if (nowMs + RECORDING.frameSlackMs < dueMs) return null;
   const frameMs = 1000 / frameRate;
   // After a long gap, such as a hidden tab, count on from now: no burst of frames to catch up.
   return dueMs + frameMs > nowMs ? dueMs + frameMs : nowMs + frameMs;
@@ -91,13 +76,29 @@ export interface RecordedVideo {
   extension: string;
 }
 
+/** One video of a round, ready to download. */
+export interface RoundVideo {
+  kind: VideoKind;
+  url: string;
+  fileName: string;
+  sizeBytes: number;
+}
+
 /** The videos of one round, ready to download. */
 export interface RoundVideos {
   /** Names the round for as long as the game keeps it. A new round gets a new id. */
   id: number;
   /** For example "20:41 · Todo Bueno". */
   label: string;
-  videos: { kind: VideoKind; url: string; fileName: string; sizeBytes: number }[];
+  videos: RoundVideo[];
+}
+
+/** The name of each kind of video, as the page shows it. */
+export const VIDEO_NAMES: Record<VideoKind, string> = { game: 'Game view', camera: 'Camera only' };
+
+/** The video of a round to show first: the game view, else the first video there is. */
+export function mainVideo(round: RoundVideos): RoundVideo | undefined {
+  return round.videos.find((video) => video.kind === 'game') ?? round.videos[0];
 }
 
 interface Track {
@@ -114,7 +115,7 @@ export class RoundRecorder {
   private readonly ctx: CanvasRenderingContext2D;
   private tracks: Track[] = [];
   /** The video track of the game view's canvas. It ends with the recording. */
-  private canvasTrack?: MediaStreamTrack;
+  private canvasTrack?: CanvasCaptureMediaStreamTrack;
   /** When the next frame of the game view is due, in `performance.now()` time. */
   private frameDueMs = 0;
   private ended = false;
@@ -150,8 +151,13 @@ export class RoundRecorder {
     this.canvas.height = size.height;
     clearScene(this.ctx);
 
-    [this.canvasTrack] = this.canvas.captureStream(RECORDING.frameRate).getVideoTracks();
-    this.record('game', [this.canvasTrack, ...gameAudio.getAudioTracks()], RECORDING.gameBitsPerSec);
+    // The stream takes a frame only when asked, after each drawn frame (see `drawFrame`), so one
+    // clock paces the video. A stream with a frame rate of its own takes a frame on its own ticks,
+    // and two clocks of 30 Hz together drop frames.
+    const canvasTrack = this.canvas.captureStream(0).getVideoTracks()[0] as CanvasCaptureMediaStreamTrack;
+    this.canvasTrack = canvasTrack;
+    canvasTrack.requestFrame();
+    this.record('game', [canvasTrack, ...gameAudio.getAudioTracks()], RECORDING.gameBitsPerSec);
 
     const cameraStream = video?.srcObject instanceof MediaStream ? video.srcObject : undefined;
     const cameraTrack = cameraStream?.getVideoTracks()[0];
@@ -190,6 +196,7 @@ export class RoundRecorder {
     if (nextDueMs === null) return;
     this.frameDueMs = nextDueMs;
     drawScene(this.ctx, scene);
+    this.canvasTrack?.requestFrame();
   }
 
   /** Holds both videos while the game is paused, so the pause is not in them. */

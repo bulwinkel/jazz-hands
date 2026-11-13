@@ -1929,15 +1929,23 @@ def manifest_duration_sec(chrome: ChromeDecode) -> float:
     return math.floor((chrome.duration_sec - DURATION_MARGIN_SEC) * 100 + 1e-6) / 100
 
 
+def manifest_beats(beats: np.ndarray, chrome: ChromeDecode) -> list[float]:
+    """Returns the beat times as the manifest writes them: in Chrome's time, rounded to 0.1 ms.
+
+    The beats come in ffmpeg's decode. They move to Chrome's here, because the game plays Chrome's.
+    """
+    return [round(float(time), 4) for time in beats + chrome.offset_sec]
+
+
 def beats_before_end(beats: np.ndarray, chrome: ChromeDecode) -> int:
     """Returns how many of the beats, in ffmpeg's decode, fall before the manifest's end.
 
     The manifest ends DURATION_MARGIN_SEC before the audio does, so a beat in the last few
     milliseconds of the audio lies past it, and the game would refuse the manifest. The test
-    uses the beat times as the manifest writes them: in Chrome's time, rounded to 0.1 ms.
+    uses the beat times exactly as the manifest writes them.
     """
-    game_beats = np.round(beats + chrome.offset_sec, 4)
-    return int(np.count_nonzero(game_beats < manifest_duration_sec(chrome)))
+    end_sec = manifest_duration_sec(chrome)
+    return sum(1 for time in manifest_beats(beats, chrome) if time < end_sec)
 
 
 def build_manifest(job: Job, beats: np.ndarray, intensity: np.ndarray, first_downbeat: int,
@@ -1956,7 +1964,7 @@ def build_manifest(job: Job, beats: np.ndarray, intensity: np.ndarray, first_dow
         'bpm': round(float(60 / np.median(np.diff(game_beats))), 3),
         'beatsPerBar': BEATS_PER_BAR,
         'firstDownbeat': first_downbeat,
-        'beats': [round(float(time), 4) for time in game_beats],
+        'beats': manifest_beats(beats, chrome),
         'intensity': [round(float(value), 3) for value in intensity],
     }
 

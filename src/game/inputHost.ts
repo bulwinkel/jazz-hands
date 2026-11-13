@@ -21,6 +21,12 @@ export function nextTracker(mode: TrackerMode): TrackerMode {
   return TRACKER_CYCLE[(TRACKER_CYCLE.indexOf(mode) + 1) % TRACKER_CYCLE.length];
 }
 
+/**
+ * What the game may read of the open input: its camera picture and its names. Opening,
+ * switching and closing go through the host.
+ */
+export type OpenInput = Pick<GameInput, 'video' | 'mode' | 'delegate' | 'faceDelegate'>;
+
 /** What the host tells the game. */
 export interface InputHooks {
   /** What the input needs to know about the game, read on every frame. */
@@ -46,6 +52,8 @@ export class InputHost {
   private wish: InputWish = null;
   /** Set while an input opens, so two wishes share one opening. */
   private opening?: Promise<void>;
+  /** The input of that opening, so a close can stop its camera before its models have loaded. */
+  private openingInput?: GameInput;
   /** Goes up each time the input closes, so an opening that ends later can tell that nobody wants it. */
   private closings = 0;
   /** Tracker picked with the M key. It lasts until the page reloads. */
@@ -60,7 +68,7 @@ export class InputHost {
   }
 
   /** The open input. Unset while none is open. */
-  get input(): GameInput | undefined {
+  get input(): OpenInput | undefined {
     return this.current;
   }
 
@@ -119,14 +127,18 @@ export class InputHost {
   private async connect(needs: InputNeeds): Promise<void> {
     const closings = this.closings;
     const input = this.create(this.options, needs.mode, needs.faces, this.surface);
+    this.openingInput = input;
     try {
       await input.init();
     } catch (error) {
       input.dispose();
       if (closings === this.closings) this.lastError = error;
       return;
+    } finally {
+      if (this.openingInput === input) this.openingInput = undefined;
     }
-    // The input closed while this one opened: nobody wants it now. A newer wish has an opening of its own.
+    // The input closed while this one opened: nobody wants it now. A newer wish has an opening
+    // of its own. The close has disposed this input already; disposing again does no harm.
     if (closings !== this.closings) {
       input.dispose();
       return;
@@ -137,10 +149,15 @@ export class InputHost {
     input.start(this.hooks.view, this.hooks.onFrame, (error) => this.onTrackingFailure(input, error));
   }
 
-  /** Releases the camera and its trackers, and leaves an opening in progress to close itself. */
+  /**
+   * Releases the camera and its trackers, also those of an input that still opens: its camera
+   * light goes out now, not when its models have loaded.
+   */
   private close(): void {
     this.closings++;
     this.opening = undefined;
+    this.openingInput?.dispose();
+    this.openingInput = undefined;
     this.current?.dispose();
     this.current = undefined;
   }

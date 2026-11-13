@@ -2,41 +2,36 @@ import type { FaceExpression, FaceRegions, TrackingFrame } from '../tracking/typ
 import { SongAudio } from './audio';
 import { cuesFrom, generateChart } from './chart';
 import { CUE_STYLE_NAMES, nextCueStyle } from './cueStyle';
-import { FACE_EMOJI, HAND_MENU, HANDS_UP_CELL, LEVELS, MENU_TRACKER, SONGS, TIMING } from './config';
-import {
-  buildRunReport,
-  newFaceObservation,
-  newObservation,
-  newTrackingStats,
-  observeFaceFrame,
-  observeFrame,
-} from './diagnostics';
+import { FACE_EMOJI, HAND_MENU, MENU_TRACKER, SONGS, TIMING, TOAST } from './config';
+import { buildRunReport, newFaceObservation, newObservation, newTrackingStats } from './diagnostics';
 import type { RunReport, TrackingStats } from './diagnostics';
 import { isHandClick } from './dom';
 import { generateFaceCues } from './faceChart';
-import { judgeFaceFrame, needsFace, newFaceCueState } from './faceJudgment';
+import { needsFace, newFaceCueState } from './faceJudgment';
 import { fitMomentAt, planFit } from './fitTiming';
-import type { FitBegunBy, FitPlan } from './fitTiming';
-import { cellRect, containRect, defaultGrid, faceRegion, fitGrid, insideCell } from './geometry';
+import type { FitPlan } from './fitTiming';
+import { containRect, defaultGrid, faceRegion, fitGrid } from './geometry';
 import { newHandMenuState, stepHandMenu } from './handMenu';
+import { clearHolds, stepHandsUp } from './handsUp';
 import type { InputView } from './input';
 import { InputHost } from './inputHost';
-import { frameSongTime, judgeFrame, newCueState } from './judgment';
-import type { CueState } from './judgment';
+import { frameSongTime, newCueState } from './judgment';
 import { fetchManifest, playEndSec, playStartSec } from './manifest';
 import { createPlayers, summariseChart } from './player';
 import type { ChartSummary, PlayerRun } from './player';
 import { MenuPreview } from './preview';
 import type { PreviewState } from './preview';
-import { RECORDING } from './recording';
 import { GameRenderer } from './render';
 import type { Feedback } from './render';
-import { resultLines, RoundRecordings } from './roundRecordings';
-import { award, freshScore } from './scoring';
+import type { RoundVideos } from './recording';
+import { resultLines } from './recordingScene';
+import { judgePlayers } from './roundJudging';
+import { recordingTailSec, RoundRecordings } from './roundRecordings';
+import { freshScore } from './scoring';
 import { parseSettings, STORAGE_KEY, usesFaces } from './settings';
 import type { Options } from './settings';
 import { mergeForSolo } from './solo';
-import type { Manifest, Phase, PlayerIndex, Point, Rating, Score } from './types';
+import type { Manifest, Phase, PlayerIndex, Point, Score } from './types';
 import { GameUI } from './ui';
 
 /** Live state for automated checks, at `window.__dance`. Always two player entries. */
@@ -88,12 +83,12 @@ export class DanceGame {
   private session = 0;
 
   private audio?: SongAudio;
-  /** The camera, or a test input. */
+  /** The host of the input: it opens, switches and closes the camera or a test input. */
   private readonly inputs: InputHost;
   /** Whether hand control was on at the last look from the menu. See `syncMenuInput`. */
   private menuHandControl = false;
-  /** Who began the next or current reach fit. It sets the fit's timing: see `planFit`. */
-  private fitBegunBy: FitBegunBy = 'not-by-hand';
+  /** True when a pointing hand began the next or current reach fit. It sets the fit's timing: see `planFit`. */
+  private fitBegunByHand = false;
   /** Which item a hand is on and how far its fist hold has come, in the menu and on the results screen. */
   private handMenu = newHandMenuState();
   private manifest?: Manifest;
@@ -112,10 +107,7 @@ export class DanceGame {
   private switchingTracker = false;
 
   /** Records the rounds while recording is on, and keeps the videos of the last few. */
-  private readonly recordings = new RoundRecordings({
-    onChange: () => this.onRecordingsChange(),
-    isOnShow: (round) => this.ui.player.shows(round),
-  });
+  private readonly recordings = new RoundRecordings(() => this.onRecordingsChange());
   private readonly preview = new MenuPreview();
 
   private debugVisible = false;
@@ -151,7 +143,7 @@ export class DanceGame {
   private setPhase(phase: Phase): void {
     this.phase = phase;
     this.phaseStartedMs = performance.now();
-    this.clearHolds();
+    clearHolds(this.players);
     this.ui.player.close();
     this.ui.pauseButton.hidden = phase !== 'play';
     // The recalibrate button shows in the ready check: there the players see whether the grids
@@ -232,15 +224,26 @@ export class DanceGame {
     if (!this.inputs.input) throw this.inputs.error ?? new Error('The camera did not start.');
   }
 
-  /** Tracking broke while running. In the menu that only ends pointing; in a round it ends the round. */
+  /**
+   * Tracking broke while running. In a round, that ends the round. In the menu, it ends
+   * pointing: the rings and the highlight go, and a note says how to try again. The menu
+   * opens the camera again only when hand control is turned on (see `syncMenuInput`).
+   */
   private onTrackingFailure = (error: unknown): void => {
-    if (this.phase !== 'menu') this.fail(error);
+    if (this.phase !== 'menu') {
+      this.fail(error);
+      return;
+    }
+    this.frame = undefined;
+    this.clearHandPointer();
+    // The note is a sentence to read from the dance spot: it stays a while.
+    this.ui.showToast('Hand control stopped. Turn it off and on to try again.', TOAST.longMs);
   };
 
   /** Loads the song and the tracker for this round, then begins the reach fit. */
   private async start(byHand = false): Promise<void> {
     if (this.phase !== 'menu') return;
-    this.fitBegunBy = byHand ? 'start-by-hand' : 'not-by-hand';
+    this.fitBegunByHand = byHand;
     this.saveSettings();
     this.preview.follow(null);
     this.setPhase('loading');
@@ -258,7 +261,7 @@ export class DanceGame {
 
     try {
       const [song, tracking] = await Promise.allSettled([this.loadSong(audio), this.prepareTracking()]);
-      if (session !== this.session) return; // The player left for the menu while this loaded.
+      if (!this.stillLoading(session)) return;
       if (song.status === 'rejected') throw song.reason;
       if (tracking.status === 'rejected') throw tracking.reason;
 
@@ -296,6 +299,15 @@ export class DanceGame {
     }
   }
 
+  /**
+   * True while `session` still loads. The player may have left for the menu meanwhile, or a
+   * failure may have ended the loading: a tracker that broke while the song still decoded.
+   * A failure does not start a new session.
+   */
+  private stillLoading(session: number): boolean {
+    return session === this.session && this.phase === 'loading';
+  }
+
   private async loadSong(audio: SongAudio): Promise<Manifest> {
     const manifest = await fetchManifest(SONGS[this.options.settings.songIndex].manifest);
     await audio.load(manifest.audio);
@@ -327,13 +339,13 @@ export class DanceGame {
 
   /**
    * The video player opened or closed. While it is open, a raised hand must not start a new
-   * round, and the menu's song preview must not play over the video. Once it closes, the
-   * videos of a round that left the list while it played can go.
+   * round, and the menu's song preview must not play over the video. The recordings keep the
+   * videos of the round it shows alive.
    */
-  private onPlayerChange = (isOpen: boolean): void => {
-    this.clearHolds();
+  private onPlayerChange = (shown: RoundVideos | undefined): void => {
+    clearHolds(this.players);
     this.followPreview();
-    if (!isOpen) this.recordings.freeDropped();
+    this.recordings.playerShows(shown);
   };
 
   // --- Song preview in the menu ---
@@ -368,7 +380,7 @@ export class DanceGame {
     const inRound = ['fit', 'ready', 'countdown', 'play', 'results'].includes(this.phase);
     if (!inRound || this.switchingTracker) return;
     this.resetRound();
-    this.fitBegunBy = byHand ? 'recalibrate-by-hand' : 'not-by-hand';
+    this.fitBegunByHand = byHand;
     this.beginFit();
   }
 
@@ -400,14 +412,6 @@ export class DanceGame {
     this.paused = false;
     this.feedback = [];
     this.ui.hidePanel();
-  }
-
-  /** Forgets every player's hands-up hold. */
-  private clearHolds(): void {
-    for (const player of this.players) {
-      player.holdStartMs = null;
-      player.hold = 0;
-    }
   }
 
   /** Tells the recordings that a round begins. It is recorded when the players turned recording on. */
@@ -448,7 +452,7 @@ export class DanceGame {
     this.setPhase('results');
     this.ui.showResults(this.players, this.beginCountdown, this.showMenu, (byHand) => this.refit(byHand));
     // A recording goes on for a few seconds: the cheer, and the result card in the game view.
-    this.recordings.endAfter(RECORDING.tailSec);
+    this.recordings.endAfter(recordingTailSec(this.audio?.soundDelays ?? { game: 0, camera: 0 }));
     this.showRecordings();
     if (import.meta.env.DEV) void this.saveReport(this.report);
   }
@@ -592,19 +596,10 @@ export class DanceGame {
     }
   }
 
-  /** Ready and replay: every player holds a hand in the hands-up cell without a break. */
+  /** Ready and replay: the round starts when every player holds a hand up. */
   private trackHandsUp(frame: TrackingFrame, previous: TrackingFrame | undefined): void {
     const holdSec = this.phase === 'ready' ? TIMING.readyHoldSec : TIMING.replayHoldSec;
-    const stalled = previous !== undefined && frame.timeMs - previous.timeMs > TIMING.staleFrameMs;
-    for (const player of this.players) {
-      const target = cellRect(player.grid, HANDS_UP_CELL);
-      const raised = frame.players[player.index].hands.some((hand) => insideCell(hand, target));
-      if (!raised || stalled) player.holdStartMs = null;
-      if (raised && player.holdStartMs === null) player.holdStartMs = frame.timeMs;
-      player.hold =
-        player.holdStartMs === null ? 0 : Math.min(1, (frame.timeMs - player.holdStartMs) / (holdSec * 1000));
-    }
-    if (this.players.every((player) => player.hold >= 1)) this.beginCountdown();
+    if (stepHandsUp(this.players, frame, previous, holdSec)) this.beginCountdown();
   }
 
   private countFrame(frame: TrackingFrame): void {
@@ -617,53 +612,9 @@ export class DanceGame {
     }
   }
 
-  /** Judges every open cue at `timeSec`. With no frame, it only closes cues whose time has passed. */
+  /** Judges every open cue at `timeSec`, and flashes each result. With no frame, it only closes cues whose time has passed. */
   private judge(timeSec: number, frame?: TrackingFrame): void {
-    for (const player of this.players) {
-      const hands = frame?.players[player.index].hands ?? [];
-      const opensAheadSec = -LEVELS[player.level].goodMs[0] / 1000;
-      for (let i = 0; i < player.states.length; i++) {
-        const state = player.states[i];
-        if (state.cue.timeSec - opensAheadSec > timeSec) break; // This cue and all later ones are not open yet.
-        if (frame) observeFrame(player.observations[i], state.cue, player.level, player.grid, hands, timeSec);
-        if (state.result) continue;
-        const next = judgeFrame(state, player.level, player.grid, hands, timeSec);
-        player.states[i] = next;
-        if (next.result) this.award(player, next);
-      }
-      this.judgeFaceCues(player, timeSec, frame);
-    }
-  }
-
-  /** The same as for hand cues: with no frame, it only closes cues whose time has passed. */
-  private judgeFaceCues(player: PlayerRun, timeSec: number, frame?: TrackingFrame): void {
-    const face = frame?.players[player.index].face;
-    const opensAheadSec = -LEVELS[player.level].goodMs[0] / 1000;
-    for (let i = 0; i < player.faceStates.length; i++) {
-      const state = player.faceStates[i];
-      if (state.cue.timeSec - opensAheadSec > timeSec) break; // This cue and all later ones are not open yet.
-      if (frame) observeFaceFrame(player.faceObservations[i], state.cue, player.level, face, timeSec);
-      if (state.result) continue;
-      const next = judgeFaceFrame(state, player.level, face, timeSec);
-      player.faceStates[i] = next;
-      if (next.result) this.awardFace(player, next.result);
-    }
-  }
-
-  private award(player: PlayerRun, state: CueState): void {
-    const { cue, result } = state;
-    if (!result) return;
-    player.score = award(player.score, result);
-    // A slide shows its result where it ends. A tap shows it on each of its cells.
-    const cells = cue.kind === 'slide' ? cue.cells.slice(-1) : cue.cells;
-    const atMs = performance.now();
-    for (const cell of cells) this.feedback.push({ player: player.index, target: cell, result, atMs });
-  }
-
-  /** A face cue scores exactly like a hand cue. Its result shows on the player's face. */
-  private awardFace(player: PlayerRun, result: Rating): void {
-    player.score = award(player.score, result);
-    this.feedback.push({ player: player.index, target: 'face', result, atMs: performance.now() });
+    this.feedback.push(...judgePlayers(this.players, timeSec, frame, performance.now()));
   }
 
   // --- Controls ---
@@ -757,10 +708,10 @@ export class DanceGame {
     const { settings } = this.options;
 
     // The open video player takes the keys: Esc closes it, Space pauses it, and no key
-    // starts or leaves a round behind it.
+    // starts or leaves a round behind it. Space on one of its buttons presses that button.
     if (this.ui.player.isOpen) {
       if (key === 'escape') this.ui.player.close();
-      else if (key === ' ') this.ui.player.togglePause();
+      else if (key === ' ' && !this.ui.player.isOwnControl(event.target)) this.ui.player.togglePause();
       else return;
       event.preventDefault();
       return;
@@ -866,13 +817,16 @@ export class DanceGame {
       },
       this.videoAspect(),
     );
-    this.recordings.drawFrame({
-      video: this.inputs.input?.video,
-      overlay: this.ui.canvas,
-      frame: this.renderer.framePixels,
-      message: this.ui.message,
-      results: this.phase === 'results' ? resultLines(this.players) : undefined,
-    });
+    // The scene of the game view is built only while a recording needs it.
+    if (this.recordings.active) {
+      this.recordings.drawFrame({
+        video: this.inputs.input?.video,
+        overlay: this.ui.canvas,
+        frame: this.renderer.framePixels,
+        message: this.ui.message,
+        results: this.phase === 'results' ? resultLines(this.players) : undefined,
+      });
+    }
     this.updateDebug();
     this.expose();
     this.animationId = requestAnimationFrame(this.render);
@@ -967,7 +921,7 @@ export class DanceGame {
 
   /** The timing of the reach fit, from who began it. Test inputs need no time to walk back. */
   private fitPlan(): FitPlan {
-    return planFit(this.fitBegunBy, this.options.input === 'camera');
+    return planFit(this.fitBegunByHand, this.options.input === 'camera');
   }
 
   private inputView = (): InputView => ({

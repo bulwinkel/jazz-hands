@@ -139,7 +139,8 @@ export class SongPreview {
  * plays the liveliest part of that song, and moves on when the song changes.
  */
 export class MenuPreview {
-  private readonly preview = new SongPreview();
+  private readonly preview: Pick<SongPreview, 'state' | 'start' | 'stop' | 'halt'>;
+  private readonly loadManifest: (url: string) => Promise<Manifest>;
   /** The song whose preview plays or is about to play, as an index into SONGS. */
   private song: number | null = null;
   private timer = 0;
@@ -148,6 +149,15 @@ export class MenuPreview {
    * it is stale, even when the same song was chosen again meanwhile.
    */
   private request = 0;
+
+  /** `loadManifest` loads a song's manifest, and `preview` plays the part. Tests give stand-ins. */
+  constructor(
+    loadManifest: (url: string) => Promise<Manifest> = fetchManifest,
+    preview: Pick<SongPreview, 'state' | 'start' | 'stop' | 'halt'> = new SongPreview(),
+  ) {
+    this.loadManifest = loadManifest;
+    this.preview = preview;
+  }
 
   get state(): PreviewState {
     return this.preview.state;
@@ -182,7 +192,7 @@ export class MenuPreview {
   private async start(song: number, request: number): Promise<void> {
     let manifest: Manifest;
     try {
-      manifest = await fetchManifest(SONGS[song].manifest);
+      manifest = await this.loadManifest(SONGS[song].manifest);
     } catch {
       return; // No preview for a song whose data does not load. Starting the round reports the error.
     }

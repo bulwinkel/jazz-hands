@@ -1,14 +1,12 @@
-import { TIMING } from './config';
-import { AV_OFFSET_RANGE_MS, INPUT_LATENCY_RANGE_MS } from './settings';
+import { RECORDING, TIMING } from './config';
+import { clamp } from './numbers';
 
-/** Room for the speakers' own delay in a recording's sound. Bluetooth speakers add about 0.3 s. */
-const OUTPUT_LATENCY_ROOM_SEC = 1;
 /**
  * The longest delay a recording's sound can need: the largest picture offset and camera delay
- * the settings allow, plus the speakers' delay.
+ * the settings allow, plus room for the speakers' delay.
  */
 export const MAX_RECORDING_DELAY_SEC =
-  (AV_OFFSET_RANGE_MS[1] + INPUT_LATENCY_RANGE_MS[1]) / 1000 + OUTPUT_LATENCY_ROOM_SEC;
+  (TIMING.avOffsetRangeMs[1] + TIMING.inputLatencyRangeMs[1]) / 1000 + RECORDING.outputLatencyRoomSec;
 
 /** How late each video of a recording carries the song's sound, in seconds. */
 export interface RecordingDelays {
@@ -28,12 +26,12 @@ export function recordingDelays(outputLatencySec: number, avOffsetMs: number, in
 }
 
 /**
- * A delay node can only make the sound later. A negative total would need the sound earlier
- * than the song plays it, which cannot be done: it applies as no delay, and the video's sound
- * is then early by that much.
+ * A delay node can only make the sound later. A negative total would ask for the sound earlier
+ * than the song plays it, which cannot be done: no shift is applied, and the video's sound is
+ * then late by that much.
  */
 function applicableDelay(sec: number): number {
-  return Math.max(0, Math.min(MAX_RECORDING_DELAY_SEC, sec));
+  return clamp(sec, 0, MAX_RECORDING_DELAY_SEC);
 }
 
 /** A copy of the song's sound for one video, behind its own delay. */
@@ -99,9 +97,14 @@ export class SongAudio {
     return { game: this.recordingTaps.game.stream, camera: this.recordingTaps.camera.stream };
   }
 
+  /** The delays of a recording's sound now, from the offsets and the speakers' delay. */
+  get soundDelays(): RecordingDelays {
+    return recordingDelays(this.outputLatencySec, this.avOffsetMs, this.inputLatencyMs);
+  }
+
   private setRecordingDelays(): void {
     if (!this.recordingTaps) return;
-    const delays = recordingDelays(this.outputLatencySec, this.avOffsetMs, this.inputLatencyMs);
+    const delays = this.soundDelays;
     this.recordingTaps.game.delay.delayTime.value = delays.game;
     this.recordingTaps.camera.delay.delayTime.value = delays.camera;
   }

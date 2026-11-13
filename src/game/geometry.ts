@@ -1,7 +1,7 @@
 import { FACES, GRID } from './config';
+import { clamp } from './numbers';
 import type { PlayerCount, PlayerIndex, Point, Rect } from './types';
 
-const clamp = (value: number, low: number, high: number): number => Math.max(low, Math.min(value, high));
 
 /**
  * The horizontal span a player's grid may use, in frame fractions.

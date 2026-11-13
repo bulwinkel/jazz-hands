@@ -1,12 +1,11 @@
 import { find, isHandClick } from './dom';
-import { sizeText } from './recording';
-import type { RoundVideos, VideoKind } from './recording';
+import { mainVideo, sizeText, VIDEO_NAMES } from './recording';
+import type { RoundVideos } from './recording';
 
 /** The list of recorded rounds, with a download link for each video. Menu and results both have it. */
 export const RECORDINGS_HTML =
   '<div class="recordings" hidden><div class="preview-slot"></div><p role="status"></p><ul></ul></div>';
 
-const VIDEO_NAMES: Record<VideoKind, string> = { game: 'Game view', camera: 'Camera only' };
 
 /** What the list shows. */
 export interface RecordingsList {
@@ -69,7 +68,7 @@ export function removePreview(root: ParentNode): void {
 
 /** The small silent video of a round. A click, or a fist, plays the round in the video player. */
 function showPreview(slot: HTMLElement, round: RoundVideos | undefined, onWatch: WatchHandler): void {
-  const video = round?.videos.find((candidate) => candidate.kind === 'game') ?? round?.videos[0];
+  const video = round && mainVideo(round);
   if (!round || !video) {
     slot.replaceChildren();
     return;

@@ -49,6 +49,10 @@ export class CameraInput implements GameInput {
   private tracker: Tracker;
   /** Trackers that are loaded, by mode. The menu and the rounds switch between them often. */
   private readonly loaded = new Map<TrackerMode, Tracker>();
+  /** Stops the camera while it still starts, when the input is disposed. */
+  private readonly cameraStart = new AbortController();
+  /** Counts the calls of `setMode`, so a load that ends late can tell that a newer call came. */
+  private modeCalls = 0;
   private running = false;
   private disposed = false;
   private videoCallbackId = 0;
@@ -76,8 +80,8 @@ export class CameraInput implements GameInput {
 
   async init(): Promise<void> {
     // Keep the camera as soon as it starts, so `dispose` can stop it even while the models
-    // still load. A camera that starts after `dispose` is stopped at once.
-    const cameraStarted = startCamera().then((video) => {
+    // still load. A dispose while the camera still starts stops it at once.
+    const cameraStarted = startCamera(this.cameraStart.signal).then((video) => {
       this.video = video;
       if (this.disposed) this.stopCamera();
     });
@@ -137,8 +141,12 @@ export class CameraInput implements GameInput {
    * anyone has chosen faces, so a mode that was loaded without them loads once more, with them.
    * A tracker with the face models also serves a round without faces: it reads a face only
    * where the game asks for one.
+   *
+   * A load can end after a newer call has switched to another tracker. The loaded tracker then
+   * stays in the cache, and the newer choice stays on.
    */
   async setMode(mode: TrackerMode, faces = false): Promise<void> {
+    const call = ++this.modeCalls;
     const loaded = this.loaded.get(mode);
     const isUsable = loaded !== undefined && (!faces || loaded.faceDelegate !== 'uninitialized');
     if (isUsable) {
@@ -157,16 +165,18 @@ export class CameraInput implements GameInput {
       next.dispose(); // The input was closed while this tracker loaded.
       return;
     }
-    // Switch first, then let go of the tracker of this mode that had no face models.
     const replaced = this.loaded.get(mode);
     this.loaded.set(mode, next);
-    this.tracker = next;
-    replaced?.dispose();
+    // A tracker that only adds the face models to the one in use takes its place in any case:
+    // it serves the same mode, and the one without faces is let go.
+    if (call === this.modeCalls || this.tracker === replaced) this.tracker = next;
+    if (replaced && replaced !== this.tracker) replaced.dispose();
   }
 
   dispose(): void {
     this.running = false;
     this.disposed = true;
+    this.cameraStart.abort();
     if (this.videoCallbackId) this.video?.cancelVideoFrameCallback(this.videoCallbackId);
     cancelAnimationFrame(this.animationId);
     for (const tracker of this.loaded.values()) tracker.dispose();
