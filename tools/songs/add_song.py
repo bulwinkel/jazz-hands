@@ -657,11 +657,11 @@ class Envelopes:
         return np.stack([self.full, self.percussive, self.kick])
 
 
-def kick_band_flux(samples: np.ndarray) -> np.ndarray:
-    """Returns the rise of log energy in the kick band, frame by frame: high where a kick starts."""
+def band_flux(samples: np.ndarray, band_hz: tuple[float, float]) -> np.ndarray:
+    """Returns the rise of log energy in one frequency band, frame by frame: high where a hit in it starts."""
     spectrum = np.abs(librosa.stft(samples, n_fft=FFT_SIZE, hop_length=HOP))
     frequencies = librosa.fft_frequencies(sr=ANALYSIS_RATE, n_fft=FFT_SIZE)
-    in_band = (frequencies >= KICK_BAND_HZ[0]) & (frequencies <= KICK_BAND_HZ[1])
+    in_band = (frequencies >= band_hz[0]) & (frequencies <= band_hz[1])
     log_energy = np.log1p(spectrum[in_band].sum(axis=0))
     return np.maximum(0, np.diff(log_energy, prepend=log_energy[0]))
 
@@ -671,7 +671,7 @@ def onset_envelopes(samples: np.ndarray, percussive: np.ndarray) -> Envelopes:
     raw = [
         librosa.onset.onset_strength(y=samples, sr=ANALYSIS_RATE, hop_length=HOP),
         librosa.onset.onset_strength(y=percussive, sr=ANALYSIS_RATE, hop_length=HOP),
-        kick_band_flux(samples),
+        band_flux(samples, KICK_BAND_HZ),
     ]
     frames = min(len(envelope) for envelope in raw)
     full, percussive_envelope, kick = (
