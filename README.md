@@ -37,7 +37,8 @@ an earlier version kept stays chosen, set 1 too: step the switch on to `random`.
   on its end card.
 
 The sets differ by their share of moves (see [Moves](#moves)). Two sets for each share let
-players compare two charts of each kind and rate which share they like.
+players compare two charts of each kind and rate which share they like (see
+[Rate the cue set](#rate-the-cue-set)).
 
 | Sets | Share of the phrases in busy music that hold a move |
 | --- | --- |
@@ -79,6 +80,43 @@ The run report names:
 | `settings.cueSetRandom` | True when the game picked the set at random. |
 | `settings.moveShare` | The share of moves of the round. |
 | `players[].moves` | Each player's moves, counted by name. |
+
+## Rate the cue set
+
+Each player can rate the set of the round on the results screen, with 1 to 5 stars. The
+ratings show which sets the players like at each level.
+
+- Each result card has a row under the moves: **Rate the moves** and 5 stars in the player's
+  colour. The yellow stars at the top of the card are the score. The rating stars are larger,
+  and an outline until the player chooses.
+- Hold a fist on a star for 0.5 s, or click it. That star and every star below it light. A new
+  choice replaces the one before.
+- An open hand or the mouse pointer on a star shows, lighter, what choosing it would light.
+- A rating is optional. A card with no choice saves nothing.
+- A round with a `seed=` in the URL has no set, and no rating row. A build with no dev server
+  (`npm run build`) has no rating row either, because nothing can keep the rating there.
+- The test bot never rates.
+
+Each choice saves one record at once. The game posts it to the dev server route
+`/__cue-set-ratings`, which adds it as one line to `test-results/cue-set-ratings.jsonl`. When
+the save fails, the row shows **Not saved**.
+
+| Field | What it holds |
+| --- | --- |
+| `savedAt` | When the game saved the record, as an ISO time. |
+| `roundId` | The round. Both players and a changed rating have the same id. |
+| `runReport` | The file name of the round's run report. Null when the rating came before the dev server saved the report. |
+| `song`, `length`, `playerCount` | The song id, `short` or `full`, and 1 or 2. |
+| `cueSet`, `seed`, `cueSetRandom`, `moveShare` | The set, its chart seed, true when the game picked the set, and its share of moves. |
+| `player`, `level`, `shapes`, `faces` | The player (0 is the left player, or the only player), the level, and the switches. |
+| `chart` | What the played part of the player's chart held: the shares of `slides`, `doubles` and `fastSlides`, the `offbeats` taps for each cue that the shares count, the number of `cues`, and the `moves` by name. See `chartMix` in `src/game/cueSet.ts`. |
+| `result` | `score`, `accuracy` from 0 to 1, `perfect`, `good` and `miss`. |
+| `rating` | 1 to 5. |
+
+`npm run ratings` prints a summary of the file: the mean rating and the number of ratings by
+level and set, by level and share of moves, and by song. It counts only the last record of
+each round and player. Give another file as an argument:
+`npm run ratings -- path/to/ratings.jsonl`.
 
 ## Moves
 
