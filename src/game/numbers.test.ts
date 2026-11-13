@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clamp, clamp01, median } from './numbers';
+import { clamp, clamp01, median, roundTo } from './numbers';
 
 describe('clamp to 0..1', () => {
   it('keeps a value between 0 and 1 as it is', () => {
@@ -23,6 +23,14 @@ describe('clamp', () => {
     expect(clamp(10, 22, 42)).toBe(22);
     expect(clamp(50, 22, 42)).toBe(42);
     expect(clamp(-3, -1, 2)).toBe(-1);
+  });
+});
+
+describe('roundTo', () => {
+  it('rounds to the given places after the point', () => {
+    expect(roundTo(0.123456, 4)).toBe(0.1235);
+    expect(roundTo(21.46, 1)).toBe(21.5);
+    expect(roundTo(-0.0004, 3)).toBe(-0);
   });
 });
 

@@ -1,4 +1,5 @@
 import type { FaceExpression, GestureName, TrackingFrame } from '../tracking/types';
+import { roundTo } from './numbers';
 import type { Phase } from './types';
 
 /**
@@ -48,16 +49,16 @@ export interface FrameSource {
   delegate: string;
 }
 
-/** Four decimals of a frame fraction are a fifth of a pixel at 1920 pixels. */
-const round4 = (value: number): number => Math.round(value * 10000) / 10000;
-const round1 = (value: number): number => Math.round(value * 10) / 10;
 
-/** One tracking frame as the log keeps it. */
+/**
+ * One tracking frame as the log keeps it. Four decimals of a frame fraction are a fifth of a
+ * pixel at 1920 pixels.
+ */
 export function logEntry(frame: TrackingFrame, phase: Phase, source: FrameSource): LoggedFrame {
   return {
     videoTimeSec: frame.videoTimeSec ?? null,
-    timeMs: round1(frame.timeMs),
-    inferenceMs: round1(frame.inferenceMs),
+    timeMs: roundTo(frame.timeMs, 1),
+    inferenceMs: roundTo(frame.inferenceMs, 1),
     phase,
     mode: source.mode,
     thread: source.thread,
@@ -65,18 +66,18 @@ export function logEntry(frame: TrackingFrame, phase: Phase, source: FrameSource
     players: frame.players.map((player) => {
       const logged: LoggedPlayer = {
         hands: player.hands.map((hand) => ({
-          x: round4(hand.x),
-          y: round4(hand.y),
-          size: round4(hand.size),
+          x: roundTo(hand.x, 4),
+          y: roundTo(hand.y, 4),
+          size: roundTo(hand.size, 4),
           gesture: hand.gesture,
         })),
       };
       if (player.face) {
         const { smile, openMouth, pucker } = player.face.expressions;
         logged.face = {
-          x: round4(player.face.x),
-          y: round4(player.face.y),
-          expressions: { smile: round4(smile), openMouth: round4(openMouth), pucker: round4(pucker) },
+          x: roundTo(player.face.x, 4),
+          y: roundTo(player.face.y, 4),
+          expressions: { smile: roundTo(smile, 4), openMouth: roundTo(openMouth, 4), pucker: roundTo(pucker, 4) },
         };
       }
       return logged;

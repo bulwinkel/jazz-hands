@@ -2,6 +2,7 @@ import type { FaceExpression, GestureName, TrackedFace, TrackedHand } from '../t
 import { FACES, LEVELS } from './config';
 import { showsExpression } from './faceJudgment';
 import { cellRect, insideCell } from './geometry';
+import { roundTo } from './numbers';
 import { isInsideWindow } from './judgment';
 import type { CueState } from './judgment';
 import type { PlayerRun } from './player';
@@ -122,7 +123,7 @@ export function observeFaceFrame(
   observation.framesWithFace++;
   for (const [name, value] of Object.entries(face.expressions)) {
     const expression = name as FaceExpression;
-    const strength = round3(value);
+    const strength = roundTo(value, 3);
     if (expression === cue.expression) {
       observation.peak = Math.max(observation.peak ?? 0, strength);
     } else {
@@ -151,19 +152,16 @@ export function newTrackingStats(nowMs: number): TrackingStats {
   return { frames: 0, inferenceMs: [], handCounts: [[0, 0, 0], [0, 0, 0]], drawnFrames: 0, play: startPlay(nowMs) };
 }
 
-const round1 = (value: number): number => Math.round(value * 10) / 10;
-const round3 = (value: number): number => Math.round(value * 1000) / 1000;
-const round4 = (value: number): number => Math.round(value * 10000) / 10000;
 const share = (count: number, total: number): number => (total ? Math.round((count / total) * 1000) / 1000 : 0);
 
 function mean(values: readonly number[]): number | null {
-  return values.length ? round1(values.reduce((sum, value) => sum + value, 0) / values.length) : null;
+  return values.length ? roundTo(values.reduce((sum, value) => sum + value, 0) / values.length, 1) : null;
 }
 
 function percentile(values: readonly number[], p: number): number | null {
   if (!values.length) return null;
   const sorted = [...values].sort((a, b) => a - b);
-  return round1(sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))]);
+  return roundTo(sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))], 1);
 }
 
 /** The middle value. With an even count, the mean of the two middle values. */
@@ -171,7 +169,7 @@ function median(values: readonly number[]): number | null {
   if (!values.length) return null;
   const sorted = [...values].sort((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);
-  return round3(sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2);
+  return roundTo(sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2, 3);
 }
 
 const isHit = (result: Rating | undefined): boolean => result === 'perfect' || result === 'good';
@@ -331,10 +329,10 @@ function playerReport(player: PlayerRun, stats: TrackingStats): PlayerReport {
     shapes: player.shapes,
     faces: player.faces,
     grid: {
-      x: round4(player.grid.x),
-      y: round4(player.grid.y),
-      width: round4(player.grid.width),
-      height: round4(player.grid.height),
+      x: roundTo(player.grid.x, 4),
+      y: roundTo(player.grid.y, 4),
+      width: roundTo(player.grid.width, 4),
+      height: roundTo(player.grid.height, 4),
     },
     score: player.score,
     handsSeen: { none: share(none, stats.frames), one: share(one, stats.frames), two: share(two, stats.frames) },
@@ -385,9 +383,9 @@ export function buildRunReport(context: RunContext): RunReport {
       faceDelegate: context.trackerFaceDelegate,
       thread: context.trackerThread,
       frames: stats.frames,
-      framesPerSec: playSec > 0 ? round1(stats.frames / playSec) : 0,
+      framesPerSec: playSec > 0 ? roundTo(stats.frames / playSec, 1) : 0,
       inferenceMs: { mean: mean(stats.inferenceMs), p95: percentile(stats.inferenceMs, 0.95) },
-      drawnPerSec: playSec > 0 ? round1(stats.drawnFrames / playSec) : 0,
+      drawnPerSec: playSec > 0 ? roundTo(stats.drawnFrames / playSec, 1) : 0,
     },
     players: context.players.map((player) => playerReport(player, stats)),
   };
