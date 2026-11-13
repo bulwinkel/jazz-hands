@@ -104,6 +104,21 @@ describe('input host', () => {
     expect(host.input).toBe(made[1].input);
   });
 
+  it('does not hold a newer wish back while an older tracker still loads', async () => {
+    const { host, made } = setUp();
+    const opened = host.want(handsFull);
+    made[0].finishInit();
+    await opened;
+    let finishSlowLoad: () => void = () => {};
+    made[0].input.setMode.mockImplementationOnce(() => new Promise<void>((resolve) => (finishSlowLoad = resolve)));
+    const roundWish = host.want(splitWithFaces);
+    await host.want(handsFull);
+    expect(made[0].input.setMode).toHaveBeenLastCalledWith('hands-full', false);
+    finishSlowLoad();
+    await roundWish;
+    expect(made[0].input.setMode).toHaveBeenCalledTimes(3);
+  });
+
   it('keeps the error of an input that could not start', async () => {
     const { host, made } = setUp();
     const wanted = host.want(handsFull);
