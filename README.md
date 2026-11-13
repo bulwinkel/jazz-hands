@@ -30,12 +30,20 @@ choice.
 
 A set gives other cues at the same difficulty. Set 1 is the chart the game always had. Sets
 2 to 5 each try 24 candidate charts for the song, the levels and the length, and keep the one
-that plays most like the level usually does: its shares of slides and two-hand cues come
-closest to the typical mix. The typical mix is the median over the 96 candidate charts of the
-four sets together, so every set aims at the same mix. It is not the level rules: at levels 4
-and 5 a slide never follows an off-beat tap, so their charts have about a third fewer slides
-than the rules say. Set 1 was picked against the rules, so at level 4 it often has more slides
-than the other sets.
+that plays most like the level usually does: closest to the typical mix. The mix is what
+makes a chart harder: its shares of slides, two-hand cues and fast slides, its off-beat taps,
+and its number of cues. Off-beat taps and the number of cues count half each, because both
+say how busy a chart is. The typical mix is the median over the 96 candidate charts of the
+four sets together, so every set aims at the same mix.
+
+On the 15 songs, sets 2 to 5 are a median of 1 point from the typical shares of slides and
+two-hand cues, and at most about 5. At level 4 the sets of one song differ by a median of 3
+fast slides, 4 off-beat taps and 2% of their cues. A set does not match where the cues are,
+which hand shapes they ask for, or how the slides split between normal and slow.
+
+The typical mix is not the level rules: at levels 4 and 5 a slide never follows an off-beat
+tap, so their charts have about a third fewer slides than the rules say. Set 1 was picked
+against the rules, so at level 4 it often has more slides than the other sets.
 
 A `seed=` in the URL replaces the set, for tests. The run report names the seed and the set.
 
