@@ -1,17 +1,22 @@
 /// <reference types="node" />
-import { mkdir, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, writeFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 import type { Plugin } from 'vite';
 
 /**
- * Dev-server routes that save a posted JSON body into `test-results/`, as a new file named by
- * this prefix and the time.
+ * Where a route saves a posted JSON body, in `test-results/`: in a new file named by a prefix
+ * and the time, or as one more line of a file that collects the lines.
  */
-const SAVE_ROUTES: Record<string, { prefix: string }> = {
-  '/__tracking-results': { prefix: 'tracking' },
-  '/__run-diagnostics': { prefix: 'run' },
+type SaveRoute = { newFile: string } | { lineOf: string };
+
+/** The dev-server routes that save a posted JSON body. */
+const SAVE_ROUTES: Record<string, SaveRoute> = {
+  '/__tracking-results': { newFile: 'tracking' },
+  '/__run-diagnostics': { newFile: 'run' },
+  // One record for each star a player chooses on the results. See src/game/cueSetRating.ts.
+  '/__cue-set-ratings': { lineOf: 'cue-set-ratings.jsonl' },
 };
 
 /** The largest JSON body that a route takes. */
@@ -40,18 +45,18 @@ function saveResults(): Plugin {
           next();
           return;
         }
-        void handleSave(request, response, folder, route.prefix);
+        void handleSave(request, response, folder, route);
       });
     },
   };
 }
 
-/** Saves the JSON body of a POST, and answers with the path of the file it wrote. */
+/** Saves the JSON body of a POST as the route says, and answers with the path of the file. */
 async function handleSave(
   request: IncomingMessage,
   response: ServerResponse,
   folder: string,
-  prefix: string,
+  route: SaveRoute,
 ): Promise<void> {
   if (request.method !== 'POST') {
     response.setHeader('Allow', 'POST');
@@ -62,7 +67,7 @@ async function handleSave(
     checkHeaders(request);
     const json = await readJsonBody(request);
     await mkdir(folder, { recursive: true });
-    const path = await saveNewFile(folder, prefix, json);
+    const path = await saveBody(folder, route, json);
     reply(response, 201, { path });
   } catch (error) {
     if (error instanceof Refusal) reply(response, error.status, { error: error.message });
@@ -105,6 +110,12 @@ function readJsonBody(request: IncomingMessage): Promise<unknown> {
   });
 }
 
+/** Saves `json` where the route says, and gives the path of the file. */
+function saveBody(folder: string, route: SaveRoute, json: unknown): Promise<string> {
+  if ('newFile' in route) return saveNewFile(folder, route.newFile, json);
+  return addLine(folder, route.lineOf, json);
+}
+
 /**
  * Writes `json` to a new file `<prefix>-<time>.json`, and gives its path. The time has whole
  * seconds: a second save in the same second is refused, never written over the first.
@@ -119,6 +130,16 @@ async function saveNewFile(folder: string, prefix: string, json: unknown): Promi
     }
     throw error;
   }
+  return path;
+}
+
+/**
+ * Adds `json` as one line at the end of the file `name`, and gives the file's path. The file
+ * is made on the first line. Each line is a whole JSON value, so the file reads line by line.
+ */
+async function addLine(folder: string, name: string, json: unknown): Promise<string> {
+  const path = resolve(folder, name);
+  await appendFile(path, `${JSON.stringify(json)}\n`);
   return path;
 }
 
