@@ -1721,18 +1721,19 @@ def drums_clue(kick: np.ndarray, snare: np.ndarray) -> BarClue:
     confirms: as a backbeat it must be stronger on the other pair. A kick on every beat, or no
     clear drums, decides nothing.
     """
+    half = BEATS_PER_BAR // 2
     kick_share = 100 * kick / max(float(kick.sum()), 1e-9)
     snare_share = 100 * snare / max(float(snare.sum()), 1e-9)
     # Pair 0 is beats 0 and 2, pair 1 is beats 1 and 3.
-    kick_pairs = kick_share[:2] + kick_share[2:]
-    snare_pairs = snare_share[:2] + snare_share[2:]
+    kick_pairs = kick_share[:half] + kick_share[half:]
+    snare_pairs = snare_share[:half] + snare_share[half:]
     strong = int(np.argmax(kick_pairs))
     weak = 1 - strong
     kick_ratio = kick_pairs[strong] / max(float(kick_pairs[weak]), 1e-9)
 
     def pair(index: int) -> str:
         """Returns the two beats of a pair, as text."""
-        return f'beats {index} and {index + 2}'
+        return f'beats {index} and {index + half}'
 
     if kick_ratio < DRUMS_DECISIVE_RATIO:
         beats, reason = (), (f'The kick hits {pair(strong)} only {kick_ratio:.2f} times as hard as {pair(weak)} '
@@ -1741,8 +1742,8 @@ def drums_clue(kick: np.ndarray, snare: np.ndarray) -> BarClue:
         beats, reason = (), (f'The kick hits {pair(strong)} {kick_ratio:.2f} times as hard as {pair(weak)}, '
                              f'but the snare is not stronger on {pair(weak)}: no backbeat.')
     else:
-        beats, reason = (strong, strong + 2), (f'The kick hits {pair(strong)} {kick_ratio:.2f} times as hard as '
-                                               f'{pair(weak)}, and the snare answers on {pair(weak)}.')
+        beats, reason = (strong, strong + half), (f'The kick hits {pair(strong)} {kick_ratio:.2f} times as hard as '
+                                                  f'{pair(weak)}, and the snare answers on {pair(weak)}.')
     detail = '\n'.join([
         'kick, share on    ' + '   '.join(f'beat {beat}: {share:.0f}%' for beat, share in enumerate(kick_share)),
         'snare, share on   ' + '   '.join(f'beat {beat}: {share:.0f}%' for beat, share in enumerate(snare_share)),
@@ -1776,7 +1777,8 @@ def choose_bar_start(clues: list[BarClue]) -> BarChoice:
     if strong_against:
         confidence, doubt = 'low', 'Strong bar-start clues disagree.'
     elif tied:
-        confidence, doubt = 'low', f'The clues do not tell beat {winner} from beat {tied[0]}.'
+        others = ' or '.join(str(beat) for beat in tied)
+        confidence, doubt = 'low', f'The clues do not tell beat {winner} from beat {others}.'
     elif (sum(clue.weight for clue in agreeing) >= CERTAIN_WEIGHT
           and all(clue.weight < MINOR_WEIGHT for clue in against)):
         confidence, doubt = 'high', ''
@@ -1789,7 +1791,9 @@ def choose_bar_start(clues: list[BarClue]) -> BarChoice:
 
     statement = f'For beat {winner}: {names(agreeing)}. Against: {names(against)}. Undecided: {names(undecided)}.'
     if tied:
-        statement += ' Beat ' + ' and '.join(str(beat) for beat in tied) + ' has as much weight.'
+        listed = ' and '.join(str(beat) for beat in tied)
+        statement += (f' Beat {listed} has as much weight.' if len(tied) == 1
+                      else f' Beats {listed} have as much weight.')
     return BarChoice(first_downbeat=winner, confidence=confidence, votes=tuple(float(vote) for vote in votes),
                      statement=statement, doubt=doubt)
 
@@ -1831,7 +1835,8 @@ def report_bars(report: Report, rises: list[tuple[int, float]], clues: list[BarC
             report.line(f'  {"":15s} {"":11s} {line}')
     report.line('Each clue that decides adds its weight to its beats:   '
                 + '   '.join(f'{clue.name} {clue.weight:g}' for clue in clues))
-    report.line('Weight for each beat:   ' + '   '.join(f'beat {beat}: {vote:g}' for beat, vote in enumerate(choice.votes)))
+    report.line('Weight for each beat:   '
+                + '   '.join(f'beat {beat}: {vote:g}' for beat, vote in enumerate(choice.votes)))
 
     report.line(f'The tool chooses firstDownbeat {choice.first_downbeat}. Confidence: {choice.confidence}. '
                 f'{choice.statement}')
