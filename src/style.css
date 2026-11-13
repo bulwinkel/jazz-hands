@@ -5,14 +5,14 @@
 
 /* The colours that repeat. Three values come from the game's code, which sets them on this
    element (see `GameUI` in ui.ts), so a change there reaches the page too:
-   - `--due-color`: the colour of a cue on its beat, and the game's yellow;
-   - `--grow-start`: the share of a cell where a block of the grow style starts;
+   - `--game-yellow`: the game's yellow, of the large buttons, the highlights and the hold mark;
+   - `--grow-start`: the share of a cell where the block of a cue starts;
    - `--veil`: the veil over the camera picture, which the game view copies. */
 :root {
   --text-soft: #cbd5e1;
   --text-faint: #94a3b8;
-  /* Text on the due colour. */
-  --on-due: #181627;
+  /* Text on the game's yellow. */
+  --on-yellow: #181627;
   --button: #252b49;
   /* The dark, see-through face of small buttons and choices. */
   --surface: #0b1024cc;
@@ -61,17 +61,17 @@ button:hover {
 }
 button:focus-visible,
 input:focus-visible + span {
-  outline: 4px solid var(--due-color);
+  outline: 4px solid var(--game-yellow);
   outline-offset: 5px;
 }
 /* The large yellow button of the menu and the results. */
 .primary {
-  background: var(--due-color);
-  border-color: var(--due-color);
-  color: var(--on-due);
+  background: var(--game-yellow);
+  border-color: var(--game-yellow);
+  color: var(--on-yellow);
   font-size: 28px;
   padding: 17px 52px;
-  box-shadow: 0 6px 35px color-mix(in srgb, var(--due-color) 12.5%, transparent);
+  box-shadow: 0 6px 35px color-mix(in srgb, var(--game-yellow) 12.5%, transparent);
 }
 
 /* The small dark buttons of the menu's corner, the ready check and the video player. */
@@ -92,7 +92,7 @@ h1 {
   letter-spacing: -2px;
 }
 h1 > span {
-  color: var(--due-color);
+  color: var(--game-yellow);
   margin-left: 18px;
 }
 .eyebrow {
@@ -139,9 +139,9 @@ legend {
 }
 /* A fist fills the ring, so a player sees that the game reads the fist. */
 .hand-cursor.fist {
-  background: color-mix(in srgb, var(--due-color) 85%, transparent);
-  border-color: var(--due-color);
-  box-shadow: 0 0 18px var(--due-color);
+  background: color-mix(in srgb, var(--game-yellow) 85%, transparent);
+  border-color: var(--game-yellow);
+  box-shadow: 0 0 18px var(--game-yellow);
 }
 
 [data-hand] {
@@ -149,16 +149,17 @@ legend {
 }
 /* `.preview` keeps its own corners: it has one class too, and comes later in this file. */
 .hand-hover {
-  outline: 4px solid var(--due-color);
+  outline: 4px solid var(--game-yellow);
   outline-offset: 4px;
   border-radius: 16px;
 }
 /* The mark of the fist hold. It works as the timing mark of a cue in a round does (see
    cueMark.ts), so the menu teaches how a round reads: a block starts small in the middle of
-   the item, and the item is chosen when the block fills it and its colour has reached the
-   due colour. `--hold` goes from 0 to 1; ui.ts sets it. */
+   the item, and the item is chosen when the block fills it. Its colour fades from white to
+   the game's yellow, as a cue fades from white to the player's colour. `--hold` goes from 0
+   to 1; ui.ts sets it. */
 .hand-hover::after {
-  --mark: color-mix(in srgb, var(--due-color) calc(var(--hold, 0) * 100%), #ffffff);
+  --mark: color-mix(in srgb, var(--game-yellow) calc(var(--hold, 0) * 100%), #ffffff);
   content: "";
   position: absolute;
   inset: 0;
@@ -177,8 +178,8 @@ legend {
   box-shadow: 0 0 34px #ffffffb3;
 }
 .primary.hand-hover::after {
-  border-color: var(--on-due);
-  background: color-mix(in srgb, var(--on-due) 40%, transparent);
+  border-color: var(--on-yellow);
+  background: color-mix(in srgb, var(--on-yellow) 40%, transparent);
 }
 
 /* --- The stage: the camera picture and the game's canvas --- */
@@ -297,7 +298,7 @@ canvas {
 .songs legend {
   margin: 0 auto 6px;
   font-size: 26px;
-  color: var(--due-color);
+  color: var(--game-yellow);
 }
 .songs legend small {
   margin-left: 14px;
@@ -375,8 +376,8 @@ canvas {
   opacity: 0.16;
 }
 .song-card input:checked + .cover {
-  border-color: var(--due-color);
-  box-shadow: 0 0 34px color-mix(in srgb, var(--due-color) 33.3%, transparent);
+  border-color: var(--game-yellow);
+  box-shadow: 0 0 34px color-mix(in srgb, var(--game-yellow) 33.3%, transparent);
 }
 .song-step {
   display: grid;
@@ -433,9 +434,9 @@ canvas {
   pointer-events: none;
 }
 .choices input:checked + span {
-  border-color: var(--due-color);
+  border-color: var(--game-yellow);
   background: #3a3413e6;
-  color: var(--due-color);
+  color: var(--game-yellow);
 }
 
 /* The player cards: each player's level, hand shapes and faces. */
@@ -573,7 +574,7 @@ canvas {
   margin: 0 0 8px;
 }
 .stars {
-  color: var(--due-color);
+  color: var(--game-yellow);
   font-size: 42px;
   letter-spacing: 5px;
   white-space: nowrap;
@@ -629,7 +630,7 @@ canvas {
   color: var(--text-soft);
 }
 .team strong {
-  color: var(--due-color);
+  color: var(--game-yellow);
   font-size: 32px;
   margin-left: 16px;
 }
@@ -777,7 +778,7 @@ canvas {
 .wait-bar span {
   display: block;
   height: 100%;
-  background: var(--due-color);
+  background: var(--game-yellow);
   transform: scaleX(var(--tail-share, 1));
   transform-origin: left;
 }
@@ -839,8 +840,8 @@ canvas {
   text-decoration: none;
 }
 .player-bar [aria-pressed="true"] {
-  border-color: var(--due-color);
-  color: var(--due-color);
+  border-color: var(--game-yellow);
+  color: var(--game-yellow);
 }
 
 /* --- Messages and controls over the game --- */
@@ -899,8 +900,8 @@ body[data-phase="countdown"] #message h1 {
   padding: 10px 22px;
   border-radius: 14px;
   background: #0b1024e6;
-  border: 2px solid var(--due-color);
-  color: var(--due-color);
+  border: 2px solid var(--game-yellow);
+  color: var(--game-yellow);
   font-size: 24px;
   font-weight: 800;
   transform: translateX(-50%);
@@ -913,7 +914,7 @@ body[data-phase="countdown"] #message h1 {
   top: 65%;
   left: 50%;
   transform: translateX(-50%);
-  background: var(--due-color);
+  background: var(--game-yellow);
   color: #161629;
   font-size: 32px;
 }

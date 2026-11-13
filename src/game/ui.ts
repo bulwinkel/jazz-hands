@@ -1,4 +1,4 @@
-import { DUE_COLOR, VEIL } from './colors';
+import { GAME_YELLOW, VEIL } from './colors';
 import { GROW_START_SCALE, HAND_MENU, PLAYER_COLORS, TOAST } from './config';
 import { find, isHandClick } from './dom';
 import type { HandTarget, MenuHand } from './handMenu';
@@ -83,9 +83,10 @@ export class GameUI {
 
   constructor(root: HTMLElement) {
     // The stylesheet takes these values from the game's code, so one change reaches the page
-    // and the canvas: the menu's hold mark must look like a cue, and the game view copies the veil.
+    // and the canvas: the menu's hold mark must grow as a cue's block does, and the game view
+    // copies the veil. The game's yellow stays with the other colours, in colors.ts.
     const page = root.ownerDocument.documentElement.style;
-    page.setProperty('--due-color', DUE_COLOR);
+    page.setProperty('--game-yellow', GAME_YELLOW);
     page.setProperty('--grow-start', String(GROW_START_SCALE));
     page.setProperty('--veil', VEIL);
 

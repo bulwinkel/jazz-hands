@@ -6,10 +6,10 @@ import { clamp01 } from './numbers';
 export const CUE_START_COLOR = '#ffffff';
 
 /**
- * The game's yellow: the large buttons, the highlights and the menu's hold mark. The
- * stylesheet takes it from ui.ts.
+ * The game's yellow: the large buttons, the highlights and the menu's hold mark. Only the
+ * page uses it: the stylesheet takes it from ui.ts.
  */
-export const DUE_COLOR = '#fde047';
+export const GAME_YELLOW = '#fde047';
 
 /**
  * The veil over the camera picture, so the cues stand out. The screen puts it there (the
