@@ -23,29 +23,88 @@ menu teaches how a round reads.
 
 ## Cue sets
 
-A song has 5 cue sets. Each set gives other cues for the same song, and the same cues on
+A song has 6 cue sets. Each set gives other cues for the same song, and the same cues on
 every run, so **Play again** repeats them. Step through the sets with the **🎲 Set** switch
 in the top right corner of the menu. Both players play the same set. The game keeps the
 choice.
 
-A set gives other cues at the same difficulty. Set 1 is the chart the game always had. Sets
-2 to 5 each try 24 candidate charts for the song, the levels and the length, and keep the one
-that plays most like the level usually does: closest to the typical mix. The mix is what
-makes a chart harder: its shares of slides, two-hand cues and fast slides, its off-beat taps,
-and its number of cues. Off-beat taps and the number of cues count half each, because both
-say how busy a chart is. The typical mix is the median over the 96 candidate charts of the
-four sets together, so every set aims at the same mix.
+The sets differ by their share of moves (see [Moves](#moves)). Two sets for each share let
+players compare two charts of each kind and rate which share they like.
 
-On the 15 songs, sets 2 to 5 are a median of 1 point from the typical shares of slides and
-two-hand cues, and at most about 5. At level 4 the sets of one song differ by a median of 3
-fast slides, 4 off-beat taps and 2% of their cues. A set does not match where the cues are,
-which hand shapes they ask for, or how the slides split between normal and slow.
+| Sets | Share of the phrases in busy music that hold a move |
+| --- | --- |
+| 1 and 2 | 0: no moves |
+| 3 and 4 | 0.35 |
+| 5 and 6 | 0.7 |
+
+A set gives other cues at the same difficulty. Each set, set 1 too, tries 24 candidate
+charts for the song, the levels and the length, and keeps the one that plays most like the
+level usually does: closest to the typical mix. The mix is what makes a chart harder: its
+shares of slides, two-hand cues and fast slides, its off-beat taps, and its number of cues.
+Off-beat taps and the number of cues count half each, because both say how busy a chart is.
+The typical mix is the median over the 144 candidate charts of the six sets together, so
+every set aims at the same mix.
+
+The choice measures the charts without moves. A move takes the place of cues on the same cue
+beats, and the rest of the chart is what makes it easy or hard. The round then plays the
+chosen chart with the set's share of moves.
+
+On the 18 songs at levels 3 and 4, the sets are a median of 1 point from the typical shares
+of slides and two-hand cues, and at most 8 (set 5 of Hey-Ho, Jonah at level 4). At level 4
+the sets of one song differ by a median of 4 points in fast slides, 6 points in off-beat taps
+and 5% in their cues. A set does not match where the cues are, which hand shapes they ask
+for, or how the slides split between normal and slow.
 
 The typical mix is not the level rules: at levels 4 and 5 a slide never follows an off-beat
-tap, so their charts have about a third fewer slides than the rules say. Set 1 was picked
-against the rules, so at level 4 it often has more slides than the other sets.
+tap, so their charts have about a third fewer slides than the rules say.
 
-A `seed=` in the URL replaces the set, for tests. The run report names the seed and the set.
+A `seed=` in the URL replaces the set, for tests, and plays without moves. `moves=<0 to 1>`
+gives the share of moves, with a set or with `seed=`. The run report names the seed, the set
+and the share of moves (`settings.moveShare`), and counts each player's moves by name
+(`players[].moves`).
+
+## Moves
+
+A move is a named pattern of cues from the dance floor. It takes the place of the random
+cues for part of a phrase of 4 bars.
+
+| Move | What a player does |
+| --- | --- |
+| Point | Bottom-left to top-right and back, twice, then bottom-right to top-left and back, twice. Half of the points start on the other diagonal. |
+| Circle | Every outer cell in turn from a corner, clockwise or anticlockwise. |
+
+Each move has three forms. A tap takes one cue interval. A slide takes two: it ends on the
+next cue beat, and that beat holds no new cue.
+
+| Form | Point | Circle | Cue intervals |
+| --- | --- | --- | --- |
+| Taps | 8 taps on the two diagonals | 8 taps on the outer cells | 8 |
+| Short taps | 4 taps: up each diagonal once | 4 taps on the corners | 4 |
+| Slides | 4 normal slides, up and down each diagonal | 4 normal slides from corner to corner | 8 |
+
+- A move starts on the first beat of a phrase where the music is busy, and ends inside the
+  phrase.
+- A level gets the form that its pace has room for. With room for 8 intervals it gets the
+  taps, and levels 3 to 5 get the slides in half of these phrases. With room for 4 intervals
+  it gets the short taps. With less room it gets no move.
+- The phrases, the moves, the diagonals, the corners and the directions do not depend on the
+  level. Two players on different levels dance the same move in the same phrase, each at the
+  pace of their own level.
+- A phrase never gets the same move as the phrase before it.
+- Inside a move there are no off-beat taps, no taps for the other hand and no shapes from the
+  shapes switch. Level 5 keeps its shape on every cue.
+- The cues before a move keep its first beat free: no slide runs into it, and no off-beat tap
+  comes just before it.
+- A move ends early when the music gets calmer inside its phrase, or when the last bar of the
+  round comes: the cues get further apart, and the rest of the steps does not fit.
+- A round that starts inside the song starts no move before its first cue.
+
+At levels 1 and 2 a move keeps the number of cues. At levels 3 to 5 it has fewer cues than
+the chart it replaces: no off-beat taps, and 4 slides in 8 intervals. With a share of 0.7, a
+Short round at level 4 has up to about a quarter fewer cues.
+
+Add a move in `src/game/moves.ts`: a name, and a function that gives the cells of each form.
+The tuning values are `MOVES` in `src/game/config.ts`.
 
 ## Record a round
 
