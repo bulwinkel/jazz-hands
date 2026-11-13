@@ -5,6 +5,7 @@ import type { HandTarget, MenuHand } from './handMenu';
 import { buildMenu, MENU_HTML, MENU_SWITCHES_HTML } from './menuView';
 import type { MenuControls } from './menuView';
 import type { PlayerRun } from './player';
+import type { ItemHover } from './playerPointers';
 import { buildRatingRows, ratingRowHtml } from './ratingView';
 import type { RateHandler, RatingRows } from './ratingView';
 import { RECORDINGS_HTML, removePreview, showRecordings } from './recordingsView';
@@ -248,6 +249,11 @@ export class GameUI {
     });
   }
 
+  /** The ids of the items a hand can choose now. They change when a panel or the video player opens. */
+  handTargetIds(): string[] {
+    return this.handElements().map((element) => element.dataset.hand ?? '');
+  }
+
   /** The elements a hand can choose now. */
   private handElements(): HTMLElement[] {
     // The open video player covers everything else, so only its own buttons count.
@@ -262,11 +268,11 @@ export class GameUI {
   }
 
   /**
-   * Shows a ring at each hand (filled while the hand is a fist), a highlight on the item under
-   * a hand, and on that item a cue's timing mark for how far the fist hold has come.
-   * `hands` are screen positions. Call it with no hands to clear everything.
+   * Shows a ring at each hand (filled while the hand is a fist), a highlight on each item that
+   * a player's pointer is on, and on that item a cue's timing mark for how far the fist hold
+   * has come. `hands` are screen positions. Call it with no hands and no hovers to clear everything.
    */
-  showHands(hands: readonly MenuHand[], hoveredId: string | null, progress: number): void {
+  showHands(hands: readonly MenuHand[], hovers: readonly ItemHover[]): void {
     // Reuse the ring elements: this runs on every tracking frame.
     while (this.cursors.children.length < hands.length) {
       const ring = document.createElement('div');
@@ -281,14 +287,17 @@ export class GameUI {
       ring.classList.toggle('fist', hand.fist);
     });
 
+    const hoveredIds = hovers.map((hover) => hover.id);
     for (const element of this.root.querySelectorAll<HTMLElement>('.hand-hover')) {
-      if (element.dataset.hand !== hoveredId) element.classList.remove('hand-hover');
+      if (!hoveredIds.includes(element.dataset.hand ?? '')) element.classList.remove('hand-hover');
     }
-    this.ratings?.showHandOn(hoveredId);
-    const hovered = hoveredId ? this.root.querySelector<HTMLElement>(`[data-hand="${hoveredId}"]`) : undefined;
-    if (!hovered) return;
-    hovered.classList.add('hand-hover');
-    hovered.style.setProperty('--hold', progress.toFixed(3));
+    this.ratings?.showHandsOn(hovers);
+    for (const hover of hovers) {
+      const hovered = this.root.querySelector<HTMLElement>(`[data-hand="${hover.id}"]`);
+      if (!hovered) continue;
+      hovered.classList.add('hand-hover');
+      hovered.style.setProperty('--hold', hover.progress.toFixed(3));
+    }
   }
 
   /**

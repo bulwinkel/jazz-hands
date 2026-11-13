@@ -1,6 +1,6 @@
 import { errorText } from '../errorText';
 import { WORKER_LIMITS } from '../tracking/config';
-import type { FaceExpression, FaceRegions, TrackingFrame } from '../tracking/types';
+import type { FaceExpression, FaceRegions, TrackedHand, TrackingFrame } from '../tracking/types';
 import { SongAudio } from './audio';
 import { chartEntries, countMoves, cuesFrom, entriesFrom } from './chart';
 import { CHART, DEFAULT_SEED, FACE_EMOJI, HAND_MENU, MENU_TRACKER, SONGS, TIMING, TOAST } from './config';
@@ -17,7 +17,7 @@ import type { FitPlan } from './fitTiming';
 import { logEntry } from './frameLog';
 import type { LoggedFrame } from './frameLog';
 import { containRect, defaultGrid, faceRegion, fitGrid } from './geometry';
-import { newHandMenuState, stepHandMenu } from './handMenu';
+import type { MenuHand } from './handMenu';
 import { clearHolds, stepHandsUp } from './handsUp';
 import type { InputView } from './input';
 import { InputHost } from './inputHost';
@@ -25,6 +25,7 @@ import { closingSongTime, frameSongTime, newCueState } from './judgment';
 import { fetchManifest, playEndSec, playStartSec } from './manifest';
 import { createPlayers, summariseChart } from './player';
 import type { ChartSummary, PlayerRun } from './player';
+import { chooseInTurn, newPlayerPointers, stepPlayerPointers } from './playerPointers';
 import { inCurrentStretch, pausePlay, resumePlay } from './playTime';
 import { MenuPreview } from './preview';
 import type { PreviewState } from './preview';
@@ -95,8 +96,11 @@ export class DanceGame {
   private menuHandControl = false;
   /** True when a pointing hand began the next or current reach fit. It sets the fit's timing: see `planFit`. */
   private fitBegunByHand = false;
-  /** Which item a hand is on and how far its fist hold has come, in the menu and on the results screen. */
-  private handMenu = newHandMenuState();
+  /**
+   * Each player's pointer: which item their hands are on, and how far their fist hold has come.
+   * In the menu, the ready check and the results, and in the video player.
+   */
+  private pointers = newPlayerPointers(PLAYER_SLOTS.length);
   private manifest?: Manifest;
   private players: PlayerRun[] = [];
   /** The latest tracking frame, after the one-player merge. */
@@ -169,8 +173,7 @@ export class DanceGame {
     // fit. It keeps away from the hands-up cells, which are in other places with two players.
     this.ui.refitButton.hidden = phase !== 'ready';
     this.ui.refitButton.dataset.players = String(this.options.settings.playerCount);
-    this.handMenu = newHandMenuState();
-    this.ui.showHands([], null, 0);
+    this.clearHandPointer();
     document.body.dataset.phase = phase; // The stylesheet places messages by phase.
     this.expose();
   }
@@ -225,10 +228,10 @@ export class DanceGame {
     this.inputs.want({ mode: MENU_TRACKER, faces: false }).catch(() => {});
   }
 
-  /** Takes the hand rings and the highlight off the panel, and forgets a hold in progress. */
+  /** Takes the hand rings and the highlights off the panel, and forgets every hold in progress. */
   private clearHandPointer(): void {
-    this.handMenu = newHandMenuState();
-    this.ui.showHands([], null, 0);
+    this.pointers = newPlayerPointers(PLAYER_SLOTS.length);
+    this.ui.showHands([], []);
   }
 
   /**
@@ -663,19 +666,27 @@ export class DanceGame {
   }
 
   /**
-   * An open hand highlights an item on screen, a fist held on it chooses it.
-   * `showRings` draws a ring at each hand, for a phase where the canvas does not.
+   * An open hand highlights an item on screen, a fist held on it chooses it. Each player's
+   * hands move a pointer of their own (see playerPointers.ts), so two players can point at
+   * two items at once. `showRings` draws a ring at each hand, for a phase where the canvas does not.
    */
   private pointAtPanel(frame: TrackingFrame, showRings: boolean): void {
-    const hands = frame.players
-      .flatMap((player) => player.hands)
+    const handsByPlayer = frame.players.map((player) => this.pointingHands(player.hands));
+    const step = stepPlayerPointers(this.pointers, this.ui.handTargets(), handsByPlayer, frame.timeMs);
+    this.pointers = step.states;
+    this.ui.showHands(showRings ? handsByPlayer.flat() : [], step.hovers);
+    chooseInTurn(step.chooseIds, (id) => this.ui.chooseHandTarget(id), this.handScreen);
+  }
+
+  /** The hands that point, as screen positions. Hands low in the frame are resting. */
+  private pointingHands(hands: readonly TrackedHand[]): MenuHand[] {
+    return hands
       .filter((hand) => hand.y <= HAND_MENU.lowestY)
       .map((hand) => ({ ...this.toScreen(hand), fist: hand.gesture === 'fist' }));
-    const step = stepHandMenu(this.handMenu, this.ui.handTargets(), hands, frame.timeMs);
-    this.handMenu = step.state;
-    this.ui.showHands(showRings ? hands : [], step.state.hoveredId, step.progress);
-    if (step.chooseId) this.ui.chooseHandTarget(step.chooseId);
   }
+
+  /** What the hands point at: the phase and the items they can choose. A choice may change it. */
+  private handScreen = (): string => `${this.phase} ${this.ui.handTargetIds().join(' ')}`;
 
   /** A point in the camera frame, as a position on the screen in pixels. */
   private toScreen(point: Point): Point {

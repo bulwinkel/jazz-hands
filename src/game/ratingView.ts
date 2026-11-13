@@ -1,6 +1,7 @@
 import { SET_RATINGS } from './cueSetRating';
 import type { SetRating } from './cueSetRating';
 import { find } from './dom';
+import type { ItemHover } from './playerPointers';
 import type { PlayerIndex } from './types';
 
 /**
@@ -21,8 +22,8 @@ export type RateHandler = (player: PlayerIndex, rating: SetRating) => Promise<bo
 
 /** The rating rows of the open results. */
 export interface RatingRows {
-  /** Shows the preview of the star that a hand is on. `hoveredId` is the id of the hand's item, or null. */
-  showHandOn(hoveredId: string | null): void;
+  /** Shows the preview of the stars that the players' pointers are on. `hovers` are the items they are on. */
+  showHandsOn(hovers: readonly ItemHover[]): void;
 }
 
 const LABEL = 'Rate the moves';
@@ -47,6 +48,20 @@ export function starLooks(chosen: SetRating | null, previewed: SetRating | null)
 /** The id by which a hand chooses a star, for example `rate-0-3`. */
 export function starId(player: PlayerIndex, star: SetRating): string {
   return `rate-${player}-${star}`;
+}
+
+/**
+ * The star of `player`'s row that a pointer is on. Each row shows one preview: of two pointers
+ * on one row, the one whose hold is further along wins, and the first player on a tie.
+ */
+export function handStarOn(hovers: readonly ItemHover[], player: PlayerIndex): SetRating | null {
+  let best: { star: SetRating; progress: number } | null = null;
+  for (const hover of hovers) {
+    const on = starOfId(hover.id);
+    if (on?.player !== player) continue;
+    if (best === null || hover.progress > best.progress) best = { star: on.star, progress: hover.progress };
+  }
+  return best?.star ?? null;
 }
 
 /** The player and the star of an item id. Null for any other item, and for no item. */
@@ -79,9 +94,8 @@ export function ratingRowHtml(player: PlayerIndex): string {
 export function buildRatingRows(root: ParentNode, onRate: RateHandler): RatingRows {
   const rows = [...root.querySelectorAll<HTMLElement>('.rating')].map((element) => new RatingRow(element, onRate));
   return {
-    showHandOn(hoveredId) {
-      const on = starOfId(hoveredId);
-      for (const row of rows) row.showHandOn(on?.player === row.player ? on.star : null);
+    showHandsOn(hovers) {
+      for (const row of rows) row.showHandOn(handStarOn(hovers, row.player));
     },
   };
 }
