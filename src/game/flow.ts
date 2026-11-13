@@ -3,7 +3,6 @@ import { WORKER_LIMITS } from '../tracking/config';
 import type { FaceExpression, FaceRegions, TrackingFrame } from '../tracking/types';
 import { SongAudio } from './audio';
 import { cuesFrom, generateChart } from './chart';
-import { CUE_STYLE_NAMES, nextCueStyle } from './cueStyle';
 import { DEFAULT_SEED, FACE_EMOJI, HAND_MENU, MENU_TRACKER, SONGS, TIMING, TOAST } from './config';
 import { cueSetSeed } from './cueSet';
 import { buildRunReport, newFaceObservation, newObservation, newTrackingStats } from './diagnostics';
@@ -140,7 +139,6 @@ export class DanceGame {
     this.ui.resumeButton.addEventListener('click', () => void this.unlockAudio());
     this.ui.refitButton.addEventListener('click', (event) => this.refit(isHandClick(event)));
     this.ui.player.onChange = this.onPlayerChange;
-    this.ui.showCueStyle(this.options.settings.cueStyle);
     window.addEventListener('keydown', this.onKey);
     window.addEventListener('pagehide', () => this.dispose(), { once: true });
 
@@ -188,7 +186,6 @@ export class DanceGame {
   /** A choice in the menu changed. */
   private onMenuChange = (): void => {
     this.saveSettings();
-    this.ui.showCueStyle(this.options.settings.cueStyle);
     this.followPreview();
     this.syncMenuInput();
   };
@@ -782,13 +779,6 @@ export class DanceGame {
         return;
       case 'c':
         this.refit();
-        return;
-      case 'v':
-        // Steps to the next cue style, in the menu and in a round, to compare them.
-        settings.cueStyle = nextCueStyle(settings.cueStyle);
-        this.saveSettings();
-        this.ui.showCueStyle(settings.cueStyle);
-        this.ui.showToast(`Cues: ${CUE_STYLE_NAMES[settings.cueStyle].toLowerCase()}`);
         return;
       case 'arrowleft':
       case 'arrowright':

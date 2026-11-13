@@ -1,6 +1,5 @@
 import { DUE_COLOR, VEIL } from './colors';
-import { GROW_START_SCALE, HAND_MENU, PLAYER_COLORS, SHRINK_START_SCALE, TOAST } from './config';
-import type { CueStyle } from './cueStyle';
+import { GROW_START_SCALE, HAND_MENU, PLAYER_COLORS, TOAST } from './config';
 import { find, isHandClick } from './dom';
 import type { HandTarget, MenuHand } from './handMenu';
 import { buildMenu, MENU_HTML, MENU_SWITCHES_HTML } from './menuView';
@@ -81,8 +80,6 @@ export class GameUI {
   private readonly fitObserver = new ResizeObserver(() => this.fitPanel());
   /** The open menu. Unset while the menu is closed. */
   private menu?: MenuControls;
-  /** The item under a pointing hand, with its outset set for the hold mark. */
-  private hovered?: HTMLElement;
 
   constructor(root: HTMLElement) {
     // The stylesheet takes these values from the game's code, so one change reaches the page
@@ -125,15 +122,6 @@ export class GameUI {
     this.closeMenu();
   }
 
-  /**
-   * Makes the page follow the cue style: the fist hold on a menu item shows its progress with
-   * the same mark as a cue of a round (see the stylesheet), and the menu's switch names the style.
-   */
-  showCueStyle(style: CueStyle): void {
-    document.body.dataset.cues = style;
-    this.menu?.showCueStyle(style);
-  }
-
   /** Shows a short note at the top of the screen, which goes away by itself after `durationMs`. */
   showToast(text: string, durationMs: number = TOAST.shortMs): void {
     this.toast.textContent = text;
@@ -174,7 +162,6 @@ export class GameUI {
   showMenu(settings: Settings, onStart: (byHand: boolean) => void, onChange: () => void): void {
     this.openPanel('menu', MENU_HTML, MENU_SWITCHES_HTML);
     this.menu = buildMenu(this.panel, settings, { onStart, onChange });
-    this.showCueStyle(settings.cueStyle);
   }
 
   /** `onRefit` hears whether a pointing hand chose it, and not a mouse. */
@@ -247,7 +234,7 @@ export class GameUI {
 
   /**
    * Shows a ring at each hand (filled while the hand is a fist), a highlight on the item under
-   * a hand, and on that item the cue style's mark for how far the fist hold has come.
+   * a hand, and on that item a cue's timing mark for how far the fist hold has come.
    * `hands` are screen positions. Call it with no hands to clear everything.
    */
   showHands(hands: readonly MenuHand[], hoveredId: string | null, progress: number): void {
@@ -269,13 +256,6 @@ export class GameUI {
       if (element.dataset.hand !== hoveredId) element.classList.remove('hand-hover');
     }
     const hovered = hoveredId ? this.root.querySelector<HTMLElement>(`[data-hand="${hoveredId}"]`) : undefined;
-    if (hovered && hovered !== this.hovered) {
-      // The shrink mark starts this far outside the item: as far as a cue's outline starts
-      // outside its cell, measured on the item's height. Reading the height costs a layout,
-      // so it happens once for each item a hand moves onto, not on every tracking frame.
-      hovered.style.setProperty('--outset', `${(hovered.offsetHeight * (SHRINK_START_SCALE - 1)) / 2}px`);
-    }
-    this.hovered = hovered ?? undefined;
     if (!hovered) return;
     hovered.classList.add('hand-hover');
     hovered.style.setProperty('--hold', progress.toFixed(3));

@@ -117,7 +117,7 @@ legend {
 
 /* --- Choosing by hand ---
    A ring at each hand the game sees, above the panel. The item under a hand is outlined.
-   While a fist holds on it, the cue style's mark shows the hold. */
+   While a fist holds on it, a cue's timing mark shows the hold. */
 
 #cursors {
   position: absolute;
@@ -154,41 +154,29 @@ legend {
   border-radius: 16px;
 }
 /* The mark of the fist hold. It works as the timing mark of a cue in a round does (see
-   cueStyle.ts), so the menu teaches how a round reads: the item is chosen when the mark is
-   exactly the size of the item, and its colour has reached the due colour.
-   `--hold` goes from 0 to 1, and `--outset` is a length; ui.ts sets both. */
+   cueStyle.ts), so the menu teaches how a round reads: a block starts small in the middle of
+   the item, and the item is chosen when the block fills it and its colour has reached the
+   due colour. `--hold` goes from 0 to 1; ui.ts sets it. */
 .hand-hover::after {
   --mark: color-mix(in srgb, var(--due-color) calc(var(--hold, 0) * 100%), #ffffff);
   content: "";
   position: absolute;
-  pointer-events: none;
-  /* Nothing shows under an open hand: the mark starts with the fist. */
-  opacity: clamp(0, calc(var(--hold, 0) * 1000), 1);
-}
-/* Shrink: an outline starts well outside the item and meets its edge. */
-body[data-cues="shrink"] .hand-hover::after {
-  inset: calc(var(--outset, 40px) * (var(--hold, 0) - 1));
-  border: 4px solid var(--mark);
-  border-radius: 18px;
-}
-/* Grow: a block starts small in the middle of the item and fills it. */
-body[data-cues="grow"] .hand-hover::after {
   inset: 0;
   border: 3px solid var(--mark);
   border-radius: 14px;
   background: color-mix(in srgb, var(--mark) 50%, transparent);
   transform: scale(calc(var(--grow-start) + (1 - var(--grow-start)) * var(--hold, 0)));
+  pointer-events: none;
+  /* Nothing shows under an open hand: the mark starts with the fist. */
+  opacity: clamp(0, calc(var(--hold, 0) * 1000), 1);
 }
-/* The yellow buttons do not show the yellow highlight. Their highlight is white. Their hold
-   mark is white in the shrink style and dark in the grow style. */
+/* The yellow buttons do not show the yellow highlight. Their highlight is white, and their
+   hold mark is dark. */
 .primary.hand-hover {
   outline: 6px solid #fff;
   box-shadow: 0 0 34px #ffffffb3;
 }
 .primary.hand-hover::after {
-  --mark: #ffffff;
-}
-body[data-cues="grow"] .primary.hand-hover::after {
   border-color: var(--on-due);
   background: color-mix(in srgb, var(--on-due) 40%, transparent);
 }
@@ -537,9 +525,9 @@ canvas {
   accent-color: var(--player);
 }
 
-/* Five switches in a top corner of the menu: previews, hand control, recording, the cue
-   style and the cue set. They sit a little in from the side and from the top, because the
-   camera tracks a hand badly at the edge of its picture. They shrink with the menu content
+/* Four switches in a top corner of the menu: previews, hand control, recording and the cue
+   set. They sit a little in from the side and from the top, because the camera tracks a hand
+   badly at the edge of its picture. They shrink with the menu content
    (`--fit` is set in ui.ts). */
 .corner {
   position: absolute;
@@ -902,7 +890,7 @@ body[data-phase="countdown"] #message h1 {
   margin-bottom: 10px;
 }
 
-/* A short note at the top of the screen, for example the name of the cue style after the V key. */
+/* A short note at the top of the screen, for example that hand control stopped. */
 #toast {
   position: absolute;
   z-index: 7;

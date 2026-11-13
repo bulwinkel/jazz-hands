@@ -460,7 +460,7 @@ export const RECORDING = {
 
 /** Notes at the top of the screen. */
 export const TOAST = {
-  /** A short note, such as the name of the cue style after the V key, stays this long. */
+  /** A short note stays this long, when the code that shows it gives no time of its own. */
   shortMs: 1600,
   /** A note to read from the dance spot, such as "hand control stopped", stays this long. */
   longMs: 6000,
