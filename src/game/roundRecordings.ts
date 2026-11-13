@@ -1,5 +1,6 @@
 import type { RecordingDelays } from './audio';
-import { RECORDING, RoundRecorder, videoFileName } from './recording';
+import { RECORDING } from './config';
+import { RoundRecorder, videoFileName } from './recording';
 import type { RoundVideos } from './recording';
 import type { RecordingScene } from './recordingScene';
 

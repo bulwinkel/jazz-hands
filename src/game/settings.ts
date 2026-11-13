@@ -1,6 +1,7 @@
 import type { TrackerMode } from '../tracking/types';
 import { DEFAULT_SEED, SONGS, TIMING } from './config';
 import { isCueStyle } from './cueStyle';
+import { clamp } from './numbers';
 import type { CueStyle } from './cueStyle';
 import type { Level, PlayerCount, SongLength } from './types';
 
@@ -46,11 +47,6 @@ export interface Options {
 
 export const STORAGE_KEY = 'dance-game-v1';
 
-/** The range a kept camera delay is clamped into on load, as [lowest, highest]. */
-export const INPUT_LATENCY_RANGE_MS = [-1000, 2000] as const;
-/** The range a kept picture offset is clamped into on load, as [lowest, highest]. */
-export const AV_OFFSET_RANGE_MS = [-2000, 2000] as const;
-
 export function defaultSettings(): Settings {
   return {
     playerCount: 2,
@@ -83,7 +79,7 @@ const isTrackerMode = (value: unknown): value is TrackerMode =>
   value === 'hands-full' || value === 'hands-split' || value === 'pose';
 
 function finiteOr(value: unknown, fallback: number, min: number, max: number): number {
-  return typeof value === 'number' && Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
+  return typeof value === 'number' && Number.isFinite(value) ? clamp(value, min, max) : fallback;
 }
 
 /**
@@ -110,8 +106,8 @@ function readStored(stored: unknown): Settings {
   if (typeof saved.handControl === 'boolean') settings.handControl = saved.handControl;
   if (typeof saved.record === 'boolean') settings.record = saved.record;
   if (isCueStyle(saved.cueStyle)) settings.cueStyle = saved.cueStyle;
-  settings.inputLatencyMs = finiteOr(saved.inputLatencyMs, settings.inputLatencyMs, ...INPUT_LATENCY_RANGE_MS);
-  settings.avOffsetMs = finiteOr(saved.avOffsetMs, settings.avOffsetMs, ...AV_OFFSET_RANGE_MS);
+  settings.inputLatencyMs = finiteOr(saved.inputLatencyMs, settings.inputLatencyMs, ...TIMING.inputLatencyRangeMs);
+  settings.avOffsetMs = finiteOr(saved.avOffsetMs, settings.avOffsetMs, ...TIMING.avOffsetRangeMs);
   return settings;
 }
 

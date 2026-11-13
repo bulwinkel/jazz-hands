@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { RECORDING } from './recording';
+import { RECORDING } from './config';
 import type { RecordedVideo, RoundVideos } from './recording';
 import { addRound, recordingStatus, recordingTailSec, RoundRecordings } from './roundRecordings';
 import type { RecordingSource } from './roundRecordings';

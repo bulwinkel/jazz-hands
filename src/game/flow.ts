@@ -2,7 +2,7 @@ import type { FaceExpression, FaceRegions, TrackingFrame } from '../tracking/typ
 import { SongAudio } from './audio';
 import { cuesFrom, generateChart } from './chart';
 import { CUE_STYLE_NAMES, nextCueStyle } from './cueStyle';
-import { FACE_EMOJI, HAND_MENU, HANDS_UP_CELL, LEVELS, MENU_TRACKER, SONGS, TIMING } from './config';
+import { FACE_EMOJI, HAND_MENU, HANDS_UP_CELL, LEVELS, MENU_TRACKER, SONGS, TIMING, TOAST } from './config';
 import {
   buildRunReport,
   newFaceObservation,
@@ -62,8 +62,6 @@ declare global {
 }
 
 const PLAYER_SLOTS: readonly PlayerIndex[] = [0, 1];
-/** The note that hand control stopped is a sentence to read from the dance spot: it stays a while. */
-const HAND_CONTROL_STOPPED_TOAST_MS = 6000;
 
 function readStoredSettings(): unknown {
   try {
@@ -244,7 +242,8 @@ export class DanceGame {
     }
     this.frame = undefined;
     this.clearHandPointer();
-    this.ui.showToast('Hand control stopped. Turn it off and on to try again.', HAND_CONTROL_STOPPED_TOAST_MS);
+    // The note is a sentence to read from the dance spot: it stays a while.
+    this.ui.showToast('Hand control stopped. Turn it off and on to try again.', TOAST.longMs);
   };
 
   /** Loads the song and the tracker for this round, then begins the reach fit. */

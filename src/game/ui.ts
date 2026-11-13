@@ -1,6 +1,5 @@
 import { DUE_COLOR, VEIL } from './colors';
-import { HAND_MENU, PLAYER_COLORS } from './config';
-import { GROW_START_SCALE, SHRINK_START_SCALE } from './cueStyle';
+import { GROW_START_SCALE, HAND_MENU, PLAYER_COLORS, SHRINK_START_SCALE, TOAST } from './config';
 import type { CueStyle } from './cueStyle';
 import { find, isHandClick } from './dom';
 import type { HandTarget, MenuHand } from './handMenu';
@@ -14,8 +13,6 @@ import { accuracy, stars } from './scoring';
 import type { Settings } from './settings';
 import { VideoPlayer } from './videoPlayer';
 
-/** A short note stays on screen this long. */
-const TOAST_MS = 1600;
 
 const SHELL_HTML = `
   <main id="stage" aria-label="Dance game">
@@ -138,7 +135,7 @@ export class GameUI {
   }
 
   /** Shows a short note at the top of the screen, which goes away by itself after `durationMs`. */
-  showToast(text: string, durationMs = TOAST_MS): void {
+  showToast(text: string, durationMs: number = TOAST.shortMs): void {
     this.toast.textContent = text;
     this.toast.hidden = false;
     window.clearTimeout(this.toastTimer);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TIMING } from './config';
-import { fitMomentAt, HAND_SETTLE_SEC, planFit } from './fitTiming';
+import { fitMomentAt, planFit } from './fitTiming';
 
 describe('reach fit timing', () => {
   it('lets the players walk back first when the camera runs and no hand began the fit', () => {
@@ -25,12 +25,12 @@ describe('reach fit timing', () => {
 
   it.each(['Start', 'Recalibrate'])('ignores hands for a moment after %s by hand, and adds that moment to the circles', () => {
     const plan = planFit(true, true);
-    expect(plan).toEqual({ walkSec: 0, settleSec: HAND_SETTLE_SEC, drawSec: TIMING.fitSec });
-    const fullSec = HAND_SETTLE_SEC + TIMING.fitSec;
+    expect(plan).toEqual({ walkSec: 0, settleSec: TIMING.handSettleSec, drawSec: TIMING.fitSec });
+    const fullSec = TIMING.handSettleSec + TIMING.fitSec;
     // The number on screen covers the whole time left, the settle time with it.
     expect(fitMomentAt(plan, 0)).toEqual({ stage: 'draw', secondsLeft: fullSec, handsCount: false });
-    expect(fitMomentAt(plan, HAND_SETTLE_SEC - 0.01).handsCount).toBe(false);
-    expect(fitMomentAt(plan, HAND_SETTLE_SEC)).toEqual({ stage: 'draw', secondsLeft: TIMING.fitSec, handsCount: true });
+    expect(fitMomentAt(plan, TIMING.handSettleSec - 0.01).handsCount).toBe(false);
+    expect(fitMomentAt(plan, TIMING.handSettleSec)).toEqual({ stage: 'draw', secondsLeft: TIMING.fitSec, handsCount: true });
     expect(fitMomentAt(plan, fullSec - 0.1).secondsLeft).toBe(1);
     expect(fitMomentAt(plan, fullSec).stage).toBe('done');
   });

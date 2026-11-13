@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { CUE_STYLES, GROW_START_SCALE, isCueStyle, markScale, nextCueStyle, SHRINK_START_SCALE } from './cueStyle';
+import { GROW_START_SCALE, SHRINK_START_SCALE } from './config';
+import { CUE_STYLES, isCueStyle, markScale, nextCueStyle } from './cueStyle';
 
 describe('cue styles', () => {
   it('step from one to the next and round again', () => {

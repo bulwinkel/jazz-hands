@@ -1,14 +1,12 @@
-import { TIMING } from './config';
-import { AV_OFFSET_RANGE_MS, INPUT_LATENCY_RANGE_MS } from './settings';
+import { RECORDING, TIMING } from './config';
+import { clamp } from './numbers';
 
-/** Room for the speakers' own delay in a recording's sound. Bluetooth speakers add about 0.3 s. */
-const OUTPUT_LATENCY_ROOM_SEC = 1;
 /**
  * The longest delay a recording's sound can need: the largest picture offset and camera delay
- * the settings allow, plus the speakers' delay.
+ * the settings allow, plus room for the speakers' delay.
  */
 export const MAX_RECORDING_DELAY_SEC =
-  (AV_OFFSET_RANGE_MS[1] + INPUT_LATENCY_RANGE_MS[1]) / 1000 + OUTPUT_LATENCY_ROOM_SEC;
+  (TIMING.avOffsetRangeMs[1] + TIMING.inputLatencyRangeMs[1]) / 1000 + RECORDING.outputLatencyRoomSec;
 
 /** How late each video of a recording carries the song's sound, in seconds. */
 export interface RecordingDelays {
@@ -33,7 +31,7 @@ export function recordingDelays(outputLatencySec: number, avOffsetMs: number, in
  * then late by that much.
  */
 function applicableDelay(sec: number): number {
-  return Math.max(0, Math.min(MAX_RECORDING_DELAY_SEC, sec));
+  return clamp(sec, 0, MAX_RECORDING_DELAY_SEC);
 }
 
 /** A copy of the song's sound for one video, behind its own delay. */

@@ -1,3 +1,4 @@
+import { RECORDING } from './config';
 import { clearScene, drawScene } from './recordingScene';
 import type { RecordingScene } from './recordingScene';
 
@@ -9,26 +10,8 @@ import type { RecordingScene } from './recordingScene';
  * - the camera view: the camera picture alone, not mirrored, to share as a plain video.
  *
  * Both carry the song. The browser's MediaRecorder writes them while the round runs.
+ * The values that tune a recording are in RECORDING, in config.ts.
  */
-
-export const RECORDING = {
-  /** The game view is this high. Its width follows the camera's shape. */
-  gameHeight: 720,
-  frameRate: 30,
-  gameBitsPerSec: 4_000_000,
-  /** The camera view keeps the camera's own size, 1080p on a recent laptop. */
-  cameraBitsPerSec: 6_000_000,
-  audioBitsPerSec: 128_000,
-  /** The recording goes on this long after the results show: the cheer, and the result card. */
-  tailSec: 4,
-  /**
-   * A video's sound is late by its delay, so the end of the song reaches the video that much
-   * after the results show. The recording then goes on for the delay and this margin at least.
-   */
-  soundTailMarginSec: 0.5,
-  /** The game keeps the videos of this many rounds. Older ones are dropped, to free memory. */
-  keepRounds: 3,
-} as const;
 
 export type VideoKind = 'game' | 'camera';
 
@@ -74,16 +57,13 @@ export function sizeText(bytes: number): string {
   return megabytes < 10 ? `${megabytes.toFixed(1)} MB` : `${Math.round(megabytes)} MB`;
 }
 
-/** A display frame this close before a video frame's time still draws it, so screen jitter skips none. */
-const FRAME_SLACK_MS = 4;
-
 /**
  * Paces the drawing of the game view to its video. The screen refreshes 60 times a second or
  * more, and a 720p frame takes time to draw, but the video takes only `frameRate` frames a
  * second. Returns the time the next frame is due when one is due at `nowMs`, else null.
  */
 export function nextFrameDue(dueMs: number, nowMs: number, frameRate: number): number | null {
-  if (nowMs + FRAME_SLACK_MS < dueMs) return null;
+  if (nowMs + RECORDING.frameSlackMs < dueMs) return null;
   const frameMs = 1000 / frameRate;
   // After a long gap, such as a hidden tab, count on from now: no burst of frames to catch up.
   return dueMs + frameMs > nowMs ? dueMs + frameMs : nowMs + frameMs;

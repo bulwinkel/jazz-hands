@@ -5,13 +5,6 @@ import { TIMING } from './config';
  * Then they draw circles with both arms, and the game grows each grid around their hands.
  */
 
-/**
- * After a fit begun by hand, hands count only after this long. The fist that chose Start or
- * Recalibrate is still near the button, and its positions would pull a grid toward it. With
- * two players the Recalibrate button sits between the grids.
- */
-// Belongs in config.ts: move it there when that file is free.
-export const HAND_SETTLE_SEC = 1;
 
 export interface FitPlan {
   /** Time to walk from the laptop to the spot. The screen counts it down. */
@@ -39,7 +32,8 @@ export function planFit(byHand: boolean, usesCamera: boolean): FitPlan {
   return {
     // Players who chose by hand stand at their spots already.
     walkSec: usesCamera && !byHand ? TIMING.walkBackSec : 0,
-    settleSec: byHand ? HAND_SETTLE_SEC : 0,
+    // The fist that chose Start or Recalibrate is still near the button.
+    settleSec: byHand ? TIMING.handSettleSec : 0,
     drawSec: TIMING.fitSec,
   };
 }

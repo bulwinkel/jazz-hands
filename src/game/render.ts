@@ -6,7 +6,7 @@ import { FACE_EMOJI, GESTURE_EMOJI, HANDS_UP_CELL, LEVELS, PLAYER_COLORS, TIMING
 import { openFaceCue } from './faceJudgment';
 import { cellRect, containRect } from './geometry';
 import type { CueState } from './judgment';
-import { clamp01 } from './numbers';
+import { clamp, clamp01 } from './numbers';
 import type { PlayerRun } from './player';
 import type { Manifest, Phase, PlayerIndex, Point, Rating, Rect, SlideSpeed } from './types';
 
@@ -150,7 +150,7 @@ export class GameRenderer {
     this.ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
     this.ctx.clearRect(0, 0, this.width, this.height);
     this.frameRect = containRect(this.width, this.height, videoAspect);
-    this.textSize = Math.max(22, Math.min(42, this.frameRect.width * 0.025));
+    this.textSize = clamp(this.frameRect.width * 0.025, 22, 42);
   }
 
   private toScreen(rect: Rect): Rect {
