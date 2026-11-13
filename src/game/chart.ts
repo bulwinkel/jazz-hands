@@ -244,11 +244,14 @@ function chartFrame(manifest: Manifest, options: ChartOptions): ChartFrame {
   const firstCueSec = leadInEndSec(manifest);
   const tailSec = tailStartSec(manifest, options.endSec);
 
-  const strideAt = (beat: number): number => {
+  const strideFor = (beat: number): number => {
     const fast = intensity[beat] >= rules.fastFromIntensity;
     const stride = selectStride(beatIntervalSec, fast ? CHART.fastIntervalSec : CHART.slowIntervalSec);
     return intensity[beat] < rules.sparseBelowIntensity ? stride * 2 : stride;
   };
+  // Every beat asks for its stride several times: work each one out once.
+  const strides = beats.map((_, beat) => strideFor(beat));
+  const strideAt = (beat: number): number => strides[beat] ?? strideFor(beat);
   const isCueBeat = (beat: number): boolean =>
     beat < beats.length &&
     beats[beat] >= firstCueSec &&
