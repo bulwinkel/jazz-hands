@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { emptyFrame, FakeVideoFrame, FakeWorker } from './testDoubles';
+import type { FakeVideo } from './testDoubles';
 import type { Tracker, TrackerMode, TrackerOptions } from './types';
 
 /** Trackers on the main thread, made by `createTracker`. They load at once. */
@@ -29,8 +30,9 @@ vi.mock('./index', () => ({
 
 const { CameraTracking } = await import('./cameraTracking');
 
-const video = {} as HTMLVideoElement;
-const noFaces = () => [null, null] as [null, null];
+const camera: FakeVideo = { picture: 0 };
+const video = camera as unknown as HTMLVideoElement;
+const noFaces: [null, null] = [null, null];
 
 beforeEach(() => {
   pageTrackers.length = 0;
@@ -127,5 +129,117 @@ describe('disposing the trackers', () => {
     const poseWorker = FakeWorker.last;
     tracking.dispose();
     expect(poseWorker.terminated).toBe(true);
+  });
+});
+
+/** Tracking in a worker whose tracker has loaded, with a clock the test sets. */
+async function trackingInWorker() {
+  const clock = vi.spyOn(performance, 'now').mockReturnValue(0);
+  const tracking = new CameraTracking('hands-full', false, 'worker');
+  const loading = tracking.init();
+  loadInWorker();
+  await loading;
+  const onFrame = vi.fn();
+  const onError = vi.fn();
+  const worker = FakeWorker.last;
+  /** The camera shows a new picture at page time `atMs`, and the input offers it. */
+  const frameComes = (atMs: number): void => {
+    clock.mockReturnValue(atMs);
+    camera.picture = atMs;
+    tracking.track(video, noFaces, onFrame, onError);
+  };
+  return { tracking, worker, onFrame, onError, frameComes, clock };
+}
+
+/** Lets promise callbacks run. */
+const settle = () => new Promise((done) => setTimeout(done, 0));
+
+describe('a camera frame in a worker', () => {
+  it('goes over with the picture and the page time of the moment it came', async () => {
+    const { worker, onFrame, frameComes } = await trackingInWorker();
+    frameComes(100);
+    const [sent] = worker.frames();
+    expect(sent).toMatchObject({ timeMs: 100, picture: FakeVideoFrame.made[0] });
+    worker.answerLastFrame();
+    await settle();
+    expect(onFrame).toHaveBeenCalledWith(expect.objectContaining({ timeMs: 100 }));
+  });
+
+  it('keeps its own picture and time while it is held, though the video moves on', async () => {
+    const { worker, onFrame, frameComes, clock } = await trackingInWorker();
+    frameComes(100);
+    frameComes(133); // Held: the worker is busy.
+    // The answer comes later, and the video shows a newer picture by then.
+    clock.mockReturnValue(160);
+    camera.picture = 160;
+    worker.answerLastFrame();
+    await settle();
+    const [, held] = worker.frames();
+    expect(held.timeMs).toBe(133);
+    expect((held.picture as unknown as FakeVideoFrame).shows).toBe(133);
+    worker.answerLastFrame();
+    await settle();
+    expect(onFrame.mock.calls.map(([frame]) => frame.timeMs)).toEqual([100, 133]);
+  });
+
+  it('lets an older held frame go when a newer one takes its place', async () => {
+    const { worker, frameComes } = await trackingInWorker();
+    frameComes(100);
+    frameComes(133);
+    frameComes(166);
+    expect(FakeVideoFrame.made[1].closes).toBe(1);
+    worker.answerLastFrame();
+    await settle();
+    expect(worker.frames()[1].picture).toBe(FakeVideoFrame.made[2]);
+  });
+
+  it('sends the held frame before the game handles the answer', async () => {
+    const { worker, onFrame, frameComes } = await trackingInWorker();
+    let framesSentWhenHandled = 0;
+    onFrame.mockImplementation(() => {
+      framesSentWhenHandled = worker.frames().length;
+    });
+    frameComes(100);
+    frameComes(133);
+    worker.answerLastFrame();
+    await settle();
+    expect(framesSentWhenHandled).toBe(2);
+  });
+
+  it('delivers nothing after a dispose, and lets the held frame go', async () => {
+    const { tracking, worker, onFrame, onError, frameComes } = await trackingInWorker();
+    frameComes(100);
+    frameComes(133);
+    tracking.dispose();
+    worker.answer({ type: 'tracked', frame: 1, result: emptyFrame(100) });
+    await settle();
+    expect(onFrame).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+    expect(FakeVideoFrame.made[1].closes).toBe(1);
+  });
+
+  it('lets a frame go when its tracker broke, and reports the failure', async () => {
+    const { worker, onError, frameComes } = await trackingInWorker();
+    frameComes(100);
+    frameComes(133);
+    worker.breakDown('lost the GPU');
+    await settle();
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'The tracking worker failed: lost the GPU' }));
+    // The held frame went to the broken tracker, which let it go on the page.
+    expect(FakeVideoFrame.made[1].closes).toBe(1);
+  });
+
+  it('lets every picture go exactly once: closed on the page, or moved to the worker', async () => {
+    const { tracking, worker, frameComes } = await trackingInWorker();
+    for (let i = 0; i < 12; i++) {
+      frameComes(100 + i * 33);
+      if (i % 3 === 2) {
+        worker.answerLastFrame();
+        await settle();
+      }
+    }
+    frameComes(600); // A frame that is held at the dispose.
+    tracking.dispose();
+    expect(FakeVideoFrame.made.map((frame) => frame.releases)).toEqual(FakeVideoFrame.made.map(() => 1));
   });
 });

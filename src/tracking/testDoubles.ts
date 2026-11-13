@@ -73,13 +73,13 @@ export class FakeWorker {
  */
 export class FakeVideoFrame {
   static made: FakeVideoFrame[] = [];
-  /** Which picture of the video this is: the order in which it was made. */
-  readonly index: number;
+  /** The picture the source showed when this frame was made: a `FakeVideo`'s `picture`. */
+  readonly shows: number | undefined;
   closes = 0;
   transfers = 0;
 
-  constructor() {
-    this.index = FakeVideoFrame.made.length;
+  constructor(source?: FakeVideo) {
+    this.shows = source?.picture;
     FakeVideoFrame.made.push(this);
   }
 
@@ -91,6 +91,11 @@ export class FakeVideoFrame {
   get releases(): number {
     return this.closes + this.transfers;
   }
+}
+
+/** A stand-in for the video element. The test moves `picture` on, as the camera does. */
+export interface FakeVideo {
+  picture: number;
 }
 
 export function emptyFrame(timeMs: number): TrackingFrame {

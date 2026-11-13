@@ -121,7 +121,7 @@ export class CameraInput implements GameInput {
         if (this.running) onFrame({ ...frame, videoTimeSec });
       };
       try {
-        this.tracking.track(video, () => view().faceRegions, deliver, fail);
+        this.tracking.track(video, view().faceRegions, deliver, fail);
       } catch (error) {
         fail(error);
       }

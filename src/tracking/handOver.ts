@@ -10,6 +10,9 @@
  *   switch, the game gets frames from the new tracker only, as it does on the main thread.
  * - After `close`, no frame goes out, none is held, and no answer counts.
  *
+ * A frame that does not go out is handed back as `dropped`, so that the caller lets it go: a
+ * VideoFrame holds camera memory until it is closed.
+ *
  * `Tracker` is whatever identifies a tracker; the rule only compares trackers. `Frame` is
  * whatever the caller needs to send a camera frame later.
  */
@@ -21,25 +24,23 @@ export class FrameHandOver<Tracker, Frame> {
   private lastNumber = 0;
   private closed = false;
 
-  /** True while a frame is out. */
-  get busy(): boolean {
-    return this.out !== undefined;
-  }
-
   /**
-   * A camera frame came for `tracker`. Returns the number to send it under now, which its
-   * answer must give back. Returns null when it must not go now: it is held while a frame is
-   * out, and dropped after `close`.
+   * A camera frame came for `tracker`.
+   * - No frame is out: `sendAs` is the number to send it under now. Its answer gives it back.
+   * - A frame is out: the hand-over holds this frame, and `dropped` is the older held frame
+   *   that it takes the place of, if there was one.
+   * - After `close`: `dropped` is this frame.
    */
-  offer(tracker: Tracker, frame: Frame): number | null {
-    if (this.closed) return null;
+  offer(tracker: Tracker, frame: Frame): { sendAs: number | null; dropped?: Frame } {
+    if (this.closed) return { sendAs: null, dropped: frame };
     if (this.out) {
+      const dropped = this.held;
       this.held = frame;
-      return null;
+      return { sendAs: null, dropped };
     }
     this.lastNumber++;
     this.out = { number: this.lastNumber, tracker };
-    return this.lastNumber;
+    return { sendAs: this.lastNumber };
   }
 
   /**
@@ -56,10 +57,12 @@ export class FrameHandOver<Tracker, Frame> {
     return { counts: !this.closed && tracker === inUse, next };
   }
 
-  /** No frame goes out after this, none is held, and no answer counts. */
-  close(): void {
+  /** No frame goes out after this, and no answer counts. Returns the held frame, to let go. */
+  close(): Frame | undefined {
     this.closed = true;
     this.out = undefined;
+    const held = this.held;
     this.held = undefined;
+    return held;
   }
 }
