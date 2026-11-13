@@ -137,16 +137,18 @@ export const PREVIEW = {
 export const DEFAULT_SEED = 20261315;
 
 /**
- * Cue sets give one song other charts. Set 1 is the chart from DEFAULT_SEED. Every other set
- * tries a few candidate seeds and keeps the one whose charts best match the level rules.
- * See cueSet.ts.
+ * Cue sets give one song other charts at the same difficulty. Set 1 is the chart from
+ * DEFAULT_SEED. Every other set tries a few candidate seeds and keeps the one whose charts come
+ * closest to the typical mix of slides and doubles of the level on this song. See cueSet.ts.
  */
 export const CUE_SETS = {
   /** The sets are numbered from 1 to this count. */
   count: 5,
   /**
-   * Seeds that each set from 2 on tries. More candidates find a closer match, but each one
-   * makes a chart per player when a round starts.
+   * Seeds that each set from 2 on tries. The candidates of all these sets together are the
+   * pool that gives the typical mix, so a round start makes (count − 1) × candidates charts
+   * per player: about 0.1 s for two players and the longest song. More candidates find a
+   * closer match, and take longer.
    */
   candidates: 24,
   /**

@@ -7,3 +7,11 @@ export function clamp(value: number, low: number, high: number): number {
 export function clamp01(value: number): number {
   return clamp(value, 0, 1);
 }
+
+/** The middle value of `values`: the mean of the two middle values for an even count. 0 for none. */
+export function median(values: readonly number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}

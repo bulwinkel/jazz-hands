@@ -28,10 +28,16 @@ every run, so **Play again** repeats them. Step through the sets with the **🎲
 in the top right corner of the menu. Both players play the same set. The game keeps the
 choice.
 
-Set 1 is the chart the game always had. Sets 2 to 5 each try 24 candidate charts for the
-song, the levels and the length, and keep the one whose shares of slides and two-hand cues
-come closest to the level rules. A `seed=` in the URL replaces the set, for tests. The run
-report names the seed and the set.
+A set gives other cues at the same difficulty. Set 1 is the chart the game always had. Sets
+2 to 5 each try 24 candidate charts for the song, the levels and the length, and keep the one
+that plays most like the level usually does: its shares of slides and two-hand cues come
+closest to the typical mix. The typical mix is the median over the 96 candidate charts of the
+four sets together, so every set aims at the same mix. It is not the level rules: at levels 4
+and 5 a slide never follows an off-beat tap, so their charts have about a third fewer slides
+than the rules say. Set 1 was picked against the rules, so at level 4 it often has more slides
+than the other sets.
+
+A `seed=` in the URL replaces the set, for tests. The run report names the seed and the set.
 
 ## Record a round
 
