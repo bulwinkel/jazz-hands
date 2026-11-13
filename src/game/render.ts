@@ -1,7 +1,6 @@
 import type { GestureName, TrackingFrame } from '../tracking/types';
 import { cueColor, withAlpha } from './colors';
 import { markScale } from './cueStyle';
-import type { CueStyle } from './cueStyle';
 import { FACE_EMOJI, GESTURE_EMOJI, HANDS_UP_CELL, LEVELS, PLAYER_COLORS, TIMING } from './config';
 import { openFaceCue } from './faceJudgment';
 import { cellRect, containRect } from './geometry';
@@ -32,8 +31,6 @@ export interface RenderView {
   feedback: readonly Feedback[];
   /** True while the round is recorded as video. The key hints then stay out of the picture. */
   recording?: boolean;
-  /** How a cue shows when its beat comes. Unset means the shrink style. */
-  cueStyle?: CueStyle;
 }
 
 const HIDDEN_PHASES: readonly Phase[] = ['menu', 'loading', 'error'];
@@ -98,8 +95,6 @@ export class GameRenderer {
   private pixelRatio = 0;
   /** Base text size, scaled with the screen so it reads from across a room. */
   private textSize = 24;
-  /** The cue style of the frame that is drawn now. */
-  private cueStyle: CueStyle = 'shrink';
 
   constructor(canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');
@@ -111,7 +106,6 @@ export class GameRenderer {
   draw(view: RenderView, videoAspect: number): void {
     this.resize(videoAspect);
     if (HIDDEN_PHASES.includes(view.phase)) return;
-    this.cueStyle = view.cueStyle ?? 'shrink';
 
     const pulse = beatPulse(view.manifest, view.songTimeSec);
     for (const player of view.players) {
@@ -190,44 +184,35 @@ export class GameRenderer {
     const cues = onScreen.map((state, i) => ({ state, isNext: i === 0 || state.cue.timeSec <= currentEndsSec }));
     const latestFirst = [...cues].reverse();
 
-    if (this.cueStyle === 'shrink') {
-      // Later cues first, so the next cue is on top.
-      for (const { state, isNext } of latestFirst) this.drawCue(state, player, nowSec, color, isNext, true);
-      return;
-    }
-    // Grow style: earlier cues first. Two cues for one cell then nest: the later, smaller block
-    // lies on the earlier, larger one, and both show. The hand shapes come after all blocks,
-    // the earliest last: the shape on top is the one of the cue that is due first.
-    for (const { state, isNext } of cues) this.drawCue(state, player, nowSec, color, isNext, false);
+    // Earlier cues first. Two cues for one cell then nest: the later, smaller block lies on the
+    // earlier, larger one, and both show. The hand shapes and the slide dots come after all
+    // blocks, the earliest last: the shape on top is the one of the cue that is due first.
+    for (const { state, isNext } of cues) this.drawCue(state, player, nowSec, color, isNext);
     for (const { state, isNext } of latestFirst) this.drawMarkers(state, player, nowSec, color, isNext);
   }
 
-  /** One cue. `withMarkers` also draws what sits in the middle of its cells: see `drawMarkers`. */
-  private drawCue(
-    state: CueState,
-    player: PlayerRun,
-    nowSec: number,
-    playerColor: string,
-    isNext: boolean,
-    withMarkers: boolean,
-  ): void {
+  /** One cue, without what sits in the middle of its cells: see `drawMarkers`. */
+  private drawCue(state: CueState, player: PlayerRun, nowSec: number, playerColor: string, isNext: boolean): void {
     if (state.cue.kind === 'tap') {
-      this.drawTap(state, player, nowSec, playerColor, isNext, withMarkers);
+      this.drawTap(state, player, nowSec, playerColor, isNext);
       return;
     }
     this.drawSlide(state, player, nowSec, playerColor, isNext);
-    if (withMarkers) this.drawSlideDot(state, player, nowSec, playerColor, isNext);
   }
 
-  /** What sits in the middle of a cue's cells: the hand shape to make, a plain dot, or the dot of a slide. */
+  /**
+   * What sits in the middle of a cue's cells: the hand shape to make, or the dot of a slide.
+   * A tap with no hand shape has nothing there: its block marks the middle of the cell.
+   */
   private drawMarkers(state: CueState, player: PlayerRun, nowSec: number, playerColor: string, isNext: boolean): void {
     const { cue } = state;
     if (cue.kind === 'slide') {
       this.drawSlideDot(state, player, nowSec, playerColor, isNext);
       return;
     }
-    const color = cueColor(playerColor, (cue.timeSec - nowSec) / LEVELS[player.level].approachSec);
-    for (const rect of this.cellRects(state, player)) this.drawCellMarker(rect, color, cue.gesture);
+    const { gesture } = cue;
+    if (!gesture) return;
+    for (const rect of this.cellRects(state, player)) this.drawGesture(rect, gesture);
   }
 
   /** The cells of a cue, on the canvas. */
@@ -235,14 +220,7 @@ export class GameRenderer {
     return state.cue.cells.map((cell) => this.toScreen(cellRect(player.grid, cell)));
   }
 
-  private drawTap(
-    state: CueState,
-    player: PlayerRun,
-    nowSec: number,
-    playerColor: string,
-    isNext: boolean,
-    withMarkers: boolean,
-  ): void {
+  private drawTap(state: CueState, player: PlayerRun, nowSec: number, playerColor: string, isNext: boolean): void {
     const { cue, marks } = state;
     const rects = this.cellRects(state, player);
     const remaining = (cue.timeSec - nowSec) / LEVELS[player.level].approachSec;
@@ -255,7 +233,6 @@ export class GameRenderer {
     }
     rects.forEach((rect, k) => {
       this.drawCueCell(rect, remaining, color, isNext, marks[k] === 'perfect');
-      if (withMarkers) this.drawCellMarker(rect, color, cue.gesture);
     });
   }
 
@@ -271,8 +248,6 @@ export class GameRenderer {
     const last = rects.length - 1;
     const cellSize = Math.min(rects[0].width, rects[0].height);
     const strength = slideStrength(isNext);
-    /** 0 until the slide starts, 1 when the hand is due in the last cell. */
-    const progress = clamp01((nowSec - cue.times[0]) / (cue.times[last] - cue.times[0]));
 
     // The path: a wide band from the first cell to the last. Chevrons at its end show the
     // speed before the slide starts: one for slow, two for normal, three for fast.
@@ -285,23 +260,9 @@ export class GameRenderer {
     const remainingOf = (k: number): number => (cue.times[k] - nowSec) / approachSec;
     this.drawCueCell(rects[0], remainingOf(0), colors[0], isNext, marks[0] === 'perfect');
 
-    if (this.cueStyle === 'grow') {
-      // Every further cell has its own block, which fills the cell when the dot is due in it.
-      for (let k = 1; k <= last; k++) {
-        this.drawCueCell(rects[k], remainingOf(k), colors[k], isNext && k === last, marks[k] === 'perfect');
-      }
-    } else {
-      // A slow slide passes through a middle cell, which is judged on its own beat.
-      for (let k = 1; k < last; k++) this.drawTargetCell(rects[k], colors[k], false, marks[k] === 'perfect');
-
-      // The last cell lights up as the dot arrives.
-      if (marks[last] === 'perfect') {
-        this.drawTargetCell(rects[last], colors[last], isNext, true);
-      } else {
-        const border = withAlpha(colors[last], (0.5 + 0.5 * progress) * strength);
-        const fill = withAlpha(colors[last], (0.1 + 0.3 * progress) * strength);
-        this.outline(rects[last], border, 2 + 3 * progress, fill);
-      }
+    // Every further cell has its own block, which fills the cell when the dot is due in it.
+    for (let k = 1; k <= last; k++) {
+      this.drawCueCell(rects[k], remainingOf(k), colors[k], isNext && k === last, marks[k] === 'perfect');
     }
   }
 
@@ -333,52 +294,25 @@ export class GameRenderer {
 
   /**
    * One cell of a cue, with the mark that shows when to be in it. `remaining` is the share of
-   * the approach time still to go.
-   * Shrink style: the cell lights up, and an outline shrinks onto its border.
-   * Grow style: the cell has a thin border, and a block grows from its middle until it fills it.
+   * the approach time still to go. The cell has a thin border, and a block grows from its
+   * middle until it fills the cell on the beat.
    */
   private drawCueCell(rect: Rect, remaining: number, color: string, isNext: boolean, done: boolean): void {
-    if (this.cueStyle === 'shrink') {
-      this.drawTargetCell(rect, color, isNext, done);
-      this.drawClosingOutline(rect, remaining, color, isNext);
-    } else if (done) {
-      this.drawTargetCell(rect, color, isNext, true);
-    } else {
-      this.outline(rect, withAlpha(color, isNext ? 0.7 : 0.35), 2);
-      const block = scaleAboutCentre(rect, markScale('grow', remaining));
-      // Solid enough that a small block shows on the larger block of an earlier cue.
-      this.outline(block, color, isNext ? 3 : 2, withAlpha(color, isNext ? 0.62 : 0.4));
-    }
-  }
-
-  /** A cell the player must reach. A cell that is already hit fills in, so the hit is visible. */
-  private drawTargetCell(rect: Rect, color: string, isNext: boolean, done: boolean): void {
-    const fillAlpha = done ? 0.72 : isNext ? 0.31 : 0.13;
-    this.outline(rect, color, isNext ? 4 : 2, withAlpha(color, fillAlpha));
-  }
-
-  /** The timing cue: an outline that shrinks onto the cell border and meets it on the beat. */
-  private drawClosingOutline(rect: Rect, remaining: number, color: string, isNext: boolean): void {
-    const scale = markScale('shrink', remaining);
-    this.ctx.save();
-    this.ctx.globalAlpha = isNext ? 0.9 : 0.35;
-    this.outline(scaleAboutCentre(rect, scale), color, 4);
-    this.ctx.restore();
-  }
-
-  /** The middle of a target cell: the hand shape to make, or a plain dot. */
-  private drawCellMarker(rect: Rect, color: string, gesture: GestureName | undefined): void {
-    const centre = centreOf(rect);
-    if (gesture) {
-      this.text(GESTURE_EMOJI[gesture] ?? '✋', centre.x, centre.y, Math.min(rect.width, rect.height) * 0.5);
+    if (done) {
+      // A cell that is already hit fills in, so the hit is visible.
+      this.outline(rect, color, isNext ? 4 : 2, withAlpha(color, 0.72));
       return;
     }
-    // In the grow style the block itself marks the middle of the cell.
-    if (this.cueStyle === 'grow') return;
-    this.ctx.fillStyle = color;
-    this.ctx.beginPath();
-    this.ctx.arc(centre.x, centre.y, Math.max(5, this.textSize * 0.18), 0, Math.PI * 2);
-    this.ctx.fill();
+    this.outline(rect, withAlpha(color, isNext ? 0.7 : 0.35), 2);
+    const block = scaleAboutCentre(rect, markScale('grow', remaining));
+    // Solid enough that a small block shows on the larger block of an earlier cue.
+    this.outline(block, color, isNext ? 3 : 2, withAlpha(color, isNext ? 0.62 : 0.4));
+  }
+
+  /** The hand shape to make, in the middle of a cue cell. */
+  private drawGesture(rect: Rect, gesture: GestureName): void {
+    const centre = centreOf(rect);
+    this.text(GESTURE_EMOJI[gesture] ?? '✋', centre.x, centre.y, Math.min(rect.width, rect.height) * 0.5);
   }
 
   /** Arrowheads that point from `from` to `to`, stacked back from the end of the path. */
@@ -406,8 +340,9 @@ export class GameRenderer {
   // --- Face cues ---
 
   /**
-   * The face to pull: an emoji laid over the player's own face like a mask, with a ring
-   * that closes onto it and meets it on the beat, as the outline of a hand cue does.
+   * The face to pull: an emoji laid over the player's own face like a mask, in a ring. A
+   * second ring grows from the middle and meets the first on the beat, as the block of a hand
+   * cue fills its cell.
    */
   private drawFaceCue(player: PlayerRun, nowSec: number, playerColor: string): void {
     const state = openFaceCue(player.faceStates, player.level, nowSec);
@@ -418,7 +353,7 @@ export class GameRenderer {
     const radius = emojiSize * FACE_RING_SCALE;
     const remaining = (state.cue.timeSec - nowSec) / LEVELS[player.level].approachSec;
     const color = cueColor(playerColor, remaining);
-    const markRadius = radius * markScale(this.cueStyle, remaining);
+    const markRadius = radius * markScale('grow', remaining);
     const ctx = this.ctx;
 
     ctx.save();

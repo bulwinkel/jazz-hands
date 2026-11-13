@@ -856,7 +856,6 @@ export class DanceGame {
         endSec: this.endSec,
         feedback: this.feedback,
         recording: this.recordings.active,
-        cueStyle: this.options.settings.cueStyle,
       },
       this.videoAspect(),
     );
