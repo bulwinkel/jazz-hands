@@ -16,7 +16,8 @@
 //   --camera-file  Play this .y4m or .mjpeg file as the camera, in a loop. Without it, the
 //              camera is Chrome's built-in test picture, which shows no hands.
 //
-// The camera is always a fake camera, never the real one. Sound is muted.
+// The camera is always a fake camera, never the real one. Chrome makes no sound and uses no
+// sound device (see headless-chrome.mjs).
 // The game needs a dev server, for example: npx vite --port 5174 --strictPort
 //
 // Example: a simulated player on level 3, one player, starting 45 s into the song:

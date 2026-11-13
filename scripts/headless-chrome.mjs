@@ -1,5 +1,6 @@
 // Starts headless Chrome for automated checks and connects to its page over the DevTools
-// protocol. The camera is always a fake one, never the real one, and sound is muted.
+// protocol. The camera is always a fake one, never the real one, and Chrome never uses the
+// machine's sound output.
 
 import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
@@ -39,6 +40,10 @@ export async function openHeadlessChrome({ windowSize = '1440x900', cameraFile }
       `--window-size=${windowSize.replace('x', ',')}`,
       '--no-first-run',
       '--mute-audio',
+      // No sound device: Chrome plays into a fake output that keeps time by itself. The game's
+      // clock is the sound's clock, and on a machine whose sound output is busy or stuck that
+      // clock stands still, so a round never ends. Recordings still get their sound track.
+      '--disable-audio-output',
       'about:blank',
     ],
     { stdio: 'ignore' },
