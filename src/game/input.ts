@@ -7,9 +7,9 @@ import type {
   TrackingFrame,
   TrackingThread,
 } from '../tracking/types';
+import { cameraTracking, PageTracking } from '../tracking/cameraTracking';
+import type { CameraTracking } from '../tracking/cameraTracking';
 import { botPlayer } from './bot';
-import { cameraTracking, PageTracking } from './cameraTracking';
-import type { CameraTracking } from './cameraTracking';
 import { DEFAULT_SEED } from './config';
 import { containRect } from './geometry';
 import { clamp01 } from './numbers';

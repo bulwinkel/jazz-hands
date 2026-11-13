@@ -41,6 +41,8 @@ beforeEach(() => {
   created.length = 0;
 });
 
+// The rules of switching are tested in src/tracking/trackerSwitch.test.ts. This shows only
+// that the camera input goes through the switch.
 describe('camera input trackers', () => {
   it('switches to a tracker once it has loaded', async () => {
     const input = new CameraInput('hands-full', false);
@@ -49,38 +51,5 @@ describe('camera input trackers', () => {
     created[1].finishLoad();
     await switching;
     expect(input.mode).toBe('hands-split');
-  });
-
-  it('keeps a newer choice when an older tracker ends its load later', async () => {
-    const input = new CameraInput('hands-full', false);
-    // A round asks for the split tracker, then the player goes back to the menu at once.
-    const slowLoad = input.setMode('hands-split');
-    await input.setMode('hands-full');
-    created[1].finishLoad();
-    await slowLoad;
-    expect(input.mode).toBe('hands-full');
-    expect(created[1].dispose).not.toHaveBeenCalled();
-  });
-
-  it('keeps the late tracker loaded, so a later switch to it needs no load', async () => {
-    const input = new CameraInput('hands-full', false);
-    const slowLoad = input.setMode('hands-split');
-    await input.setMode('hands-full');
-    created[1].finishLoad();
-    await slowLoad;
-    await input.setMode('hands-split');
-    expect(input.mode).toBe('hands-split');
-    expect(created).toHaveLength(2);
-  });
-
-  it('puts a tracker with face models in place of the same tracker without them', async () => {
-    const input = new CameraInput('hands-full', false);
-    const withFaces = input.setMode('hands-full', true);
-    // A newer call for the same tracker without faces is served by the one in use.
-    await input.setMode('hands-full', false);
-    created[1].finishLoad();
-    await withFaces;
-    expect(input.faceDelegate).toBe('GPU');
-    expect(created[0].dispose).toHaveBeenCalled();
   });
 });

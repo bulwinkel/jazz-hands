@@ -1,5 +1,7 @@
-import { createTracker } from '../tracking';
-import { FrameHandOver } from '../tracking/handOver';
+import { FrameHandOver } from './handOver';
+// From the index, so that a test of the camera input can stand in for the trackers there.
+import { createTracker } from './index';
+import { TrackerSwitch } from './trackerSwitch';
 import type {
   FaceRegions,
   Tracker,
@@ -7,9 +9,8 @@ import type {
   TrackerMode,
   TrackingFrame,
   TrackingThread,
-} from '../tracking/types';
-import { WorkerTracker } from '../tracking/workerTracker';
-import { TrackerSwitch } from './trackerSwitch';
+} from './types';
+import { WorkerTracker } from './workerTracker';
 
 /** The names of the tracker in use, for the debug overlay and the run report. */
 export interface TrackerNames {

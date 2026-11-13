@@ -1,4 +1,4 @@
-import type { TrackerDelegate, TrackerMode } from '../tracking/types';
+import type { TrackerDelegate, TrackerMode } from './types';
 
 /** What the switch needs of a tracker. A tracker on the page and one in the worker both have it. */
 export interface SwitchableTracker {

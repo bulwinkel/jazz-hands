@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { TrackerMode } from '../tracking/types';
+import type { TrackerMode } from './types';
 import { TrackerSwitch } from './trackerSwitch';
 import type { SwitchableTracker } from './trackerSwitch';
 
