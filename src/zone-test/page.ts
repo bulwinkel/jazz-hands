@@ -1,3 +1,4 @@
+import { errorText } from '../errorText';
 import { startCamera } from '../tracking/camera';
 import type { ZoneFrame, ZoneTracker } from '../tracking/zones';
 import { PHASES, QUICK_TIMING, TIMING, VARIANTS } from './config';
@@ -50,7 +51,6 @@ const LIVE_WINDOW_MS = 2000;
 /** The line of numbers changes this often. Faster is hard to read. */
 const HUD_INTERVAL_MS = 250;
 
-const errorText = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 /** A length of time in words, for example `2 min 30 s`. */
 function lengthText(ms: number): string {

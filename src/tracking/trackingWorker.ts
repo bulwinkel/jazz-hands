@@ -1,3 +1,4 @@
+import { errorText } from '../errorText';
 import { MediaPipeTracker } from './trackers';
 import type { LoadRequest, TrackRequest, WorkerAnswer, WorkerRequest } from './workerProtocol';
 
@@ -45,8 +46,4 @@ function track(request: TrackRequest): void {
     // A VideoFrame holds camera memory until it is closed.
     request.picture.close();
   }
-}
-
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

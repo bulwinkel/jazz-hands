@@ -1,3 +1,4 @@
+import { errorText } from '../errorText';
 import { WORKER_LIMITS } from '../tracking/config';
 import type { FaceExpression, FaceRegions, TrackingFrame } from '../tracking/types';
 import { SongAudio } from './audio';
@@ -71,7 +72,6 @@ function readStoredSettings(): unknown {
   }
 }
 
-const errorText = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 /**
  * Runs the game through its phases:

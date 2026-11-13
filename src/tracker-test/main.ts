@@ -1,3 +1,4 @@
+import { errorText } from '../errorText';
 import { createTracker, startCamera, TRACKER_MODES, TRACKING_THRESHOLDS } from '../tracking';
 import type { Tracker, TrackerMode, TrackingFrame } from '../tracking';
 import { BenchmarkSession } from './benchmark';
@@ -95,7 +96,6 @@ async function resendStoredResult(): Promise<void> {
 }
 void resendStoredResult();
 
-function errorText(error: unknown): string { return error instanceof Error ? error.message : String(error); }
 function setActive(tracker: Tracker): void {
   if (active === tracker) return;
   active = tracker; recent = []; latest = undefined; lastHudMs = 0;
