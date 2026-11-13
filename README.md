@@ -50,6 +50,63 @@ of the page drops them.
 The files are MP4 (H.264 and AAC). The run report of a recorded round has
 `settings.recording: true`, to compare its tracking speed with other rounds.
 
+## Tracking thread
+
+The hand and face trackers run in Web Workers, so the game draws at the display's rate while
+MediaPipe works. Each tracker has a worker of its own: Chrome keeps at most 4 active WebGL
+contexts in a worker, and split hands with face models need 4.
+
+- The page hands each camera frame to the worker as a `VideoFrame`. One frame is in a worker
+  at a time. A frame that comes meanwhile waits, and a newer one takes its place; the newest
+  goes as soon as the worker answers.
+- A frame keeps the page time at which it came, so judging corrects for its age as before.
+- When the worker cannot start, the game tracks on the main thread as before.
+
+| URL parameter | Use |
+| --- | --- |
+| `thread=worker` | The default. Track in the workers. |
+| `thread=main` | Track on the main thread, as before the workers. For tests and comparisons. |
+| `framelog=1` | Keep every tracking frame in `window.__dance.frameLog`, for scripts. |
+
+The run report says which thread ran (`tracking.thread`), and how many frames per second the
+game drew during play (`tracking.drawnPerSec`) next to the tracking rate.
+
+### Smoke runs with a camera file
+
+`scripts/smoke.mjs` runs the game in headless Chrome against a dev server or a preview build.
+`--camera-file=<path>` plays a `.y4m` or `.mjpeg` file as the camera, in a loop. Without it
+the camera is Chrome's test picture, which shows no hands.
+
+```
+npx vite --port 5192 --strictPort
+node scripts/smoke.mjs "http://localhost:5192/?input=camera&autostart=1&players=2&start=75" \
+  --press=ready --camera-file=/path/to/recording.mjpeg
+```
+
+### Compare the two threads
+
+`scripts/compare-threads.mjs` plays one recording through the game twice, with `thread=main`
+and with `thread=worker`. It matches the camera frames that both runs tracked, and prints how
+far their hands differ: hand count, palm position, hand size and shape.
+
+```
+node scripts/compare-threads.mjs --camera-file=/path/to/recording.mov
+```
+
+| Option | Use |
+| --- | --- |
+| `--camera-file=<path>` | The recording. A `.y4m` or `.mjpeg` file plays as it is; any other video goes through `ffmpeg` into a 30 fps `.mjpeg` first. |
+| `--url=<url>` | The game. The default is `http://localhost:5192/`. |
+| `--players=1` | One player. The default is 2. |
+| `--tracker=<mode>` | `hands-full`, `hands-split` or `pose`. The default is the game's choice for the players. |
+| `--faces` | Turn on face cues, so that the face models run too. |
+| `--seconds=<n>` | How long each run records. The default is 45. |
+| `--fps=<n>` | The rate Chrome plays the file at. The default comes from a `.y4m` header, else 30. |
+
+It saves both frame logs and the result to `test-results/compare-threads-<time>.json`. The
+last line of the result checks the frame matching: with moving hands, the palm distance is
+least at shift 0.
+
 ## Add a song
 
 `tools/songs/add_song.py` analyses one audio file and writes its manifest for the game.
