@@ -1,7 +1,9 @@
 import { FaceLandmarker } from '@mediapipe/tasks-vision';
 import { FACE_MAX_AGE_MS, FACE_THRESHOLDS } from './config';
 import { expressionsFromBlendshapes, faceCentre, pixelsToCrop, regionToRawPixels } from './faces';
-import type { FaceRegions, Region, TrackedFace, TrackerDelegate } from './types';
+import { drawingContext, newSurface, pictureSize } from './surfaces';
+import type { Surface } from './surfaces';
+import type { CameraPicture, FaceRegions, Region, TrackedFace, TrackerDelegate } from './types';
 
 type WasmFileset = Parameters<typeof FaceLandmarker.createFromOptions>[0];
 type PlayerSlot = 0 | 1;
@@ -32,7 +34,7 @@ export class FaceTracker {
    */
   private landmarkers: FaceLandmarker[] = [];
   /** The crop each landmarker reads, one per player slot. */
-  private crops: HTMLCanvasElement[] = [];
+  private crops: Surface[] = [];
   /** The last read of each player slot. */
   private readings: (FaceReading | undefined)[] = [];
   /** With two faces to read: the player slot that is read in the next frame. */
@@ -59,7 +61,7 @@ export class FaceTracker {
         throw cpuError;
       }
     }
-    this.crops = [document.createElement('canvas'), document.createElement('canvas')];
+    this.crops = [newSurface(), newSurface()];
     this.warmUp();
   }
 
@@ -69,10 +71,10 @@ export class FaceTracker {
    * shows its loading message. Without it, the game would freeze at the first face cue.
    */
   private warmUp(): void {
-    const empty = document.createElement('canvas');
+    const empty = newSurface();
     empty.width = WARM_UP_SIZE;
     empty.height = WARM_UP_SIZE;
-    empty.getContext('2d')?.fillRect(0, 0, WARM_UP_SIZE, WARM_UP_SIZE);
+    drawingContext(empty)?.fillRect(0, 0, WARM_UP_SIZE, WARM_UP_SIZE);
     for (const landmarker of this.landmarkers) landmarker.detectForVideo(empty, performance.now());
   }
 
@@ -85,7 +87,7 @@ export class FaceTracker {
    * their own last turn. A face changes little in one frame, and the timing windows are wide.
    */
   detect(
-    video: HTMLVideoElement,
+    picture: CameraPicture,
     nowMs: number,
     regions: FaceRegions,
   ): [TrackedFace | undefined, TrackedFace | undefined] {
@@ -101,7 +103,7 @@ export class FaceTracker {
       const region = regions[slot];
       if (!region) return undefined;
       if (slot === slotToSkip) return this.recentFace(slot, nowMs);
-      const face = this.detectInRegion(video, nowMs, region, slot);
+      const face = this.detectInRegion(picture, nowMs, region, slot);
       this.readings[slot] = { face, atMs: nowMs };
       return face;
     };
@@ -128,7 +130,7 @@ export class FaceTracker {
         baseOptions: { modelAssetPath: MODEL_PATH, delegate },
         runningMode: 'VIDEO',
         // Each GPU model draws in its own WebGL canvas. Sharing one breaks both models.
-        ...(delegate === 'GPU' ? { canvas: document.createElement('canvas') } : {}),
+        ...(delegate === 'GPU' ? { canvas: newSurface() } : {}),
         numFaces: 1,
         outputFaceBlendshapes: true,
         minFaceDetectionConfidence: FACE_THRESHOLDS.detection,
@@ -144,12 +146,13 @@ export class FaceTracker {
   }
 
   private detectInRegion(
-    video: HTMLVideoElement,
+    picture: CameraPicture,
     nowMs: number,
     region: Region,
     slot: PlayerSlot,
   ): TrackedFace | undefined {
-    const pixels = regionToRawPixels(region, video.videoWidth, video.videoHeight);
+    const { width: frameWidth, height: frameHeight } = pictureSize(picture);
+    const pixels = regionToRawPixels(region, frameWidth, frameHeight);
     if (!pixels) return undefined;
 
     const canvas = this.crops[slot];
@@ -158,10 +161,10 @@ export class FaceTracker {
       canvas.width = pixels.width;
       canvas.height = pixels.height;
     }
-    const context = canvas.getContext('2d');
+    const context = drawingContext(canvas);
     if (!context) throw new Error('Cannot create the face crop canvas context.');
     context.drawImage(
-      video,
+      picture,
       pixels.x,
       pixels.y,
       pixels.width,
@@ -177,7 +180,7 @@ export class FaceTracker {
     const blendshapes = result.faceBlendshapes[0];
     if (!landmarks?.length || !blendshapes) return undefined;
 
-    const crop = pixelsToCrop(pixels, video.videoWidth, video.videoHeight);
+    const crop = pixelsToCrop(pixels, frameWidth, frameHeight);
     return {
       ...faceCentre(landmarks, crop),
       expressions: expressionsFromBlendshapes(blendshapes.categories),

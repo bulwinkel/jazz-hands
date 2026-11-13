@@ -1,11 +1,14 @@
-import { FilesetResolver, GestureRecognizer, PoseLandmarker } from '@mediapipe/tasks-vision';
+import { GestureRecognizer, PoseLandmarker } from '@mediapipe/tasks-vision';
 import type { GestureRecognizerResult } from '@mediapipe/tasks-vision';
 import { TRACKING_THRESHOLDS } from './config';
 import { FaceTracker } from './faceTracker';
 import { assignHands, cropToFrame, FULL_FRAME, gestureName, handSize, palmCentre, posePlayers } from './geometry';
 import type { Crop } from './geometry';
 import { shapeFromLandmarks } from './shapes';
+import { drawingContext, newSurface, pictureSize } from './surfaces';
+import type { Surface } from './surfaces';
 import type {
+  CameraPicture,
   FaceRegions,
   TrackedHand,
   Tracker,
@@ -14,11 +17,7 @@ import type {
   TrackerOptions,
   TrackingFrame,
 } from './types';
-
-let fileset: ReturnType<typeof FilesetResolver.forVisionTasks> | undefined;
-function runtime() {
-  return fileset ??= FilesetResolver.forVisionTasks('/vendor/tasks-vision-wasm');
-}
+import { visionRuntime } from './wasm';
 
 function handsFromResult(result: GestureRecognizerResult, crop: Crop, aspect: number): TrackedHand[] {
   return result.landmarks.flatMap((raw, index) => {
@@ -45,7 +44,7 @@ export class MediaPipeTracker implements Tracker {
   private initialization?: Promise<void>;
   private gestures: GestureRecognizer[] = [];
   private pose?: PoseLandmarker;
-  private crops: HTMLCanvasElement[] = [];
+  private crops: Surface[] = [];
   /** Set only for a tracker created with faces. Without it, no face model is ever loaded. */
   private faces?: FaceTracker;
   private disposed = false;
@@ -66,11 +65,11 @@ export class MediaPipeTracker implements Tracker {
   }
 
   private async initialize(): Promise<void> {
-    const wasm = await runtime();
+    const wasm = await visionRuntime();
     const create = async (delegate: 'GPU' | 'CPU') => {
       const common = {
         runningMode: 'VIDEO' as const,
-        ...(delegate === 'GPU' ? { canvas: document.createElement('canvas') } : {}),
+        ...(delegate === 'GPU' ? { canvas: newSurface() } : {}),
         minTrackingConfidence: TRACKING_THRESHOLDS.tracking,
       };
       if (this.mode === 'pose') {
@@ -84,7 +83,7 @@ export class MediaPipeTracker implements Tracker {
           const recognizer = await GestureRecognizer.createFromOptions(wasm, {
             ...common,
             // Never share a WebGL canvas between recognizers.
-            ...(delegate === 'GPU' ? { canvas: document.createElement('canvas') } : {}),
+            ...(delegate === 'GPU' ? { canvas: newSurface() } : {}),
             baseOptions: { modelAssetPath: '/models/gesture_recognizer.task', delegate },
             numHands: this.mode === 'hands-split' ? 2 : 4,
             minHandDetectionConfidence: TRACKING_THRESHOLDS.detection,
@@ -106,44 +105,45 @@ export class MediaPipeTracker implements Tracker {
     }
     if (this.disposed) { this.closeModels(); throw new Error('Tracker is disposed.'); }
     if (this.mode === 'hands-split') {
-      this.crops = [document.createElement('canvas'), document.createElement('canvas')];
+      this.crops = [newSurface(), newSurface()];
     }
     // The face models load after the hand models, one at a time like them.
     await this.faces?.init(wasm);
   }
 
-  process(video: HTMLVideoElement, nowMs: number, faceRegions?: FaceRegions): TrackingFrame {
+  process(picture: CameraPicture, nowMs: number, faceRegions?: FaceRegions): TrackingFrame {
     if (this.disposed || this.delegate === 'uninitialized') throw new Error('Tracker is not ready.');
-    if (!video.videoWidth || !video.videoHeight) throw new Error('Camera has no video frame.');
+    const { width: frameWidth, height: frameHeight } = pictureSize(picture);
+    if (!frameWidth || !frameHeight) throw new Error('Camera has no video frame.');
     const start = performance.now();
-    const aspect = video.videoWidth / video.videoHeight;
+    const aspect = frameWidth / frameHeight;
     let players: TrackingFrame['players'];
     if (this.pose) {
-      const result = this.pose.detectForVideo(video, nowMs);
+      const result = this.pose.detectForVideo(picture, nowMs);
       try { players = posePlayers(result.landmarks, aspect, TRACKING_THRESHOLDS.poseLandmarkVisibility); }
       finally { result.close(); }
     } else if (this.mode === 'hands-full') {
-      players = assignHands(handsFromResult(this.gestures[0].recognizeForVideo(video, nowMs), FULL_FRAME, aspect));
+      players = assignHands(handsFromResult(this.gestures[0].recognizeForVideo(picture, nowMs), FULL_FRAME, aspect));
     } else {
       const hands: TrackedHand[] = [];
-      const split = Math.floor(video.videoWidth / 2);
+      const split = Math.floor(frameWidth / 2);
       for (let rawHalf = 0; rawHalf < 2; rawHalf++) {
         const x = rawHalf === 0 ? 0 : split;
-        const width = rawHalf === 0 ? split : video.videoWidth - split;
+        const width = rawHalf === 0 ? split : frameWidth - split;
         const canvas = this.crops[rawHalf];
-        if (canvas.width !== width || canvas.height !== video.videoHeight) {
-          canvas.width = width; canvas.height = video.videoHeight;
+        if (canvas.width !== width || canvas.height !== frameHeight) {
+          canvas.width = width; canvas.height = frameHeight;
         }
-        const context = canvas.getContext('2d');
+        const context = drawingContext(canvas);
         if (!context) throw new Error('Cannot create the crop canvas context.');
-        context.drawImage(video, x, 0, width, video.videoHeight, 0, 0, width, video.videoHeight);
-        const crop = { x: x / video.videoWidth, y: 0, width: width / video.videoWidth, height: 1 };
+        context.drawImage(picture, x, 0, width, frameHeight, 0, 0, width, frameHeight);
+        const crop = { x: x / frameWidth, y: 0, width: width / frameWidth, height: 1 };
         hands.push(...handsFromResult(this.gestures[rawHalf].recognizeForVideo(canvas, nowMs), crop, aspect));
       }
       players = assignHands(hands); // Raw right half becomes mirrored player 0.
     }
     if (this.faces && faceRegions) {
-      const faces = this.faces.detect(video, nowMs, faceRegions);
+      const faces = this.faces.detect(picture, nowMs, faceRegions);
       faces.forEach((face, slot) => {
         if (face) players[slot].face = face;
       });
