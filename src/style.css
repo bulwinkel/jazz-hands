@@ -772,6 +772,16 @@ canvas {
 .preview-slot {
   zoom: 0.75;
 }
+/* A wide window has room for the preview at its full size beside the buttons: the content
+   gets wider, and the buttons still stay well in from the side of the screen. */
+@media (min-width: 1600px) {
+  .results .fit:has(.recordings:not([hidden])) {
+    width: 1280px;
+  }
+  .preview-slot {
+    zoom: 1;
+  }
+}
 /* A narrow window limits the results by its width. There the recording goes under the
    buttons again, with the preview at its full size: the content gets taller but no wider, so
    it shows at about the same scale, and the buttons stay in the middle. */
