@@ -21,6 +21,11 @@ export const RECORDING = {
   audioBitsPerSec: 128_000,
   /** The recording goes on this long after the results show: the cheer, and the result card. */
   tailSec: 4,
+  /**
+   * A video's sound is late by its delay, so the end of the song reaches the video that much
+   * after the results show. The recording then goes on for the delay and this margin at least.
+   */
+  soundTailMarginSec: 0.5,
   /** The game keeps the videos of this many rounds. Older ones are dropped, to free memory. */
   keepRounds: 3,
 } as const;

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { PLAYER_COLORS } from './config';
 import { createPlayers } from './player';
-import { addRound, recordingStatus, resultLines } from './roundRecordings';
+import { RECORDING } from './recording';
+import { addRound, recordingStatus, recordingTailSec, resultLines } from './roundRecordings';
 import { accuracy, stars } from './scoring';
 import { parseSettings } from './settings';
 
@@ -55,5 +56,22 @@ describe('result lines of the end card', () => {
     });
     expect(lines[1].title).toBe('Player 2 · Level 5');
     expect(lines[1].color).toBe(PLAYER_COLORS[1]);
+  });
+});
+
+describe('recording tail', () => {
+  it('lasts the usual time after the results while the sound delays are short', () => {
+    expect(recordingTailSec({ game: 0.04, camera: 0.14 })).toBe(RECORDING.tailSec);
+  });
+
+  it('lasts until the end of the song has reached the video with the longest delay', () => {
+    expect(recordingTailSec({ game: 2.3, camera: 4.3 })).toBeCloseTo(4.3 + RECORDING.soundTailMarginSec);
+    expect(recordingTailSec({ game: 5, camera: 0 })).toBeCloseTo(5 + RECORDING.soundTailMarginSec);
+  });
+
+  it('changes from the usual time to the delay at the point where the delay and margin reach it', () => {
+    const boundary = RECORDING.tailSec - RECORDING.soundTailMarginSec;
+    expect(recordingTailSec({ game: 0, camera: boundary })).toBe(RECORDING.tailSec);
+    expect(recordingTailSec({ game: 0, camera: boundary + 0.1 })).toBeGreaterThan(RECORDING.tailSec);
   });
 });

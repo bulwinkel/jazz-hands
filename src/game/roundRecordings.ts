@@ -1,3 +1,4 @@
+import type { RecordingDelays } from './audio';
 import { PLAYER_COLORS } from './config';
 import type { PlayerRun } from './player';
 import { RECORDING, RoundRecorder, videoFileName } from './recording';
@@ -32,6 +33,14 @@ export interface RecordingsHooks {
   onChange: () => void;
   /** True while the video player shows `round`. */
   isOnShow: (round: RoundVideos) => boolean;
+}
+
+/**
+ * How long a recording goes on after the results show: the cheer and the result card, and at
+ * least until the end of the song has reached the video with the longest sound delay.
+ */
+export function recordingTailSec(delays: RecordingDelays): number {
+  return Math.max(RECORDING.tailSec, Math.max(delays.game, delays.camera) + RECORDING.soundTailMarginSec);
 }
 
 /** Puts `round` first and keeps the newest `keep` rounds. Returns the kept rounds and the dropped ones. */

@@ -28,10 +28,9 @@ import { createPlayers, summariseChart } from './player';
 import type { ChartSummary, PlayerRun } from './player';
 import { MenuPreview } from './preview';
 import type { PreviewState } from './preview';
-import { RECORDING } from './recording';
 import { GameRenderer } from './render';
 import type { Feedback } from './render';
-import { resultLines, RoundRecordings } from './roundRecordings';
+import { recordingTailSec, resultLines, RoundRecordings } from './roundRecordings';
 import { award, freshScore } from './scoring';
 import { parseSettings, STORAGE_KEY, usesFaces } from './settings';
 import type { Options } from './settings';
@@ -448,7 +447,7 @@ export class DanceGame {
     this.setPhase('results');
     this.ui.showResults(this.players, this.beginCountdown, this.showMenu, (byHand) => this.refit(byHand));
     // A recording goes on for a few seconds: the cheer, and the result card in the game view.
-    this.recordings.endAfter(RECORDING.tailSec);
+    this.recordings.endAfter(recordingTailSec(this.audio?.soundDelays ?? { game: 0, camera: 0 }));
     this.showRecordings();
     if (import.meta.env.DEV) void this.saveReport(this.report);
   }

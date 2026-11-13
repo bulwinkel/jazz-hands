@@ -99,9 +99,14 @@ export class SongAudio {
     return { game: this.recordingTaps.game.stream, camera: this.recordingTaps.camera.stream };
   }
 
+  /** The delays of a recording's sound now, from the offsets and the speakers' delay. */
+  get soundDelays(): RecordingDelays {
+    return recordingDelays(this.outputLatencySec, this.avOffsetMs, this.inputLatencyMs);
+  }
+
   private setRecordingDelays(): void {
     if (!this.recordingTaps) return;
-    const delays = recordingDelays(this.outputLatencySec, this.avOffsetMs, this.inputLatencyMs);
+    const delays = this.soundDelays;
     this.recordingTaps.game.delay.delayTime.value = delays.game;
     this.recordingTaps.camera.delay.delayTime.value = delays.camera;
   }
