@@ -12,6 +12,7 @@
     "preview": "vite preview",
     "typecheck": "tsc",
     "test": "vitest run",
+    "ratings": "node scripts/ratings-summary.mjs",
     "setup-songs": "python3.13 -m venv tools/songs/.venv && tools/songs/.venv/bin/python -m pip install --requirement tools/songs/requirements.txt",
     "add-song": "tools/songs/.venv/bin/python -I tools/songs/add_song.py",
     "test-songs": "tools/songs/.venv/bin/python -I -m unittest discover --start-directory tools/songs --pattern 'test_*.py'"
