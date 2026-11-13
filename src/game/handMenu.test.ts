@@ -167,6 +167,53 @@ describe('two hands', () => {
   });
 });
 
+describe('a fist that moves along a row of touching items, as the rating stars', () => {
+  /** Five stars of 69 by 60 pixels side by side: their hit areas in a 1280×720 window. */
+  const STARS: HandTarget[] = [1, 2, 3, 4, 5].map((star) => ({
+    id: `rate-0-${star}`,
+    rect: { x: 225 + (star - 1) * 69, y: 387, width: 69, height: 60 },
+    holdSec: 0.5,
+  }));
+  const ROW_MIDDLE_Y = 417;
+
+  /** Moves a fist along the middle of the row from `fromX` to `toX` at `pxPerSec`, and collects every choice. */
+  function sweep(fromX: number, toX: number, pxPerSec: number, state = newHandMenuState()) {
+    const chosen: string[] = [];
+    const durationMs = (Math.abs(toX - fromX) / pxPerSec) * 1000;
+    let nowMs = 0;
+    for (; nowMs <= durationMs; nowMs += FRAME_MS) {
+      const x = fromX + (toX - fromX) * (nowMs / durationMs);
+      const step = stepHandMenu(state, STARS, [fist(x, ROW_MIDDLE_Y)], nowMs);
+      state = step.state;
+      if (step.chooseId) chosen.push(step.chooseId);
+    }
+    return { state, chosen, endMs: nowMs };
+  }
+
+  it('chooses no star that it only passes, in either direction', () => {
+    expect(sweep(200, 620, 400).chosen).toEqual([]);
+    expect(sweep(620, 200, 200).chosen).toEqual([]);
+  });
+
+  it('chooses the star where it stops and holds', () => {
+    const passed = sweep(200, 466, 400);
+    expect(passed.chosen).toEqual([]);
+    const chosen: string[] = [];
+    let state = passed.state;
+    for (let nowMs = passed.endMs; nowMs <= passed.endMs + 600; nowMs += FRAME_MS) {
+      const step = stepHandMenu(state, STARS, [fist(466, ROW_MIDDLE_Y)], nowMs);
+      state = step.state;
+      if (step.chooseId) chosen.push(step.chooseId);
+    }
+    expect(chosen).toEqual(['rate-0-4']);
+  });
+
+  it('chooses a star that it stays on for the hold time, however slowly it moves', () => {
+    // At 100 pixels a second, the fist stays on each 69-pixel star for longer than 0.5 s.
+    expect(sweep(200, 620, 100).chosen.length).toBeGreaterThan(0);
+  });
+});
+
 describe('stepHandMenu', () => {
   it('never changes the state it is given', () => {
     const state = newHandMenuState();
