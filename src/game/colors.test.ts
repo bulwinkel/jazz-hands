@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cueColor, DUE_COLOR, mixColors, withAlpha } from './colors';
+import { CUE_START_COLOR, cueColor, mixColors, withAlpha } from './colors';
 import { PLAYER_COLORS } from './config';
 
 describe('withAlpha', () => {
@@ -31,33 +31,46 @@ describe('mixColors', () => {
   });
 });
 
+/** How far apart two colours are: the sum of the differences in red, green and blue. */
+function distance(a: string, b: string): number {
+  let sum = 0;
+  for (const start of [1, 3, 5]) {
+    const channelA = parseInt(a.slice(start, start + 2), 16);
+    const channelB = parseInt(b.slice(start, start + 2), 16);
+    sum += Math.abs(channelA - channelB);
+  }
+  return sum;
+}
+
 describe('cue colour', () => {
-  it.each(PLAYER_COLORS)('is the player colour %s when the cue appears', (playerColor) => {
-    expect(cueColor(playerColor, 1)).toBe(playerColor);
+  it('starts as white', () => {
+    expect(CUE_START_COLOR).toBe('#ffffff');
   });
 
-  it.each(PLAYER_COLORS)('is the due colour on the beat, for player colour %s', (playerColor) => {
-    expect(cueColor(playerColor, 0)).toBe(DUE_COLOR);
+  it.each(PLAYER_COLORS)('is white when the cue appears, for player colour %s', (playerColor) => {
+    expect(cueColor(playerColor, 1)).toBe(CUE_START_COLOR);
+  });
+
+  it.each(PLAYER_COLORS)('is the player colour %s on the beat', (playerColor) => {
+    expect(cueColor(playerColor, 0)).toBe(playerColor);
   });
 
   it('is half-way between the two in the middle of the approach', () => {
-    expect(cueColor('#22d3ee', 0.5)).toBe(mixColors('#22d3ee', DUE_COLOR, 0.5));
+    expect(cueColor('#22d3ee', 0.5)).toBe(mixColors(CUE_START_COLOR, '#22d3ee', 0.5));
   });
 
-  it('stays the player colour before the cue appears, and the due colour after the beat', () => {
-    expect(cueColor('#22d3ee', 1.8)).toBe('#22d3ee');
-    expect(cueColor('#22d3ee', -0.3)).toBe(DUE_COLOR);
+  it('stays white before the cue appears, and the player colour after the beat', () => {
+    expect(cueColor('#22d3ee', 1.8)).toBe(CUE_START_COLOR);
+    expect(cueColor('#22d3ee', -0.3)).toBe('#22d3ee');
   });
 
-  it('moves toward the due colour all the way, so a nearer cue never looks later', () => {
-    const blueOf = (color: string): number => parseInt(color.slice(5, 7), 16);
+  it('moves toward the player colour all the way, so a nearer cue never looks later', () => {
     for (const playerColor of PLAYER_COLORS) {
-      // Both player colours have more blue than the due colour: blue must fall step by step.
-      let previous = blueOf(cueColor(playerColor, 1));
+      let previous = distance(cueColor(playerColor, 1), playerColor);
       for (let remaining = 0.9; remaining >= 0; remaining -= 0.1) {
-        const blue = blueOf(cueColor(playerColor, remaining));
-        expect(blue).toBeLessThan(previous);
-        previous = blue;
+        const now = distance(cueColor(playerColor, remaining), playerColor);
+        expect(now).toBeLessThan(previous);
+        previous = now;
       }
     }
   });

@@ -10,7 +10,8 @@ A cue is a cell of a player's grid to touch on a beat. A block starts small in t
 the cell and grows. It fills the cell on the beat, and never leaves the cell. Two cues for
 one cell nest: the larger block comes first.
 
-The cue fades from the player's colour to yellow, and is full yellow on the beat.
+The cue appears white and fades to the player's colour, which it reaches on the beat: the
+full block has the player's colour.
 
 A fist held on a menu item shows its progress with the same block, so the menu teaches how a
 round reads.

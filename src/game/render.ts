@@ -242,7 +242,8 @@ export class GameRenderer {
     const { approachSec } = LEVELS[player.level];
     const rects = this.cellRects(state, player);
     // Each cell has the colour of its own due time. The path fades from the colour of its first
-    // cell to that of its last, so the end to start from is the one nearer the due colour.
+    // cell to that of its last, so the end to start from is the one with more of the player's
+    // colour.
     const colors = cue.times.map((dueSec) => cueColor(playerColor, (dueSec - nowSec) / approachSec));
     const path = rects.map(centreOf);
     const last = rects.length - 1;
@@ -281,7 +282,7 @@ export class GameRenderer {
     if (cue.gesture) {
       this.text(GESTURE_EMOJI[cue.gesture] ?? '✋', dot.x, dot.y, cellSize * 0.42);
     } else {
-      // The dot glows in the colour of the first cell: the due colour from the start of the slide.
+      // The dot glows in the colour of the first cell: the player's colour from the start of the slide.
       ctx.shadowColor = cueColor(playerColor, (cue.times[0] - nowSec) / LEVELS[player.level].approachSec);
       ctx.shadowBlur = 18;
       ctx.fillStyle = WHITE;
