@@ -143,8 +143,29 @@ export function cuesFrom<C extends { timeSec: number }>(cues: C[], startSec: num
   return cues.filter((cue) => cue.timeSec >= startSec + CHART.leadSec);
 }
 
+/**
+ * Why a cue is in a chart. Most cues sit on a cue beat. Two kinds come on top of those: an
+ * off-beat tap, and a tap for the other hand during a slow slide. The level rules' shares of
+ * slides and doubles count the cues on cue beats only.
+ */
+export type CueRole = 'beat' | 'offbeat' | 'companion';
+
+/** A cue of a chart, with its role. */
+export interface ChartEntry {
+  cue: Cue;
+  role: CueRole;
+}
+
 /** The cue list for one player. The same manifest and options always give the same list. */
 export function generateChart(manifest: Manifest, options: ChartOptions): Cue[] {
+  return chartEntries(manifest, options).map((entry) => entry.cue);
+}
+
+/**
+ * The cues of `generateChart`, each with its role. A cue's beat index cannot tell the role:
+ * in a song with cues on every second beat, an off-beat tap sits on a whole beat.
+ */
+export function chartEntries(manifest: Manifest, options: ChartOptions): ChartEntry[] {
   const rules = LEVELS[options.level];
   const { beats, intensity } = manifest;
   const master = masterCells(manifest, options.seed);
@@ -168,7 +189,7 @@ export function generateChart(manifest: Manifest, options: ChartOptions): Cue[] 
     beats[beat] < tailSec &&
     (beat - manifest.firstDownbeat) % strideAt(beat) === 0;
 
-  const cues: Cue[] = [];
+  const entries: ChartEntry[] = [];
   /** The last beat the previous cue occupies, and when that cue ends. */
   let previousEndBeat = -Infinity;
   let previousEndSec = -Infinity;
@@ -254,7 +275,7 @@ export function generateChart(manifest: Manifest, options: ChartOptions): Cue[] 
       }
     }
     if (phraseShape) cue.gesture = phraseShape[beat];
-    cues.push(cue);
+    entries.push({ cue, role: 'beat' });
     const intervalsTaken = cue.kind === 'slide' && cue.speed ? SLIDE_INTERVALS[cue.speed] : 0;
     previousEndBeat = beat + intervalsTaken * stride;
     previousEndSec = cue.times[cue.times.length - 1];
@@ -267,8 +288,9 @@ export function generateChart(manifest: Manifest, options: ChartOptions): Cue[] 
     if (cue.speed === 'slow' && roll.companion < rules.companionTapChance && freeHandsAt(cue.times[1]) > 0) {
       const midSec = cue.times[1];
       const cell = pickWeighted(CHART.cellWeights, roll.companionCell, (c) => !cue.cells.includes(c));
-      cues.push({ kind: 'tap', timeSec: midSec, beatIndex: nextCueBeat, cells: [cell], times: [midSec] });
-      if (phraseShape) cues[cues.length - 1].gesture = phraseShape[beat];
+      const tap: Cue = { kind: 'tap', timeSec: midSec, beatIndex: nextCueBeat, cells: [cell], times: [midSec] };
+      if (phraseShape) tap.gesture = phraseShape[beat];
+      entries.push({ cue: tap, role: 'companion' });
       useHand(midSec);
     }
 
@@ -281,11 +303,12 @@ export function generateChart(manifest: Manifest, options: ChartOptions): Cue[] 
     if (previousWasOffbeat) {
       const taken = [...cue.cells, master[nextCueBeat]];
       const cell = pickWeighted(CHART.cellWeights, roll.offbeatCell, (c) => !taken.includes(c));
-      cues.push({ kind: 'tap', timeSec: offbeatSec, beatIndex: beat + stride / 2, cells: [cell], times: [offbeatSec] });
-      if (phraseShape) cues[cues.length - 1].gesture = phraseShape[beat];
+      const tap: Cue = { kind: 'tap', timeSec: offbeatSec, beatIndex: beat + stride / 2, cells: [cell], times: [offbeatSec] };
+      if (phraseShape) tap.gesture = phraseShape[beat];
+      entries.push({ cue: tap, role: 'offbeat' });
       previousEndSec = offbeatSec;
       useHand(offbeatSec);
     }
   }
-  return cues;
+  return entries;
 }

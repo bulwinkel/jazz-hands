@@ -21,6 +21,24 @@ In the grow style, two cues for one cell nest: the larger block comes first.
 A fist held on a menu item shows its progress with the mark of the chosen style, so the
 menu teaches how a round reads.
 
+## Cue sets
+
+A song has 5 cue sets. Each set gives other cues for the same song, and the same cues on
+every run, so **Play again** repeats them. Step through the sets with the **🎲 Set** switch
+in the top right corner of the menu. Both players play the same set. The game keeps the
+choice.
+
+A set gives other cues at the same difficulty. Set 1 is the chart the game always had. Sets
+2 to 5 each try 24 candidate charts for the song, the levels and the length, and keep the one
+that plays most like the level usually does: its shares of slides and two-hand cues come
+closest to the typical mix. The typical mix is the median over the 96 candidate charts of the
+four sets together, so every set aims at the same mix. It is not the level rules: at levels 4
+and 5 a slide never follows an off-beat tap, so their charts have about a third fewer slides
+than the rules say. Set 1 was picked against the rules, so at level 4 it often has more slides
+than the other sets.
+
+A `seed=` in the URL replaces the set, for tests. The run report names the seed and the set.
+
 ## Record a round
 
 Turn on **Recording** in the top right corner of the menu. Each round then gives two videos:
@@ -37,15 +55,22 @@ The game delays the sound of each video to fit its picture, but it cannot make t
 When the picture offset and the camera delay, with the speakers' delay, add up to less than
 zero, that video's sound is late by that amount.
 
+While the videos are made, the results screen shows a box in place of the preview. It says
+that the recording still runs, with a bar that fills over its last seconds, and then that the
+video is being finished, with a full bar that pulses.
+
 When the videos are ready, the results screen shows the round as a small silent preview.
 A click on it, or a fist held on it, plays the round with its sound in a player that fills
 the window. The player has buttons to switch between the game view and the camera view, to
-download the video on show, and to close. A real click also switches the browser to full
-screen. Space pauses and Esc closes.
+play the video on show again from its start (**↺ Restart**, also after it has ended), to
+download it, and to close. A real click also switches the browser to full
+screen. Space pauses and Esc closes. Under the preview are the download links of both videos.
 
-The results screen and the menu also list the recorded rounds, each with a Watch button and
-its download links. The game keeps the videos of the last 3 rounds, in memory only: a reload
-of the page drops them.
+The game keeps no history of recordings. It holds only the videos of the round whose results
+are on screen, in memory. When the results close, for any reason (Play again, Menu,
+Recalibrate, an error, a reload), the videos are deleted: download them before you leave
+the results. A recording that is still in its last seconds, or still being finished, when
+the results close is thrown away.
 
 The files are MP4 (H.264 and AAC). The run report of a recorded round has
 `settings.recording: true`, to compare its tracking speed with other rounds.
@@ -64,9 +89,13 @@ contexts in a worker, and split hands with face models need 4.
 
 | URL parameter | Use |
 | --- | --- |
-| `thread=worker` | The default. Track in the workers. |
-| `thread=main` | Track on the main thread, as before the workers. For tests and comparisons. |
+| `thread=worker` | Track in the workers. |
+| `thread=main` | The default for now. Track on the main thread, as before the workers. |
 | `framelog=1` | Keep every tracking frame in `window.__dance.frameLog`, for scripts. |
+
+The default is `DEFAULT_TRACKING_THREAD` in `src/game/config.ts`. The workers gave the same
+hands as the main thread on a test video. They become the default when a recording of real
+players has shown the same (see `scripts/compare-threads.mjs` below).
 
 The run report says which thread ran (`tracking.thread`), and how many frames per second the
 game drew during play (`tracking.drawnPerSec`) next to the tracking rate.
@@ -180,12 +209,13 @@ A song with no picture shows its title on a plain cover. To give it a picture:
 ### Songs that needed a correction by hand
 
 Six songs did not come out right from the tool alone. These command options make their manifests again.
+The tool now finds the bar start of the last four by itself, from the chords and the drums (see
+[How the tool finds the bar start](#how-the-tool-finds-the-bar-start)). The table keeps them as a record.
 
 | Song | Command options | Why |
 | --- | --- | --- |
 | Job, Hold On | `--half-beat shift` | The kick is syncopated (beat 1 and the "and" of 2), so it sits on the beats and between them alike, and the tool could not tell which pulses are the beats. The snare on beats 2 and 4 shows them. After the shift, every section has a clear kick on the beat and the music starts on the first beat. |
 | The Wilderness Knows | `--beats tools/songs/given-beats/the-wilderness-knows.json` | The opening is loose and the kick is soft. The tool's own grid lost the beat in the first 30 s. The given beats come from a comb on the eighth-note pulse (about 186 per minute), fitted in 10 s windows from the clearest window outward. |
-
 | All Aboard | `--first-downbeat 2` | The tool chose beat 3 with low confidence, from the level rises alone. The chords and the bass change on beat 2, and with bars from beat 2 the kick falls on beats 1 and 3 and the snare on 2 and 4. |
 | Nebuchadnezzar's Dream | `--first-downbeat 1` | The tool chose beat 0 with low confidence, because the music starts there. The chords and the bass change on beat 1, and with bars from beat 1 the kick falls on beat 1 and on the "and" of 3, as in the other songs of this style. |
 | Hey-Ho, Jonah | `--first-downbeat 2` | The tool chose beat 1 with low confidence, from three level rises alone. The kick and the clap are equally strong on every beat, so they do not show the bar. The chords and the bass change most on beat 2 and least on beat 1. |
@@ -196,7 +226,10 @@ Signs in the report that a song needs this:
 - The kick readings of the beat grid jump by about half a beat from one 20 s block to the next.
 - The tool warns that the kick hits and the chord changes do not agree on which pulses are the beats.
 - The tool warns of no clear beat in a part of the song where you hear one.
-- The tool warns that the bar-start evidence disagrees, and gives its choice "Confidence: low". Listen for the high click in the check clips: it must be on the "one".
+- The tool gives its bar-start choice "Confidence: low": the chords and the drums disagree, or the clues
+  do not tell two beats apart. Listen for the high click in the check clips: it must be on the "one".
+- The tool gives its bar-start choice "Confidence: medium" and warns that it is not certain. Listen for
+  the high click in the check clips too.
 
 ### Read the report
 
@@ -208,7 +241,7 @@ Signs in the report that a song needs this:
 | Beats, or the pulses between them | Kick hits and chord changes must be stronger on the beats. If not, the tool moves the beats by half a beat. |
 | Kick alignment | Each 30 s section reads about +5 ms. A section with no clear kick is less certain. |
 | Music | Where the sound starts and ends, and where the beat stops being clear. |
-| Bars | `firstDownbeat`, the clues for it, and the confidence. |
+| Bars | `firstDownbeat`, the four clues for it with their numbers, the weight for each beat, and the confidence. See [How the tool finds the bar start](#how-the-tool-finds-the-bar-start). |
 | Beats | The beat count, where the list stops and why, and the tempo at the start, middle and end. |
 | Intensity per bar | The pace of each bar, and the share of slow, medium and full bars. |
 | Short round | The mean intensity of the first 90 s and of the best 90 s, and `shortStartSec`. |
@@ -233,6 +266,31 @@ Three cases to know:
 
 The tool exits with code 1 and one error line when it cannot make a manifest it trusts.
 It then writes no manifest.
+
+### How the tool finds the bar start
+
+The tool reads four clues for the beat that starts the bars (`firstDownbeat`), counted from the
+first beat of the music. The report prints each clue with its numbers.
+
+| Clue | What it reads | What it points to | Weight |
+| --- | --- | --- | --- |
+| Chord changes | How much the chords and the bass change on each beat of the bar. | The beat with the most change, when that change is at least 1.25 times the change on each beat next to it. The beat half a bar away can change almost as much, because many songs change chords at the half bar too. | 2 |
+| Drums | The share of the kick (30 to 150 Hz) and of the snare or clap (1.5 to 6 kHz) on each beat of the bar. | Two beats half a bar apart. The kick falls on beats 1 and 3 and the snare on 2 and 4, so the drums tell those two pairs apart, but often not beat 1 from beat 3. The kick must hit one pair at least 1.25 times as hard as the other pair, and the snare must be stronger on the other pair. A kick on every beat, or no clear drums, decides nothing. | 2 |
+| Level rises | The largest rises in level. They are section starts. | The beat that fits at least 1.5 times as many rises as the next best. A pickup or a fill can move a rise by one beat. | 1 |
+| Song start | Nothing in the music. Many songs start on a bar start. | Beat 0. A song that opens with a pickup breaks this. | 0.5 |
+
+The chords and the drums read every bar of the song, so they weigh most. The song start is weak
+evidence: on its own it never beats a clear chord clue.
+
+Each clue that decides adds its weight to the beats it points to. The beat with the most weight
+starts the bars. On a tie, the earlier beat wins. So the drums narrow the choice to two beats, the
+chords pick one of them, and the song start decides only what the music leaves open.
+
+| Confidence | When |
+| --- | --- |
+| High | The clues for the choice weigh 3 or more, and only the song start is against it. |
+| Medium | The level rises are against the choice, or the clues for it weigh less than 3. |
+| Low | The chords or the drums are against the choice, or another beat has as much weight. |
 
 ### Listen to the check clips
 

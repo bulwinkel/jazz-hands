@@ -16,7 +16,7 @@
   --button: #252b49;
   /* The dark, see-through face of small buttons and choices. */
   --surface: #0b1024cc;
-  /* The lighter face of the menu's cards: the player cards and the list of recordings. */
+  /* The lighter face of the menu's cards: the player cards. */
   --card: #0b1024a6;
   /* The marks over the game picture: the pause button and the recording mark. */
   --chip: #0f172aab;
@@ -537,10 +537,10 @@ canvas {
   accent-color: var(--player);
 }
 
-/* Four switches in a top corner of the menu: previews, hand control, recording and the cue
-   style. They sit a little in from the side and from the top, because the camera tracks a
-   hand badly at the edge of its picture. They shrink with the menu content (`--fit` is set
-   in ui.ts). */
+/* Five switches in a top corner of the menu: previews, hand control, recording, the cue
+   style and the cue set. They sit a little in from the side and from the top, because the
+   camera tracks a hand badly at the edge of its picture. They shrink with the menu content
+   (`--fit` is set in ui.ts). */
 .corner {
   position: absolute;
   top: 4%;
@@ -680,46 +680,28 @@ canvas {
   border-radius: 10px;
 }
 
-/* --- Recorded rounds: the list on the menu and the results, and the preview of a round --- */
+/* --- The recording of the round on the results: the placeholder while its videos are made,
+   then its preview and its download links --- */
 
 .recordings {
   margin-top: 16px;
   font-size: 17px;
   color: var(--text-soft);
 }
-.recordings p {
-  margin: 0 0 6px;
-  font-size: 17px;
+/* The links and the rule show only when the videos are ready. Until then they keep their
+   room, so the page does not move when they show. */
+.recordings:not([data-stage="ready"]) .recording-files {
+  visibility: hidden;
 }
-.recordings p:empty {
-  display: none;
-}
-.recordings ul {
-  display: grid;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-/* In the menu the list lies on the camera picture, so it gets a card behind it. The results
-   have a dark background of their own. */
-.menu .recordings {
-  padding: 10px 18px;
-  border-radius: 14px;
-  background: var(--card);
-}
-.recordings li {
+/* One row of links. Empty, it keeps the height of a link: its line, padding and border. */
+.recording-links {
   display: flex;
-  align-items: center;
   justify-content: center;
   gap: 12px;
+  min-height: calc(22px + 2 * 7px + 2 * 2px);
+  line-height: 22px;
 }
-.recordings li button {
-  padding: 7px 14px;
-  border-radius: 10px;
-  font-size: 17px;
-}
-.recordings a {
+.recording-links a {
   padding: 7px 14px;
   border: 2px solid var(--border);
   border-radius: 10px;
@@ -728,12 +710,18 @@ canvas {
   font-weight: 800;
   text-decoration: none;
 }
-.recordings a:hover {
+.recording-links a:hover {
   filter: brightness(1.15);
 }
-/* The small silent video of the round on the results screen. A click or a fist plays it large.
-   This rule must come after `.hand-hover`, so the button keeps its corners while a hand is on it. */
-.preview {
+.recording-files p {
+  margin: 10px 0 0;
+}
+/* The small silent video of the round, and the placeholder that holds its place while the
+   videos are made. They share one size, border and corners, so nothing moves when the
+   preview comes. A click or a fist on the preview plays it large.
+   This rule must come after `.hand-hover`, so the preview keeps its corners while a hand is on it. */
+.preview,
+.recording-wait {
   display: block;
   width: 320px;
   aspect-ratio: 16 / 9;
@@ -760,6 +748,57 @@ canvas {
   border-radius: 8px;
   background: #0b1024d9;
   font-size: 16px;
+}
+/* Inside the placeholder: what the game does, in letters to read from the dance spot, and a
+   bar that moves while the players wait. */
+.recording-wait {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 20px;
+  padding: 0 18px;
+}
+.recording-wait p {
+  margin: 0;
+  color: #fff;
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.15;
+}
+.wait-bar {
+  height: 14px;
+  overflow: hidden;
+  border-radius: 7px;
+  background: var(--border-faint);
+}
+/* recordingsView.ts sets the tail's times from the recordings: `--tail-sec` long, of which
+   `--tail-passed-sec` had passed when the placeholder was drawn, a share of `--tail-share`.
+   The negative delay starts the fill where the tail is. Without motion, the bar stands still
+   at that share. */
+.wait-bar span {
+  display: block;
+  height: 100%;
+  background: var(--due-color);
+  transform: scaleX(var(--tail-share, 1));
+  transform-origin: left;
+}
+.recording-wait[data-stage="tail"] .wait-bar span {
+  animation: tail-fill calc(var(--tail-sec) * 1s) linear calc(var(--tail-passed-sec) * -1s) both;
+}
+/* While the videos are finished, the time is not known, and short: the bar is full and pulses. */
+.recording-wait[data-stage="finishing"] .wait-bar span {
+  transform: none;
+  animation: wait-pulse 1.2s ease-in-out infinite alternate;
+}
+@keyframes tail-fill {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@keyframes wait-pulse {
+  to { opacity: 0.3; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .recording-wait[data-stage] .wait-bar span { animation: none; }
 }
 
 /* --- The video player ---

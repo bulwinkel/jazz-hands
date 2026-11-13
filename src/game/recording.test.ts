@@ -92,14 +92,14 @@ describe('main video of a round', () => {
   const video = (kind: 'game' | 'camera') => ({ kind, url: `blob:${kind}`, fileName: `${kind}.mp4`, sizeBytes: 1 });
 
   it('is the game view when the round has one', () => {
-    expect(mainVideo({ id: 1, label: '', videos: [video('camera'), video('game')] })?.kind).toBe('game');
+    expect(mainVideo({ videos: [video('camera'), video('game')] })?.kind).toBe('game');
   });
 
   it('is the first video when the round has no game view', () => {
-    expect(mainVideo({ id: 1, label: '', videos: [video('camera')] })?.kind).toBe('camera');
+    expect(mainVideo({ videos: [video('camera')] })?.kind).toBe('camera');
   });
 
   it('is nothing for a round with no video', () => {
-    expect(mainVideo({ id: 1, label: '', videos: [] })).toBeUndefined();
+    expect(mainVideo({ videos: [] })).toBeUndefined();
   });
 });

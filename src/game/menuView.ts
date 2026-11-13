@@ -1,9 +1,9 @@
 import { carouselOffset, stepRing } from './carousel';
 import { HAND_MENU, LEVELS, PLAYER_COLORS, SONGS } from './config';
+import { nextCueSet } from './cueSet';
 import { CUE_STYLE_NAMES, nextCueStyle } from './cueStyle';
 import type { CueStyle } from './cueStyle';
 import { find, isHandClick } from './dom';
-import { RECORDINGS_HTML } from './recordingsView';
 import type { Settings } from './settings';
 import type { Level, PlayerCount, PlayerIndex, SongLength } from './types';
 
@@ -52,13 +52,12 @@ export const MENU_HTML = `
     <span id="hand-hint">Point with an open hand ✋, then make a fist ✊ to choose · </span>Space or Enter to start · F fullscreen<br>
     <span id="stand-hint"></span>
     <span id="sound-hint" hidden><br>Click or press a key once, so the browser lets the music play.</span>
-  </p>
-  ${RECORDINGS_HTML}`;
+  </p>`;
 
 /**
- * Four switches in a top corner of the menu: previews, hand control, recording and the cue
- * style. They are outside the scaled content, a little in from the side: the camera tracks a
- * hand badly at the edge of its picture.
+ * Five switches in a top corner of the menu: previews, hand control, recording, the cue style
+ * and the cue set. They are outside the scaled content, a little in from the side: the camera
+ * tracks a hand badly at the edge of its picture.
  */
 export const MENU_SWITCHES_HTML = `
   <div class="corner">
@@ -66,6 +65,7 @@ export const MENU_SWITCHES_HTML = `
     <button type="button" id="hands-switch" data-hand="hand-control"></button>
     <button type="button" id="record-switch" data-hand="record"></button>
     <button type="button" id="cues-switch" data-hand="cues"></button>
+    <button type="button" id="set-switch" data-hand="cue-set"></button>
   </div>`;
 
 const STAND_HINT: Record<PlayerCount, string> = {
@@ -204,6 +204,17 @@ export function buildMenu(panel: HTMLElement, settings: Settings, handlers: Menu
   };
   cuesSwitch.addEventListener('click', () => {
     settings.cueStyle = nextCueStyle(settings.cueStyle);
+    onChange();
+  });
+  // The cue set steps through its values too. Only this switch changes it.
+  const setSwitch = find(panel, '#set-switch');
+  const showCueSet = (): void => {
+    setSwitch.textContent = `🎲 Set: ${settings.cueSet}`;
+  };
+  showCueSet();
+  setSwitch.addEventListener('click', () => {
+    settings.cueSet = nextCueSet(settings.cueSet);
+    showCueSet();
     onChange();
   });
 

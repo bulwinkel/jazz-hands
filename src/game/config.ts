@@ -1,5 +1,13 @@
-import type { FaceExpression, GestureName, TrackerMode } from '../tracking/types';
+import type { FaceExpression, GestureName, TrackerMode, TrackingThread } from '../tracking/types';
 import type { Level, PlayerCount, SlideSpeed } from './types';
+
+/**
+ * Where the camera is tracked when the URL does not say. In a worker, the picture stays smooth
+ * while tracking is busy: 60 drawn frames per second, against about 30 with two players.
+ * The worker gave the same hands as the main thread on a test video. It becomes the default
+ * when a recording of real players has shown the same; until then `?thread=worker` turns it on.
+ */
+export const DEFAULT_TRACKING_THREAD: TrackingThread = 'main';
 
 /**
  * Two players each own half the frame, and split tracking gives each half twice the resolution.
@@ -136,6 +144,28 @@ export const PREVIEW = {
  */
 export const DEFAULT_SEED = 20261315;
 
+/**
+ * Cue sets give one song other charts at the same difficulty. Set 1 is the chart from
+ * DEFAULT_SEED. Every other set tries a few candidate seeds and keeps the one whose charts come
+ * closest to the typical mix of slides and doubles of the level on this song. See cueSet.ts.
+ */
+export const CUE_SETS = {
+  /** The sets are numbered from 1 to this count. */
+  count: 5,
+  /**
+   * Seeds that each set from 2 on tries. The candidates of all these sets together are the
+   * pool that gives the typical mix, so a round start makes (count − 1) × candidates charts
+   * per player: about 0.1 s for two players and the longest song. More candidates find a
+   * closer match, and take longer.
+   */
+  candidates: 24,
+  /**
+   * Set k tries the seeds from DEFAULT_SEED + k × this spacing on. The spacing is larger than
+   * the count of candidates, so no two sets share a seed.
+   */
+  candidateSpacing: 1000,
+} as const;
+
 /** Milliseconds around a cue's due time, as [early, late]. Early is negative. */
 export type WindowMs = readonly [number, number];
 
@@ -207,7 +237,9 @@ export const LEVELS: Record<Level, LevelRules> = {
     slideChance: 0.22,
     slideSpeeds: { fast: 0, normal: 0.7, slow: 0.3 },
     offbeatChance: 0,
-    companionTapChance: 0,
+    // Without these taps, the other hand had nothing to do during a slow slide. Half is
+    // gentler than level 4.
+    companionTapChance: 0.5,
     shapeOnEveryCue: false,
     approachSec: 1,
     perfectMs: [-120, 160],
@@ -398,8 +430,6 @@ export const RECORDING = {
    * after the results show. The recording then goes on for the delay and this margin at least.
    */
   soundTailMarginSec: 0.5,
-  /** The game keeps the videos of this many rounds. Older ones are dropped, to free memory. */
-  keepRounds: 3,
 } as const;
 
 /** Notes at the top of the screen. */

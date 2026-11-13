@@ -1,44 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RECORDING } from './config';
 import type { RecordedVideo, RoundVideos } from './recording';
-import { addRound, recordingStatus, recordingTailSec, RoundRecordings } from './roundRecordings';
+import { recordingTailSec, RoundRecordings, tailShare } from './roundRecordings';
 import type { RecordingSource } from './roundRecordings';
-
-describe('list of recorded rounds', () => {
-  it('puts a new round first', () => {
-    expect(addRound(['b', 'c'], 'a', 3).kept).toEqual(['a', 'b', 'c']);
-  });
-
-  it('drops nothing while there is room', () => {
-    expect(addRound(['b'], 'a', 3).dropped).toEqual([]);
-  });
-
-  it('keeps the newest rounds and hands back the ones it dropped', () => {
-    expect(addRound(['b', 'c', 'd'], 'a', 3)).toEqual({ kept: ['a', 'b', 'c'], dropped: ['d'] });
-    expect(addRound(['b', 'c', 'd', 'e'], 'a', 2)).toEqual({ kept: ['a', 'b'], dropped: ['c', 'd', 'e'] });
-  });
-
-  it('leaves the list it was given as it was', () => {
-    const rounds = ['b', 'c', 'd'];
-    addRound(rounds, 'a', 3);
-    expect(rounds).toEqual(['b', 'c', 'd']);
-  });
-});
-
-describe('recording status', () => {
-  it('says that the last seconds are recorded while a recording runs', () => {
-    expect(recordingStatus(true, 0)).toBe('Recording the last seconds…');
-    expect(recordingStatus(true, 1)).toBe('Recording the last seconds…');
-  });
-
-  it('says that a video is finishing after its recording ended', () => {
-    expect(recordingStatus(false, 1)).toBe('Finishing the video…');
-  });
-
-  it('says nothing when no recording is on its way', () => {
-    expect(recordingStatus(false, 0)).toBe('');
-  });
-});
 
 describe('recording tail', () => {
   it('lasts the usual time after the results while the sound delays are short', () => {
@@ -54,6 +18,18 @@ describe('recording tail', () => {
     const boundary = RECORDING.tailSec - RECORDING.soundTailMarginSec;
     expect(recordingTailSec({ game: 0, camera: boundary })).toBe(RECORDING.tailSec);
     expect(recordingTailSec({ game: 0, camera: boundary + 0.1 })).toBeGreaterThan(RECORDING.tailSec);
+  });
+
+  it('has passed by the share of its time that has gone, from 0 to 1', () => {
+    expect(tailShare(0, 4)).toBe(0);
+    expect(tailShare(1, 4)).toBe(0.25);
+    expect(tailShare(4, 4)).toBe(1);
+    expect(tailShare(5, 4)).toBe(1);
+    expect(tailShare(-0.1, 4)).toBe(0);
+  });
+
+  it('has passed at once when it has no length', () => {
+    expect(tailShare(0, 0)).toBe(1);
   });
 });
 
@@ -83,7 +59,7 @@ function fakeRecorder(failStart = false) {
 
 const source: RecordingSource = {
   sound: { game: {} as MediaStream, camera: {} as MediaStream },
-  song: { id: 'song', title: 'Song' },
+  songId: 'song',
 };
 
 /** Lets every finished promise run its next step. */
@@ -118,13 +94,16 @@ describe('round recordings', () => {
     vi.restoreAllMocks();
   });
 
-  /** Records a whole round and waits until its videos are in the list. */
+  /** Records a round to its results, and waits until its videos are ready. */
   async function recordRound(): Promise<RoundVideos> {
     recordings.begin(source);
-    recordings.end(true);
+    recordings.endAfter(4, 0);
+    vi.advanceTimersByTime(4000);
     recorders[recorders.length - 1].finishStop();
     await settle();
-    return recordings.view.rounds[0];
+    const view = recordings.view(5000);
+    if (view.stage !== 'ready') throw new Error(`The videos are not ready: ${view.stage}`);
+    return view.videos;
   }
 
   it('discards a recording whose start fails half-way, and lets the round run without one', () => {
@@ -133,12 +112,34 @@ describe('round recordings', () => {
     withFailingStart.begin(source);
     expect(failing.recorder.discard).toHaveBeenCalledTimes(1);
     expect(withFailingStart.active).toBe(false);
+    expect(withFailingStart.view(0)).toEqual({ stage: 'none' });
   });
 
-  it('cancels the stop timer of a recording when it ends before the timer', () => {
+  it('shows nothing while recording is off', () => {
+    recordings.begin();
+    recordings.endAfter(4, 0);
+    expect(recordings.view(1000)).toEqual({ stage: 'none' });
+  });
+
+  it('goes from the last seconds to the finishing of the videos, then to the videos', async () => {
     recordings.begin(source);
-    recordings.endAfter(4);
-    recordings.end(true);
+    recordings.endAfter(4, 10_000);
+    expect(recordings.view(11_500)).toEqual({ stage: 'tail', tailSec: 4, passedSec: 1.5 });
+    expect(recordings.active).toBe(true);
+    vi.advanceTimersByTime(4000);
+    expect(recordings.view(14_000)).toEqual({ stage: 'finishing' });
+    expect(recordings.active).toBe(false);
+    recorders[0].finishStop();
+    await settle();
+    const view = recordings.view(15_000);
+    expect(view.stage).toBe('ready');
+    expect(view.stage === 'ready' && view.videos.videos.map((video) => video.url)).toEqual(['blob:video-1']);
+  });
+
+  it('cancels the stop timer of a recording when the results close before it', () => {
+    recordings.begin(source);
+    recordings.endAfter(4, 0);
+    recordings.drop();
     recordings.begin(source);
     vi.advanceTimersByTime(10_000);
     // The old timer must not end the recording of the newer round.
@@ -148,46 +149,70 @@ describe('round recordings', () => {
 
   it('lets a new stop timer replace the old one', () => {
     recordings.begin(source);
-    recordings.endAfter(4);
-    recordings.endAfter(6);
+    recordings.endAfter(4, 0);
+    recordings.endAfter(6, 0);
     vi.advanceTimersByTime(4000);
     expect(recorders[0].recorder.stop).not.toHaveBeenCalled();
     vi.advanceTimersByTime(2000);
     expect(recorders[0].recorder.stop).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps a round that left the list alive while the player shows it, and frees it after', async () => {
-    const oldest = await recordRound();
-    await recordRound();
-    await recordRound();
-    recordings.playerShows(oldest);
-    await recordRound();
-    expect(recordings.view.rounds).not.toContain(oldest);
-    expect(revoked).toEqual([]);
-    recordings.playerShows(undefined);
-    expect(revoked).toEqual(oldest.videos.map((video) => video.url));
-  });
-
-  it('frees a round that leaves the list at once when the player does not show it', async () => {
-    const oldest = await recordRound();
-    await recordRound();
-    await recordRound();
-    await recordRound();
-    expect(revoked).toEqual(oldest.videos.map((video) => video.url));
-  });
-
-  it('offers the videos of the last round as its preview', async () => {
+  it('frees the videos when the results close', async () => {
     const round = await recordRound();
-    expect(recordings.view.lastRound).toBe(round);
+    expect(revoked).toEqual([]);
+    recordings.drop();
+    expect(revoked).toEqual(round.videos.map((video) => video.url));
+    expect(recordings.view(6000)).toEqual({ stage: 'none' });
   });
 
-  it('offers no preview from a round when a newer round began while its videos were made', async () => {
+  it('throws away a recording in its last seconds when the results close: its videos never appear', async () => {
     recordings.begin(source);
-    recordings.end(true);
+    recordings.endAfter(4, 0);
+    recordings.drop();
+    expect(recorders[0].recorder.discard).toHaveBeenCalledTimes(1);
+    expect(recordings.active).toBe(false);
+    vi.advanceTimersByTime(10_000);
+    await settle();
+    expect(recorders[0].recorder.stop).not.toHaveBeenCalled();
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(recordings.view(10_000)).toEqual({ stage: 'none' });
+  });
+
+  it('drops the videos of a recording still being finished as soon as they arrive, when the results closed', async () => {
+    recordings.begin(source);
+    recordings.endAfter(4, 0);
+    vi.advanceTimersByTime(4000);
+    expect(recordings.view(4000)).toEqual({ stage: 'finishing' });
+    recordings.drop();
+    expect(recordings.view(4000)).toEqual({ stage: 'none' });
+    recorders[0].finishStop();
+    await settle();
+    // No page link was made for them, so nothing keeps them.
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(recordings.view(5000)).toEqual({ stage: 'none' });
+  });
+
+  it('starts a new round with no videos, and frees those of the round before', async () => {
+    const round = await recordRound();
+    recordings.begin(source);
+    expect(recordings.view(6000)).toEqual({ stage: 'none' });
+    expect(revoked).toEqual(round.videos.map((video) => video.url));
+  });
+
+  it('never shows the videos of a round that finish after a new round began', async () => {
+    recordings.begin(source);
+    recordings.endAfter(4, 0);
+    vi.advanceTimersByTime(4000);
     recordings.begin(source);
     recorders[0].finishStop();
     await settle();
-    expect(recordings.view.rounds).toHaveLength(1);
-    expect(recordings.view.lastRound).toBeUndefined();
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(recordings.active).toBe(true);
+  });
+
+  it('frees the videos when the page goes away', async () => {
+    const round = await recordRound();
+    recordings.dispose();
+    expect(revoked).toEqual(round.videos.map((video) => video.url));
   });
 });

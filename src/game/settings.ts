@@ -1,5 +1,6 @@
 import type { TrackerMode, TrackingThread } from '../tracking/types';
-import { DEFAULT_SEED, SONGS, TIMING } from './config';
+import { DEFAULT_TRACKING_THREAD, SONGS, TIMING } from './config';
+import { FIRST_CUE_SET, isCueSet } from './cueSet';
 import { isCueStyle } from './cueStyle';
 import { clamp } from './numbers';
 import type { CueStyle } from './cueStyle';
@@ -26,6 +27,8 @@ export interface Settings {
   record: boolean;
   /** How a cue shows when its beat comes. */
   cueStyle: CueStyle;
+  /** Which of the song's cue sets the round plays, from 1. Both players play the same set. */
+  cueSet: number;
 }
 
 export type InputSource = 'camera' | 'mouse' | 'bot';
@@ -42,7 +45,8 @@ export interface Options {
   startSec: number;
   /** Skip the menu. */
   autostart: boolean;
-  seed: number;
+  /** A chart seed from the URL, for tests. It wins over the cue set. */
+  seed?: number;
   /** Share of cues the test bot plays. */
   botAccuracy: number;
   /** Keep every tracking frame in `window.__dance.frameLog`, for scripts that compare runs. */
@@ -65,6 +69,7 @@ export function defaultSettings(): Settings {
     handControl: true,
     record: false,
     cueStyle: 'shrink',
+    cueSet: FIRST_CUE_SET,
   };
 }
 
@@ -110,6 +115,7 @@ function readStored(stored: unknown): Settings {
   if (typeof saved.handControl === 'boolean') settings.handControl = saved.handControl;
   if (typeof saved.record === 'boolean') settings.record = saved.record;
   if (isCueStyle(saved.cueStyle)) settings.cueStyle = saved.cueStyle;
+  if (isCueSet(saved.cueSet)) settings.cueSet = saved.cueSet;
   settings.inputLatencyMs = finiteOr(saved.inputLatencyMs, settings.inputLatencyMs, ...TIMING.inputLatencyRangeMs);
   settings.avOffsetMs = finiteOr(saved.avOffsetMs, settings.avOffsetMs, ...TIMING.avOffsetRangeMs);
   return settings;
@@ -119,7 +125,7 @@ function readStored(stored: unknown): Settings {
  * URL parameters, all optional:
  *   players=1|2   p0, p1=1..5   shapes0, shapes1=1|0   faces0, faces1=1|0
  *   length=short|full   song=<index from 0>   previews=1|0   hands=1|0   record=1|0
- *   cues=shrink|grow
+ *   cues=shrink|grow   set=1..5
  *   tracker=hands-full|hands-split|pose   input=camera|mouse|bot   thread=worker|main
  *   start=<seconds>   autostart=1   seed=<integer>   botAccuracy=<0..1>   framelog=1
  */
@@ -146,18 +152,21 @@ export function parseSettings(stored: unknown, query: string): Options {
   if (params.has('record')) settings.record = params.get('record') === '1';
   const cues = params.get('cues');
   if (isCueStyle(cues)) settings.cueStyle = cues;
+  const cueSet = numberParam('set');
+  if (isCueSet(cueSet)) settings.cueSet = cueSet;
 
   const tracker = params.get('tracker');
+  const thread = params.get('thread');
   const input = params.get('input');
   const seed = numberParam('seed');
   return {
     settings,
     input: input === 'mouse' || input === 'bot' ? input : 'camera',
     tracker: isTrackerMode(tracker) ? tracker : undefined,
-    thread: params.get('thread') === 'main' ? 'main' : 'worker',
+    thread: thread === 'main' || thread === 'worker' ? thread : DEFAULT_TRACKING_THREAD,
     startSec: finiteOr(numberParam('start'), 0, 0, 86400),
     autostart: params.get('autostart') === '1',
-    seed: seed !== undefined && Number.isInteger(seed) ? seed : DEFAULT_SEED,
+    seed: seed !== undefined && Number.isInteger(seed) ? seed : undefined,
     botAccuracy: finiteOr(numberParam('botAccuracy'), 1, 0, 1),
     frameLog: params.get('framelog') === '1',
   };

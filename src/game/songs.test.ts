@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { cuesFrom, generateChart } from './chart';
 import { DEFAULT_SEED, PREVIEW, SONGS } from './config';
+import { cuesBeyondTwoHands } from './fixtures';
 import { isBarStart, playEndSec, playStartSec, previewStartSec, validateManifest } from './manifest';
 import type { Level } from './types';
 
@@ -49,7 +50,7 @@ describe.each(SONGS)('song "$title"', (song) => {
     expect(seconds).toBeLessThan(95);
   });
 
-  it.each([1, 2, 3, 4, 5] as Level[])('gives level %i a chart at both lengths', (level) => {
+  it.each([1, 2, 3, 4, 5] as Level[])('gives level %i a chart at both lengths that two hands can play', (level) => {
     for (const length of ['short', 'full'] as const) {
       const startSec = playStartSec(manifest, length);
       const endSec = playEndSec(manifest, length);
@@ -57,6 +58,7 @@ describe.each(SONGS)('song "$title"', (song) => {
       const cues = cuesFrom(chart, startSec);
       expect(cues.length).toBeGreaterThan(30);
       expect(cues[cues.length - 1].timeSec).toBeLessThan(endSec);
+      expect(cuesBeyondTwoHands(cues)).toEqual([]);
     }
   });
 });

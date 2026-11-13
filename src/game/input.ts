@@ -10,6 +10,7 @@ import type {
 import { botPlayer } from './bot';
 import { cameraTracking, PageTracking } from './cameraTracking';
 import type { CameraTracking } from './cameraTracking';
+import { DEFAULT_SEED } from './config';
 import { containRect } from './geometry';
 import { clamp01 } from './numbers';
 import type { PlayerRun } from './player';
@@ -244,6 +245,8 @@ export class SimulatedInput implements GameInput {
 
   private botPlayers(view: InputView): [PlayerTracking, PlayerTracking] {
     const players: [PlayerTracking, PlayerTracking] = [{ hands: [] }, { hands: [] }];
+    // The bot's misses do not follow the cue set: a test misses the same beats in every set.
+    const missSeed = this.options.seed ?? DEFAULT_SEED;
     for (const player of view.players) {
       const tracked = botPlayer(
         view.phase,
@@ -251,7 +254,7 @@ export class SimulatedInput implements GameInput {
         player.cues,
         player.grid,
         this.options.botAccuracy,
-        this.options.seed,
+        missSeed,
         player.faceCues,
       );
       // The camera tracker reports a face only where the game asked for one. The bot does

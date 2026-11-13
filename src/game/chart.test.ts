@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  chartEntries,
   cuesFrom,
   doubleCells,
   generateChart,
@@ -10,7 +11,7 @@ import {
   slideTargets,
 } from './chart';
 import { CHART, LEVELS } from './config';
-import { synthetic } from './fixtures';
+import { cuesBeyondTwoHands, synthetic } from './fixtures';
 import { medianBeatInterval, playEndSec, tailStartSec } from './manifest';
 import type { Cue, Level, Manifest } from './types';
 
@@ -26,6 +27,18 @@ const lastTime = (cue: Cue): number => cue.times[cue.times.length - 1];
 /** A tap for the other hand during a slow slide: it is due before the slide before it ends. */
 const isCompanion = (cue: Cue, i: number, cues: Cue[]): boolean =>
   i > 0 && cues[i - 1].speed === 'slow' && cue.timeSec < lastTime(cues[i - 1]);
+
+/** Checks that every tap for the other hand is one cell on its slide's middle beat, off the slide. */
+function expectCompanionsBesideTheirSlides(cues: Cue[]): void {
+  cues.forEach((cue, i) => {
+    if (!isCompanion(cue, i, cues)) return;
+    const slide = cues[i - 1];
+    expect(cue.kind).toBe('tap');
+    expect(cue.cells).toHaveLength(1);
+    expect(cue.timeSec).toBe(slide.times[1]);
+    expect(slide.cells).not.toContain(cue.cells[0]);
+  });
+}
 
 function chart(
   manifest: Manifest,
@@ -111,6 +124,27 @@ describe('chart for every level', () => {
         expect(cue.timeSec).toBeLessThan(tailStartSec(song, endSec));
       }
     }
+  });
+});
+
+describe('the role of each cue', () => {
+  it('is the same chart as generateChart, with a role for every cue', () => {
+    const song = synthetic(100, 600);
+    for (const level of ALL_LEVELS) {
+      const options = { level, shapes: true, seed: 7, endSec: song.durationSec };
+      expect(chartEntries(song, options).map((entry) => entry.cue)).toEqual(generateChart(song, options));
+    }
+  });
+
+  it.each([100, 128])('at %i BPM, names the off-beat taps and the taps for the other hand', (bpm) => {
+    const entries = chartEntries(synthetic(bpm, 600), { level: 4, shapes: false, seed: 42, endSec: 600 });
+    const cues = entries.map((entry) => entry.cue);
+    const withRole = (role: string): Cue[] => entries.filter((entry) => entry.role === role).map((entry) => entry.cue);
+    expect(withRole('offbeat').length).toBeGreaterThan(20);
+    expect(withRole('companion')).toEqual(cues.filter((cue, i) => isCompanion(cue, i, cues)));
+    // With a cue on every second beat, an off-beat tap sits on a whole beat: its index cannot tell.
+    if (bpm === 128) expect(withRole('offbeat').every((cue) => Number.isInteger(cue.beatIndex))).toBe(true);
+    else expect(withRole('offbeat')).toEqual(cues.filter(isOffbeat));
   });
 });
 
@@ -210,8 +244,10 @@ describe('level 3', () => {
   });
 
   it('makes slides and doubles in the shares the level rules give', () => {
-    // A long song, so the shares settle close to the chances. Each slide and each double is one cue.
-    const many = chart(synthetic(100, 1800), 3, 42);
+    // A long song, so the shares settle close to the chances. Each slide and each double is one
+    // cue. A tap for the other hand during a slow slide sits on no cue beat of its own.
+    const all = chart(synthetic(100, 1800), 3, 42);
+    const many = all.filter((cue, i) => !isCompanion(cue, i, all));
     const share = (matches: (cue: Cue) => boolean): number => many.filter(matches).length / many.length;
     expect(share(isSlide)).toBeCloseTo(LEVELS[3].slideChance, 1);
     expect(share(isDouble)).toBeCloseTo(LEVELS[3].doubleChance, 1);
@@ -229,10 +265,39 @@ describe('level 3', () => {
   });
 
   it.each([100, 128])('at %i BPM, starts the next cue only after a slide has ended', (bpm) => {
+    // The tap for the other hand during a slow slide is not such a cue: it belongs to the slide.
     const all = chart(synthetic(bpm, 600), 3, 42);
-    all.forEach((cue, i) => {
-      if (isSlide(cue) && i < all.length - 1) expect(all[i + 1].timeSec).toBeGreaterThan(lastTime(cue));
+    const apart = all.filter((cue, i) => !isCompanion(cue, i, all));
+    apart.forEach((cue, i) => {
+      if (isSlide(cue) && i < apart.length - 1) expect(apart[i + 1].timeSec).toBeGreaterThan(lastTime(cue));
     });
+  });
+
+  it('gives the other hand a tap during about half of the slow slides, on the middle beat, off the slide', () => {
+    const many = chart(synthetic(100, 1800), 3, 42);
+    const slow = many.filter((cue) => cue.speed === 'slow');
+    const companions = many.filter((cue, i) => isCompanion(cue, i, many));
+    expect(companions.length / slow.length).toBeCloseTo(LEVELS[3].companionTapChance, 1);
+    expectCompanionsBesideTheirSlides(many);
+  });
+
+  it.each([100, 128])('at %i BPM, keeps every other cue as it was before the level had taps for the other hand', (bpm) => {
+    // The taps roll on a stream of their own. Without them, the chart is the one from before
+    // level 3 had them: the chart with a tap chance of 0.
+    const song = synthetic(bpm, 600);
+    const withTaps = chart(song, 3, 42, { shapes: true });
+    const rules = LEVELS[3];
+    const chance = rules.companionTapChance;
+    rules.companionTapChance = 0;
+    let withoutTaps: Cue[];
+    try {
+      withoutTaps = chart(song, 3, 42, { shapes: true });
+    } finally {
+      rules.companionTapChance = chance;
+    }
+    const taps = withTaps.filter((cue, i) => isCompanion(cue, i, withTaps));
+    expect(taps.length).toBeGreaterThan(5);
+    expect(withTaps.filter((cue, i) => !isCompanion(cue, i, withTaps))).toEqual(withoutTaps);
   });
 });
 
@@ -291,19 +356,7 @@ describe('level 4', () => {
     const slow = many.filter((cue) => cue.speed === 'slow');
     const companions = many.filter((cue, i) => isCompanion(cue, i, many));
     expect(companions.length / slow.length).toBeCloseTo(LEVELS[4].companionTapChance, 1);
-    many.forEach((cue, i) => {
-      if (!isCompanion(cue, i, many)) return;
-      const slide = many[i - 1];
-      expect(cue.kind).toBe('tap');
-      expect(cue.cells).toHaveLength(1);
-      expect(cue.timeSec).toBe(slide.times[1]);
-      expect(slide.cells).not.toContain(cue.cells[0]);
-    });
-  });
-
-  it('leaves level 3 without taps during slides', () => {
-    const level3 = chart(synthetic(100, 600), 3, 42);
-    expect(level3.some((cue, i) => isCompanion(cue, i, level3))).toBe(false);
+    expectCompanionsBesideTheirSlides(many);
   });
 
   it('follows its single taps with an off-beat tap as often as the level rules say', () => {
@@ -320,30 +373,19 @@ describe('level 4', () => {
   });
 });
 
-/**
- * Checks a chart against two hands, with its own bookkeeping: every cue cell must find a hand
- * that has had `CHART.handRestSec` since its last target. A slide is one hand's move.
- * Returns the cues that do not fit.
- */
-function cuesBeyondTwoHands(cues: Cue[]): Cue[] {
-  const lastTargetSec = [-Infinity, -Infinity];
-  const takeFreeHand = (atSec: number, untilSec: number): boolean => {
-    const hand = lastTargetSec.findIndex((last) => atSec - last >= CHART.handRestSec - 1e-8);
-    if (hand === -1) return false;
-    lastTargetSec[hand] = untilSec;
-    return true;
-  };
-  return cues.filter((cue) => {
-    if (cue.kind === 'slide') return !takeFreeHand(cue.timeSec, lastTime(cue));
-    const fits = cue.cells.map(() => takeFreeHand(cue.timeSec, cue.timeSec));
-    return fits.includes(false);
-  });
-}
-
 describe('two hands', () => {
   it.each([95, 100, 109, 130, 180])('are enough for every level at %i BPM', (bpm) => {
     for (const level of ALL_LEVELS) {
       const cues = chart(synthetic(bpm, 600), level, 42, { shapes: true });
+      expect(cuesBeyondTwoHands(cues)).toEqual([]);
+    }
+  });
+
+  it.each([95, 100, 109, 130, 180])('are enough at level 3 with its taps for the other hand, at %i BPM', (bpm) => {
+    // The test above covers level 3 too. This one makes sure that its charts hold such taps.
+    for (const seed of [42, 7, 2026]) {
+      const cues = chart(synthetic(bpm, 600), 3, seed);
+      expect(cues.some((cue, i) => isCompanion(cue, i, cues))).toBe(true);
       expect(cuesBeyondTwoHands(cues)).toEqual([]);
     }
   });

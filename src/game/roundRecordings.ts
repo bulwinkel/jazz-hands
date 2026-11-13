@@ -1,18 +1,22 @@
 import type { RecordingDelays } from './audio';
 import { RECORDING } from './config';
+import { clamp01 } from './numbers';
 import { RoundRecorder, videoFileName } from './recording';
 import type { RoundVideos } from './recording';
 import type { RecordingScene } from './recordingScene';
 
-/** What the list of recorded rounds shows. */
-export interface RecordingsView {
-  /** The videos of the last rounds, newest first. */
-  rounds: readonly RoundVideos[];
-  /** A line about a recording that is not finished yet. Empty when there is none. */
-  status: string;
-  /** The videos of the last round, once they are ready, until the next round begins. */
-  lastRound?: RoundVideos;
-}
+/**
+ * What the results screen shows of its round's recording:
+ * - `none`: nothing. Recording is off, or did not start.
+ * - `tail`: the recording still runs, for its last seconds after the results show.
+ * - `finishing`: the recording has ended, and the recorder finishes the videos.
+ * - `ready`: the videos, to watch and download.
+ */
+export type RecordingsView =
+  | { stage: 'none' }
+  | { stage: 'tail'; tailSec: number; passedSec: number }
+  | { stage: 'finishing' }
+  | { stage: 'ready'; videos: RoundVideos };
 
 /** What the recordings use of a recorder. */
 export type Recorder = Pick<RoundRecorder, 'active' | 'start' | 'drawFrame' | 'pause' | 'resume' | 'stop' | 'discard'>;
@@ -23,8 +27,8 @@ export interface RecordingSource {
   sound: { game: MediaStream; camera: MediaStream };
   /** The camera picture. Unset with a test input. */
   video?: HTMLVideoElement;
-  /** The round's song, for the names of the files. */
-  song: { id: string; title: string };
+  /** The id of the round's song, for the names of the files. */
+  songId: string;
 }
 
 /**
@@ -35,44 +39,37 @@ export function recordingTailSec(delays: RecordingDelays): number {
   return Math.max(RECORDING.tailSec, Math.max(delays.game, delays.camera) + RECORDING.soundTailMarginSec);
 }
 
-/** Puts `round` first and keeps the newest `keep` rounds. Returns the kept rounds and the dropped ones. */
-export function addRound<T>(rounds: readonly T[], round: T, keep: number): { kept: T[]; dropped: T[] } {
-  const all = [round, ...rounds];
-  return { kept: all.slice(0, keep), dropped: all.slice(keep) };
-}
-
-/** The line above the list of rounds while a recording is not finished yet. Empty when none is. */
-export function recordingStatus(isRecording: boolean, finishing: number): string {
-  if (isRecording) return 'Recording the last seconds…';
-  return finishing > 0 ? 'Finishing the video…' : '';
+/** The share of the tail that has passed, from 0 to 1. A tail of no length has passed. */
+export function tailShare(passedSec: number, tailSec: number): number {
+  return tailSec > 0 ? clamp01(passedSec / tailSec) : 1;
 }
 
 /**
- * Records the rounds of a visit, while the players have recording on, and keeps the videos
- * of the last few. The game says when a round begins and ends, and whether its videos are kept.
+ * Records the rounds of a visit while the players have recording on. It holds the videos of
+ * one round only: the round whose results are on screen. The game says when a round begins,
+ * when its results show, and when they close.
  */
 export class RoundRecordings {
   private readonly onChange: () => void;
   private readonly createRecorder: () => Recorder | null;
-  /** Records the round that runs now. */
+  /** Records the round that runs now, and its last seconds after the results show. */
   private recorder?: Recorder;
-  private song = { id: 'song', title: '' };
+  private songId = 'song';
   private stopTimer = 0;
-  /** Recordings that have ended and are not yet ready to download. */
-  private finishing = 0;
-  /** The videos of the last rounds, newest first. */
-  private rounds: RoundVideos[] = [];
-  /** Counts the rounds of this visit, so a finished recording knows whether a newer round has begun. */
-  private roundNumber = 0;
-  private lastRound?: RoundVideos;
-  private nextRoundId = 1;
-  /** The round the video player shows now, if any. */
-  private onShow?: RoundVideos;
-  /** Rounds that left the list while the video player showed them. They wait until it shows them no more. */
-  private droppedOnShow: RoundVideos[] = [];
+  /** The last seconds after the results show, while they are recorded. */
+  private tail?: { startedMs: number; durationSec: number };
+  /** True while the recorder finishes the videos. */
+  private finishing = false;
+  /** The videos of the round whose results are on screen, once they are ready. */
+  private videos?: RoundVideos;
+  /**
+   * Goes up whenever the round's recording is thrown away. Videos that arrive for an older
+   * value belong to results that have closed: nothing keeps them.
+   */
+  private generation = 0;
 
   /**
-   * `onChange` hears when a recording starts or ends, and when the list changes.
+   * `onChange` hears when a recording starts or ends, and when the stage of its videos changes.
    * `createRecorder` makes the recorder of a round, or null when the browser cannot record.
    * Tests give a stand-in.
    */
@@ -86,17 +83,23 @@ export class RoundRecordings {
     return this.recorder?.active ?? false;
   }
 
-  get view(): RecordingsView {
-    return { rounds: this.rounds, status: recordingStatus(this.active, this.finishing), lastRound: this.lastRound };
+  /** What the results show of the recording at `nowMs`, on the clock of `endAfter`. */
+  view(nowMs: number): RecordingsView {
+    if (this.tail) {
+      return { stage: 'tail', tailSec: this.tail.durationSec, passedSec: (nowMs - this.tail.startedMs) / 1000 };
+    }
+    if (this.finishing) return { stage: 'finishing' };
+    if (this.videos) return { stage: 'ready', videos: this.videos };
+    return { stage: 'none' };
   }
 
   /**
-   * A round begins, with its countdown. With a source, it is recorded. A recording that
-   * cannot start never stops the round: the round then runs with no recording.
+   * A round begins, with its countdown. It starts with no videos. With a source, it is
+   * recorded. A recording that cannot start never stops the round: the round then runs with
+   * no recording.
    */
   begin(source?: RecordingSource): void {
-    this.roundNumber++;
-    this.lastRound = undefined;
+    this.drop();
     if (!source) return;
     const recorder = this.createRecorder();
     if (!recorder) return;
@@ -109,30 +112,31 @@ export class RoundRecordings {
       return;
     }
     this.recorder = recorder;
-    this.song = source.song;
+    this.songId = source.songId;
     this.onChange();
   }
 
   /**
-   * Ends the recording of this round, if one runs. With `keep`, its videos go in the list.
-   * Without, they are thrown away.
+   * The results show. The recording goes on for `delaySec` from `nowMs`: the cheer and the
+   * result card. Then the recorder finishes the videos.
    */
-  end(keep: boolean): void {
-    window.clearTimeout(this.stopTimer);
+  endAfter(delaySec: number, nowMs: number): void {
     const recorder = this.recorder;
-    this.recorder = undefined;
-    if (recorder?.active) {
-      if (keep) void this.keep(recorder, this.song);
-      else recorder.discard();
-    }
+    if (!recorder?.active) return;
+    window.clearTimeout(this.stopTimer);
+    this.tail = { startedMs: nowMs, durationSec: delaySec };
+    this.stopTimer = window.setTimeout(() => void this.finish(recorder), delaySec * 1000);
     this.onChange();
   }
 
-  /** Keeps the recording on for `delaySec`, then ends it and keeps its videos. */
-  endAfter(delaySec: number): void {
-    if (!this.active) return;
-    window.clearTimeout(this.stopTimer);
-    this.stopTimer = window.setTimeout(() => this.end(true), delaySec * 1000);
+  /**
+   * The results close, or a round stops part-way. The recording of the round is thrown away:
+   * one that still runs stops, videos still in the making are dropped when they arrive, and
+   * ready videos are freed now. Close the video player first: it must not play a freed video.
+   */
+  drop(): void {
+    this.clear();
+    this.onChange();
   }
 
   /** Holds both videos while the round is paused, so the pause is not in them. */
@@ -149,56 +153,45 @@ export class RoundRecordings {
     this.recorder?.drawFrame(scene);
   }
 
-  /**
-   * The video player shows `round` now, or nothing. A round that left the list stays alive
-   * while the player shows it, and is freed once it shows it no more.
-   */
-  playerShows(round: RoundVideos | undefined): void {
-    this.onShow = round;
-    this.freeDropped();
-  }
-
-  /** Frees the videos of the rounds that left the list, except the one the player shows. */
-  private freeDropped(): void {
-    for (const round of this.droppedOnShow) {
-      if (round !== this.onShow) for (const video of round.videos) URL.revokeObjectURL(video.url);
-    }
-    this.droppedOnShow = this.droppedOnShow.filter((round) => round === this.onShow);
-  }
-
+  /** The page goes away: everything is thrown away, as when the results close. */
   dispose(): void {
-    window.clearTimeout(this.stopTimer);
-    this.recorder?.discard();
+    this.clear();
   }
 
-  /** Finishes the videos of a round and puts them in the list to download. */
-  private async keep(recorder: Recorder, song: { id: string; title: string }): Promise<void> {
+  private clear(): void {
+    window.clearTimeout(this.stopTimer);
+    this.generation++;
+    this.recorder?.discard();
+    this.recorder = undefined;
+    this.tail = undefined;
+    this.finishing = false;
+    for (const video of this.videos?.videos ?? []) URL.revokeObjectURL(video.url);
+    this.videos = undefined;
+  }
+
+  /** Ends the recording after its tail and makes its videos ready to watch and download. */
+  private async finish(recorder: Recorder): Promise<void> {
+    const generation = this.generation;
     const endedAt = new Date();
-    const roundNumber = this.roundNumber;
-    this.finishing++;
+    const songId = this.songId;
+    this.recorder = undefined;
+    this.tail = undefined;
+    this.finishing = true;
     this.onChange();
     const videos = await recorder.stop();
-    this.finishing--;
+    // The results closed meanwhile. No page link was made, so the videos go with this call.
+    if (generation !== this.generation) return;
 
+    this.finishing = false;
     if (videos.length > 0) {
-      const time = endedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-      const round: RoundVideos = {
-        id: this.nextRoundId++,
-        label: `${time} · ${song.title}`,
+      this.videos = {
         videos: videos.map((video) => ({
           kind: video.kind,
           url: URL.createObjectURL(video.blob),
-          fileName: videoFileName(song.id, endedAt, video.kind, video.extension),
+          fileName: videoFileName(songId, endedAt, video.kind, video.extension),
           sizeBytes: video.blob.size,
         })),
       };
-      // Videos are large: keep those of the last few rounds only.
-      const { kept, dropped } = addRound(this.rounds, round, RECORDING.keepRounds);
-      this.rounds = kept;
-      this.droppedOnShow.push(...dropped);
-      this.freeDropped();
-      // Until a newer round begins, its results may show these videos as a preview.
-      if (roundNumber === this.roundNumber) this.lastRound = round;
     }
     this.onChange();
   }
