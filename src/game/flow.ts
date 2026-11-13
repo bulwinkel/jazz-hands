@@ -4,7 +4,7 @@ import type { FaceExpression, FaceRegions, TrackingFrame } from '../tracking/typ
 import { SongAudio } from './audio';
 import { chartEntries, countMoves, cuesFrom, entriesFrom } from './chart';
 import { CHART, DEFAULT_SEED, FACE_EMOJI, HAND_MENU, MENU_TRACKER, SONGS, TIMING, TOAST } from './config';
-import { cueSetMoveShare, cueSetSeed, CueSetPicker, RANDOM_CUE_SET } from './cueSet';
+import { chartMix, cueSetMoveShare, cueSetSeed, CueSetPicker, RANDOM_CUE_SET } from './cueSet';
 import { buildRunReport, newFaceObservation, newObservation, newTrackingStats } from './diagnostics';
 import type { RunReport, TrackingStats } from './diagnostics';
 import { isHandClick } from './dom';
@@ -303,6 +303,7 @@ export class DanceGame {
         const played = entriesFrom(chart, this.startSec);
         player.cues = played.map((entry) => entry.cue);
         player.moves = countMoves(played);
+        player.mix = chartMix(manifest, played, player.level);
         if (player.faces) {
           const faceCues = generateFaceCues(manifest, this.seed, this.endSec);
           player.faceCues = cuesFrom(faceCues, this.startSec);

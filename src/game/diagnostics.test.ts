@@ -13,6 +13,7 @@ import type { RunContext } from './diagnostics';
 import { judgeFaceFrame, newFaceCueState } from './faceJudgment';
 import { cellCentre, defaultGrid } from './geometry';
 import { judgeFrame, newCueState } from './judgment';
+import { noMix } from './player';
 import type { PlayerRun } from './player';
 import { pausePlay, resumePlay } from './playTime';
 import { freshScore } from './scoring';
@@ -42,6 +43,7 @@ function newPlayer(): PlayerRun {
     reachSamples: [],
     cues: [],
     moves: { point: 0, circle: 0 },
+    mix: noMix(),
     states: [],
     observations: [],
     faceCues: [],

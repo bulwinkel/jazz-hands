@@ -1,5 +1,6 @@
-import type { CueObservation, FaceObservation } from './diagnostics';
 import { LEVELS } from './config';
+import type { ChartMix } from './cueSet';
+import type { CueObservation, FaceObservation } from './diagnostics';
 import { defaultGrid } from './geometry';
 import type { FaceCueState } from './faceJudgment';
 import type { CueState } from './judgment';
@@ -24,6 +25,8 @@ export interface PlayerRun {
   cues: Cue[];
   /** How many moves of each name `cues` holds. For the run report. */
   moves: Record<MoveName, number>;
+  /** What makes the part of the chart that the round plays easy or hard. For the cue set ratings. */
+  mix: ChartMix;
   /** Judging state of each cue, parallel to `cues`. */
   states: CueState[];
   /** What the tracker showed around each cue, parallel to `cues`. For the run report. */
@@ -43,6 +46,11 @@ export interface PlayerRun {
   hold: number;
 }
 
+/** The mix of a chart with no cues: the mix of each player until a round makes their chart. */
+export function noMix(): ChartMix {
+  return { slides: 0, doubles: 0, fastSlides: 0, offbeats: 0, cues: 0 };
+}
+
 export function createPlayers(settings: Settings): PlayerRun[] {
   const indices: PlayerIndex[] = settings.playerCount === 1 ? [0] : [0, 1];
   return indices.map((index) => ({
@@ -54,6 +62,7 @@ export function createPlayers(settings: Settings): PlayerRun[] {
     reachSamples: [],
     cues: [],
     moves: noMoves(),
+    mix: noMix(),
     states: [],
     observations: [],
     faceCues: [],
