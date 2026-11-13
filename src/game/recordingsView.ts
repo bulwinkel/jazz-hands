@@ -24,6 +24,11 @@ const WAIT_TEXT: Record<WaitView['stage'], string> = {
   tail: 'Still recording…',
   finishing: 'Finishing the video…',
 };
+/**
+ * The second line of the placeholder, in both stages. Leaving the results now throws the
+ * recording away, and a raised hand replays well before the video is ready.
+ */
+const KEEP_TEXT = 'Stay on this screen to keep the video.';
 
 /** Hears the round to play in the video player, and whether a pointing hand chose it. */
 export type WatchHandler = (round: RoundVideos, byHand: boolean) => void;
@@ -74,14 +79,16 @@ function showWait(slot: HTMLElement, view: WaitView): void {
   if (!wait) {
     wait = document.createElement('div');
     wait.className = 'recording-wait';
-    wait.innerHTML = '<p role="status"></p><div class="wait-bar"><span></span></div>';
+    wait.innerHTML = `
+      <div role="status"><p class="wait-stage"></p><p class="wait-keep">${KEEP_TEXT}</p></div>
+      <div class="wait-bar"><span></span></div>`;
     emptySlot(slot);
     slot.append(wait);
   }
   // The bar runs on by itself. New times would start its fill again.
   if (wait.dataset.stage === view.stage) return;
   wait.dataset.stage = view.stage;
-  find(wait, 'p').textContent = WAIT_TEXT[view.stage];
+  find(wait, '.wait-stage').textContent = WAIT_TEXT[view.stage];
   if (view.stage === 'tail') {
     wait.style.setProperty('--tail-sec', String(view.tailSec));
     wait.style.setProperty('--tail-passed-sec', String(view.passedSec));

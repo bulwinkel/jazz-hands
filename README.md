@@ -57,7 +57,8 @@ zero, that video's sound is late by that amount.
 
 While the videos are made, the results screen shows a box in place of the preview. It says
 that the recording still runs, with a bar that fills over its last seconds, and then that the
-video is being finished, with a full bar that pulses.
+video is being finished, with a full bar that pulses. Under that, it asks the players to stay
+on the screen to keep the video: Play again, also by a raised hand, throws it away.
 
 When the videos are ready, the results screen shows the round as a small silent preview.
 A click on it, or a fist held on it, plays the round with its sound in a player that fills
