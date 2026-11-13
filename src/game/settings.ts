@@ -1,6 +1,7 @@
 import type { TrackerMode, TrackingThread } from '../tracking/types';
 import { DEFAULT_TRACKING_THREAD, SONGS, TIMING } from './config';
-import { FIRST_CUE_SET, isCueSet } from './cueSet';
+import { isCueSet, isCueSetChoice, RANDOM_CUE_SET } from './cueSet';
+import type { CueSetChoice } from './cueSet';
 import { clamp } from './numbers';
 import type { Level, PlayerCount, SongLength } from './types';
 
@@ -23,8 +24,11 @@ export interface Settings {
   handControl: boolean;
   /** Whether each round is recorded as video. */
   record: boolean;
-  /** Which of the song's cue sets the round plays, from 1. Both players play the same set. */
-  cueSet: number;
+  /**
+   * Which of the song's cue sets the round plays, from 1, or 'random': each round from the
+   * menu then plays a set picked at random. Both players play the same set.
+   */
+  cueSet: CueSetChoice;
 }
 
 export type InputSource = 'camera' | 'mouse' | 'bot';
@@ -72,7 +76,7 @@ export function defaultSettings(): Settings {
     previews: true,
     handControl: true,
     record: false,
-    cueSet: FIRST_CUE_SET,
+    cueSet: RANDOM_CUE_SET,
   };
 }
 
@@ -92,6 +96,13 @@ const isTrackerMode = (value: unknown): value is TrackerMode =>
 
 function finiteOr(value: unknown, fallback: number, min: number, max: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? clamp(value, min, max) : fallback;
+}
+
+/** The choice that a `set=` value names: `random` or a set number. Undefined for any other value. */
+function cueSetParam(value: string | null): CueSetChoice | undefined {
+  if (value === RANDOM_CUE_SET) return RANDOM_CUE_SET;
+  const set = Number(value);
+  return isCueSet(set) ? set : undefined;
 }
 
 /**
@@ -118,7 +129,7 @@ function readStored(stored: unknown): Settings {
   if (typeof saved.previews === 'boolean') settings.previews = saved.previews;
   if (typeof saved.handControl === 'boolean') settings.handControl = saved.handControl;
   if (typeof saved.record === 'boolean') settings.record = saved.record;
-  if (isCueSet(saved.cueSet)) settings.cueSet = saved.cueSet;
+  if (isCueSetChoice(saved.cueSet)) settings.cueSet = saved.cueSet;
   settings.inputLatencyMs = finiteOr(saved.inputLatencyMs, settings.inputLatencyMs, ...TIMING.inputLatencyRangeMs);
   settings.avOffsetMs = finiteOr(saved.avOffsetMs, settings.avOffsetMs, ...TIMING.avOffsetRangeMs);
   return settings;
@@ -128,12 +139,13 @@ function readStored(stored: unknown): Settings {
  * URL parameters, all optional:
  *   players=1|2   p0, p1=1..5   shapes0, shapes1=1|0   faces0, faces1=1|0
  *   length=short|full   song=<index from 0>   previews=1|0   hands=1|0   record=1|0
- *   set=1..6
+ *   set=random|1..6
  *   tracker=hands-full|hands-split|pose   input=camera|mouse|bot   thread=worker|main
  *   start=<seconds>   autostart=1   seed=<integer>   moves=<0..1>   botAccuracy=<0..1>   framelog=1
  *
- * `seed=` replaces the cue set's seed and plays without moves. `moves=` gives the share of
- * phrases in busy music that hold a move, with a cue set or with `seed=`.
+ * `set=random` picks a set at random for each round from the menu (see cueSet.ts). `seed=`
+ * replaces the cue set's seed and plays without moves. `moves=` gives the share of phrases in
+ * busy music that hold a move, with a cue set or with `seed=`.
  */
 export function parseSettings(stored: unknown, query: string): Options {
   const settings = readStored(stored);
@@ -156,8 +168,8 @@ export function parseSettings(stored: unknown, query: string): Options {
   if (params.has('previews')) settings.previews = params.get('previews') === '1';
   if (params.has('hands')) settings.handControl = params.get('hands') === '1';
   if (params.has('record')) settings.record = params.get('record') === '1';
-  const cueSet = numberParam('set');
-  if (isCueSet(cueSet)) settings.cueSet = cueSet;
+  const cueSet = cueSetParam(params.get('set'));
+  if (cueSet !== undefined) settings.cueSet = cueSet;
 
   const tracker = params.get('tracker');
   const thread = params.get('thread');

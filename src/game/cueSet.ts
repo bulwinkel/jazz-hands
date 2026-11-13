@@ -4,6 +4,11 @@
  * differ by their share of moves (`CUE_SETS.moveShares`), so players can rate the sets and
  * learn which share they like.
  *
+ * The set switch of the menu names a set, or 'random'. With 'random', each round that starts
+ * from the menu plays a set picked at random, never the set that the song played last. The
+ * players then meet every set without a trip to the switch, and two rounds of one song in a
+ * row differ.
+ *
  * A set must give other cues at the same difficulty. Every set tries a fixed list of candidate
  * seeds and keeps the one whose charts play most like the level usually does: closest to the
  * typical mix. The mix holds what makes a chart harder: its shares of slides, doubles and fast
@@ -25,22 +30,74 @@ import { chartEntries, entriesFrom } from './chart';
 import type { ChartEntry } from './chart';
 import { CHART, CUE_SETS, DEFAULT_SEED, LEVELS } from './config';
 import { isBarStart } from './manifest';
-import { median } from './numbers';
+import { clamp, median } from './numbers';
 import type { Cue, Level, Manifest } from './types';
 
-/** The first set. A new player starts with it. */
+/** The first set. */
 export const FIRST_CUE_SET = 1;
 
 /** The number of sets: one for each share of moves in `CUE_SETS.moveShares`. */
 export const CUE_SET_COUNT = CUE_SETS.moveShares.length;
 
+/** The choice of the set switch that picks a set at random for each round. A new player starts with it. */
+export const RANDOM_CUE_SET = 'random';
+
+/** What the set switch holds: a set number, or 'random'. */
+export type CueSetChoice = number | typeof RANDOM_CUE_SET;
+
 export function isCueSet(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= FIRST_CUE_SET && value <= CUE_SET_COUNT;
 }
 
-/** The set after this one. After the last comes the first. */
-export function nextCueSet(set: number): number {
-  return (set % CUE_SET_COUNT) + 1;
+export function isCueSetChoice(value: unknown): value is CueSetChoice {
+  return value === RANDOM_CUE_SET || isCueSet(value);
+}
+
+/** The choice after this one on the set switch: random, then each set in turn, then random again. */
+export function nextCueSetChoice(choice: CueSetChoice): CueSetChoice {
+  if (choice === RANDOM_CUE_SET) return FIRST_CUE_SET;
+  if (choice >= CUE_SET_COUNT) return RANDOM_CUE_SET;
+  return choice + 1;
+}
+
+/**
+ * Picks one of `count` sets, each with the same chance, but never `avoid`. With one set there
+ * is no other to pick, so it gives that set. `roll` is a random number from 0 to 1.
+ */
+export function pickCueSet(count: number, avoid: number | null, roll: number): number {
+  const sets = Array.from({ length: count }, (_, i) => FIRST_CUE_SET + i);
+  const others = sets.filter((set) => set !== avoid);
+  const options = others.length > 0 ? others : sets;
+  const index = Math.floor(roll * options.length);
+  // A roll of exactly 1 would point past the last option.
+  return options[clamp(index, 0, options.length - 1)];
+}
+
+/**
+ * Gives each round that starts from the menu its set. It keeps the last set of each song for
+ * this visit to the page only: a new visit may start with any set. A round played again
+ * without the menu keeps the cues of the round before it, and does not come here.
+ */
+export class CueSetPicker {
+  private readonly lastSets = new Map<string, number>();
+  private readonly random: () => number;
+
+  /** `random` gives a number from 0 to 1. A test can give its own. */
+  constructor(random: () => number = Math.random) {
+    this.random = random;
+  }
+
+  /** The set that a round of the song plays for the switch's choice. It becomes the song's last set. */
+  setForRound(songId: string, choice: CueSetChoice): number {
+    const set = choice === RANDOM_CUE_SET ? this.pick(songId) : choice;
+    this.lastSets.set(songId, set);
+    return set;
+  }
+
+  private pick(songId: string): number {
+    const last = this.lastSets.get(songId) ?? null;
+    return pickCueSet(CUE_SET_COUNT, last, this.random());
+  }
 }
 
 /** The share of phrases in busy music that hold a move, for this set. */

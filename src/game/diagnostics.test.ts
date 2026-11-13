@@ -108,6 +108,7 @@ function report(players: PlayerRun[], stats = newTrackingStats(0), faceDelegate:
       input: 'bot',
       seed: 1,
       cueSet: 1,
+      cueSetRandom: true,
       moveShare: 0.35,
       inputLatencyMs: 100,
       avOffsetMs: 0,
@@ -212,8 +213,8 @@ describe('run report', () => {
     expect(run.tracking).toMatchObject({ framesPerSec: 20, drawnPerSec: 60 });
   });
 
-  it('names the chart seed, the cue set it came from and the share of moves', () => {
-    expect(report([]).settings).toMatchObject({ seed: 1, cueSet: 1, moveShare: 0.35 });
+  it('names the chart seed, the cue set it came from, whether that set was random, and the share of moves', () => {
+    expect(report([]).settings).toMatchObject({ seed: 1, cueSet: 1, cueSetRandom: true, moveShare: 0.35 });
   });
 
   it("counts each player's moves by name", () => {

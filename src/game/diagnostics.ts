@@ -238,6 +238,8 @@ export interface RunReport {
     seed: number;
     /** The cue set the seed came from. Null when the URL gave the seed. */
     cueSet: number | null;
+    /** True when the game picked the set at random. False for a set the players chose, and with no set. */
+    cueSetRandom: boolean;
     /** The share of phrases in busy music that hold a move: from the cue set, or from the URL. */
     moveShare: number;
     inputLatencyMs: number;

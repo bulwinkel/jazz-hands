@@ -135,15 +135,22 @@ describe('URL parameters', () => {
     expect(parseSettings(null, '?framelog=1').frameLog).toBe(true);
   });
 
-  it('keep cue set 1 until a player picks another, and take a set from 1 to 6', () => {
-    expect(parseSettings(null, '').settings.cueSet).toBe(1);
-    expect(parseSettings({ cueSet: 6 }, '').settings.cueSet).toBe(6);
-    expect(parseSettings({ cueSet: 7 }, '').settings.cueSet).toBe(1);
-    expect(parseSettings({ cueSet: '2' }, '').settings.cueSet).toBe(1);
-    expect(parseSettings(null, '?set=3').settings.cueSet).toBe(3);
-    expect(parseSettings({ cueSet: 5 }, '?set=1').settings.cueSet).toBe(1);
-    expect(parseSettings({ cueSet: 5 }, '?set=0').settings.cueSet).toBe(5);
-    expect(parseSettings({ cueSet: 2 }, '?set=2.5').settings.cueSet).toBe(2);
+  it('pick the cue set at random until a player picks a set', () => {
+    expect(parseSettings(null, '').settings.cueSet).toBe('random');
+  });
+
+  it('keep a kept cue set from 1 to 6, or random, and ignore any other value', () => {
+    const kept = (cueSet: unknown) => parseSettings({ cueSet }, '').settings.cueSet;
+    expect([1, 4, 6, 'random'].map(kept)).toEqual([1, 4, 6, 'random']);
+    expect([0, 7, 2.5, '2', 'Random', null].map(kept)).toEqual(Array(6).fill('random'));
+  });
+
+  it('take a cue set from 1 to 6, or random, from the URL, and ignore any other value', () => {
+    const fromUrl = (query: string) => parseSettings({ cueSet: 5 }, query).settings.cueSet;
+    expect(['?set=1', '?set=3', '?set=6', '?set=random'].map(fromUrl)).toEqual([1, 3, 6, 'random']);
+    expect(parseSettings({ cueSet: 'random' }, '?set=2').settings.cueSet).toBe(2);
+    const ignored = ['', '?set=', '?set=0', '?set=7', '?set=2.5', '?set=Random', '?set=any'];
+    expect(ignored.map(fromUrl)).toEqual(Array(ignored.length).fill(5));
   });
 
   it('give a share of moves only when the URL names one, from 0 to 1', () => {

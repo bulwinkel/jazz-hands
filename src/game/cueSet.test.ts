@@ -11,16 +11,19 @@ import {
   CUE_SET_COUNT,
   cueSetMoveShare,
   cueSetSeed,
+  CueSetPicker,
   isCueSet,
+  isCueSetChoice,
   measurePool,
   mixDistance,
-  nextCueSet,
+  nextCueSetChoice,
+  pickCueSet,
   playedMix,
   poolDistance,
   poolSeeds,
   typicalMix,
 } from './cueSet';
-import type { ChartFor, PoolMeasure, RoundCharts } from './cueSet';
+import type { ChartFor, CueSetChoice, PoolMeasure, RoundCharts } from './cueSet';
 import { synthetic } from './fixtures';
 import { playEndSec, playStartSec, validateManifest } from './manifest';
 import type { Cue, Level, Manifest, SongLength } from './types';
@@ -62,8 +65,91 @@ describe('cue set numbers', () => {
     expect([0, 1, 3, 6, 7, 2.5, '2', null].map(isCueSet)).toEqual([false, true, true, true, false, false, false, false]);
   });
 
-  it('step to the next set, and from the last back to the first', () => {
-    expect(ALL_SETS.map(nextCueSet)).toEqual([2, 3, 4, 5, 6, 1]);
+});
+
+describe('the set switch', () => {
+  it("holds a set or 'random', and nothing else", () => {
+    expect(['random', 1, 6].map(isCueSetChoice)).toEqual([true, true, true]);
+    expect(['Random', 'random ', 0, 7, 2.5, '2', null].map(isCueSetChoice)).toEqual(Array(7).fill(false));
+  });
+
+  it('steps from random through every set in turn, then back to random', () => {
+    const order: CueSetChoice[] = ['random'];
+    while (order.length < 8) {
+      order.push(nextCueSetChoice(order[order.length - 1]));
+    }
+    expect(order).toEqual(['random', 1, 2, 3, 4, 5, 6, 'random']);
+  });
+});
+
+describe('picking a set at random', () => {
+  /** The sets that rolls spread evenly over 0 to 1 give. */
+  const pickedSets = (count: number, avoid: number | null): number[] => {
+    const rolls = Array.from({ length: 100 }, (_, i) => i / 100);
+    return rolls.map((roll) => pickCueSet(count, avoid, roll));
+  };
+  /** How often each set comes. */
+  const timesEach = (sets: number[]): Map<number, number> => {
+    const times = new Map<number, number>();
+    for (const set of sets) times.set(set, (times.get(set) ?? 0) + 1);
+    return times;
+  };
+
+  it('gives every set, each as often, when there is none to avoid', () => {
+    const times = timesEach(pickedSets(6, null));
+    expect([...times.keys()].sort((a, b) => a - b)).toEqual(ALL_SETS);
+    expect(Math.max(...times.values()) - Math.min(...times.values())).toBeLessThanOrEqual(1);
+  });
+
+  it('never gives the set to avoid, and every other set as often', () => {
+    for (const avoid of ALL_SETS) {
+      const times = timesEach(pickedSets(6, avoid));
+      expect([...times.keys()].sort((a, b) => a - b)).toEqual(ALL_SETS.filter((set) => set !== avoid));
+      expect(Math.max(...times.values()) - Math.min(...times.values())).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('gives the lowest set for a roll of 0 and the highest left for a roll of 1', () => {
+    expect(pickCueSet(6, null, 0)).toBe(1);
+    expect(pickCueSet(6, null, 1)).toBe(6);
+    expect(pickCueSet(6, 1, 0)).toBe(2);
+    expect(pickCueSet(6, 6, 1)).toBe(5);
+  });
+
+  it('gives the only set of a count of 1, even when it is the set to avoid', () => {
+    expect(pickCueSet(1, null, 0.5)).toBe(1);
+    expect(pickCueSet(1, 1, 0.5)).toBe(1);
+  });
+});
+
+describe('the set of a round', () => {
+  /** A random source that gives these rolls in turn. */
+  const rolls = (...values: number[]) => () => values.shift() ?? 0;
+
+  it("plays the set of the switch, and remembers it as the song's last set", () => {
+    const picker = new CueSetPicker(rolls(0));
+    expect(picker.setForRound('song-a', 3)).toBe(3);
+    // A roll of 0 gives the lowest set that is not set 3.
+    expect(picker.setForRound('song-a', 'random')).toBe(1);
+  });
+
+  it('never picks the last set of the same song, so two rounds in a row differ', () => {
+    const picker = new CueSetPicker(rolls(0, 0, 0, 0.99, 0.99));
+    const sets = Array.from({ length: 5 }, () => picker.setForRound('song-a', 'random'));
+    expect(sets).toEqual([1, 2, 1, 6, 5]);
+  });
+
+  it('keeps the last set of each song apart', () => {
+    const picker = new CueSetPicker(rolls(0, 0, 0));
+    expect(picker.setForRound('song-a', 'random')).toBe(1);
+    expect(picker.setForRound('song-b', 'random')).toBe(1);
+    expect(picker.setForRound('song-a', 'random')).toBe(2);
+  });
+
+  it('takes its rolls from Math.random unless a test gives its own', () => {
+    const picker = new CueSetPicker();
+    const sets = Array.from({ length: 50 }, () => picker.setForRound('song-a', 'random'));
+    expect(sets.every(isCueSet)).toBe(true);
   });
 });
 

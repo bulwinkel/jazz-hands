@@ -4,7 +4,7 @@ import type { FaceExpression, FaceRegions, TrackingFrame } from '../tracking/typ
 import { SongAudio } from './audio';
 import { chartEntries, countMoves, cuesFrom, entriesFrom } from './chart';
 import { CHART, DEFAULT_SEED, FACE_EMOJI, HAND_MENU, MENU_TRACKER, SONGS, TIMING, TOAST } from './config';
-import { cueSetMoveShare, cueSetSeed } from './cueSet';
+import { cueSetMoveShare, cueSetSeed, CueSetPicker, RANDOM_CUE_SET } from './cueSet';
 import { buildRunReport, newFaceObservation, newObservation, newTrackingStats } from './diagnostics';
 import type { RunReport, TrackingStats } from './diagnostics';
 import { isHandClick } from './dom';
@@ -106,6 +106,10 @@ export class DanceGame {
   private seed = DEFAULT_SEED;
   /** The cue set the seed came from. Null when the URL gave the seed. */
   private cueSet: number | null = null;
+  /** True when the round's set was picked at random. */
+  private cueSetRandom = false;
+  /** Picks the set of each round from the menu, and keeps the last set of each song. */
+  private readonly cueSets = new CueSetPicker();
   /** The share of phrases in busy music that hold a move: from the cue set, or from the URL. */
   private moveShare = 0;
   private paused = false;
@@ -320,20 +324,29 @@ export class DanceGame {
    * and plays without moves. Otherwise the cue set gives both: the seed for the part of the
    * song that the length plays, so a start in the URL keeps the cues of the real round. A
    * share in the URL wins over both.
+   *
+   * Only a round from the menu comes here. "Play again" and a restart keep the cues, and with
+   * them the set, of the round before.
    */
   private chooseCueSet(manifest: Manifest): void {
     const { settings, seed, moves } = this.options;
-    this.cueSet = seed === undefined ? settings.cueSet : null;
-    this.seed =
-      seed ??
-      cueSetSeed(settings.cueSet, {
-        manifest,
-        players: this.players,
-        startSec: playStartSec(manifest, settings.length),
-        endSec: this.endSec,
-      });
-    const setShare = this.cueSet === null ? 0 : cueSetMoveShare(this.cueSet);
-    this.moveShare = moves ?? setShare;
+    if (seed !== undefined) {
+      this.cueSet = null;
+      this.cueSetRandom = false;
+      this.seed = seed;
+      this.moveShare = moves ?? 0;
+      return;
+    }
+    const set = this.cueSets.setForRound(manifest.id, settings.cueSet);
+    this.cueSet = set;
+    this.cueSetRandom = settings.cueSet === RANDOM_CUE_SET;
+    this.seed = cueSetSeed(set, {
+      manifest,
+      players: this.players,
+      startSec: playStartSec(manifest, settings.length),
+      endSec: this.endSec,
+    });
+    this.moveShare = moves ?? cueSetMoveShare(set);
   }
 
   /**
@@ -502,6 +515,7 @@ export class DanceGame {
         input: this.options.input,
         seed: this.seed,
         cueSet: this.cueSet,
+        cueSetRandom: this.cueSetRandom,
         moveShare: this.moveShare,
         inputLatencyMs: settings.inputLatencyMs,
         avOffsetMs: settings.avOffsetMs,
