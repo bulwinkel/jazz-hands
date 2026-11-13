@@ -1,15 +1,16 @@
 /// <reference types="node" />
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { generateChart } from './chart';
+import { chartEntries, entriesFrom } from './chart';
 import type { ChartEntry, CueRole } from './chart';
 import { CUE_SETS, DEFAULT_SEED, LEVELS, SONGS } from './config';
 import {
   candidateSeeds,
   chartMix,
   closestCandidate,
+  CUE_SET_COUNT,
+  cueSetMoveShare,
   cueSetSeed,
-  FIRST_CUE_SET,
   isCueSet,
   measurePool,
   mixDistance,
@@ -24,8 +25,7 @@ import { synthetic } from './fixtures';
 import { playEndSec, playStartSec, validateManifest } from './manifest';
 import type { Cue, Level, Manifest, SongLength } from './types';
 
-const ALL_LEVELS: Level[] = [1, 2, 3, 4, 5];
-const LATER_SETS = [2, 3, 4, 5];
+const ALL_SETS = [1, 2, 3, 4, 5, 6];
 
 function realSong(index: number): Manifest {
   return validateManifest(JSON.parse(readFileSync(`public${SONGS[index].manifest}`, 'utf8')));
@@ -57,49 +57,39 @@ function songPool(index: number, level: Level): PoolMeasure {
 }
 
 describe('cue set numbers', () => {
-  it('run from 1 to the count in the config', () => {
-    expect(CUE_SETS.count).toBe(5);
-    expect([0, 1, 3, 5, 6, 2.5, '2', null].map(isCueSet)).toEqual([false, true, true, true, false, false, false, false]);
+  it('run from 1 to the number of move shares in the config: 6', () => {
+    expect(CUE_SET_COUNT).toBe(6);
+    expect([0, 1, 3, 6, 7, 2.5, '2', null].map(isCueSet)).toEqual([false, true, true, true, false, false, false, false]);
   });
 
   it('step to the next set, and from the last back to the first', () => {
-    expect([1, 2, 3, 4, 5].map(nextCueSet)).toEqual([2, 3, 4, 5, 1]);
+    expect(ALL_SETS.map(nextCueSet)).toEqual([2, 3, 4, 5, 6, 1]);
   });
 });
 
-describe('set 1', () => {
-  it("gives today's charts: the charts from DEFAULT_SEED, at every level, alone and in pairs", () => {
-    const song = realSong(0);
-    for (const level of ALL_LEVELS) {
-      for (const players of [solo(level), [{ level, shapes: true }, { level: 4 as Level, shapes: false }]]) {
-        for (const length of ['short', 'full'] as const) {
-          const charts = round(song, players, length);
-          const seed = cueSetSeed(FIRST_CUE_SET, charts);
-          expect(seed).toBe(DEFAULT_SEED);
-          const chart = generateChart(song, { level, shapes: false, seed, endSec: charts.endSec });
-          expect(chart).toEqual(generateChart(song, { level, shapes: false, seed: DEFAULT_SEED, endSec: charts.endSec }));
-        }
-      }
-    }
+describe('the share of moves of a set', () => {
+  it('is none for sets 1 and 2, 0.35 for sets 3 and 4, and 0.7 for sets 5 and 6', () => {
+    expect(CUE_SETS.moveShares).toEqual([0, 0, 0.35, 0.35, 0.7, 0.7]);
+    expect(ALL_SETS.map(cueSetMoveShare)).toEqual([0, 0, 0.35, 0.35, 0.7, 0.7]);
   });
 });
 
 describe('candidate seeds', () => {
-  it('are a fixed list for each later set, from DEFAULT_SEED + set × the spacing', () => {
+  it('are a fixed list for each set, set 1 too, from DEFAULT_SEED + set × the spacing', () => {
     expect(candidateSeeds(3)).toHaveLength(CUE_SETS.candidates);
     expect(candidateSeeds(3)[0]).toBe(DEFAULT_SEED + 3 * CUE_SETS.candidateSpacing);
     expect(candidateSeeds(3)[CUE_SETS.candidates - 1]).toBe(DEFAULT_SEED + 3000 + CUE_SETS.candidates - 1);
+    expect(candidateSeeds(1)[0]).toBe(DEFAULT_SEED + CUE_SETS.candidateSpacing);
   });
 
-  it('differ between all sets, and never are the seed of set 1', () => {
-    const all = LATER_SETS.flatMap(candidateSeeds);
+  it('differ between all sets', () => {
+    const all = ALL_SETS.flatMap(candidateSeeds);
     expect(new Set(all).size).toBe(all.length);
-    expect(all).not.toContain(DEFAULT_SEED);
   });
 
-  it('of all later sets together are the pool of the typical mix, so every set aims at one mix', () => {
-    expect(poolSeeds()).toEqual(LATER_SETS.flatMap(candidateSeeds));
-    expect(poolSeeds()).toHaveLength(4 * CUE_SETS.candidates);
+  it('of all sets together are the pool of the typical mix, so every set aims at one mix', () => {
+    expect(poolSeeds()).toEqual(ALL_SETS.flatMap(candidateSeeds));
+    expect(poolSeeds()).toHaveLength(6 * CUE_SETS.candidates);
   });
 });
 
@@ -181,6 +171,17 @@ describe('the typical mix', () => {
     expect(typicalMix(mixes)).toEqual({ slides: 0.2, doubles: 0.4, fastSlides: 0.05, offbeats: 0.25, cues: 110 });
   });
 
+  it('comes from charts without moves: the rest of a chart is what makes it easy or hard', () => {
+    const song = realSong(2);
+    const charts = round(song, solo(4));
+    const seed = candidateSeeds(5)[0];
+    const options = { level: 4 as Level, shapes: false, seed, endSec: charts.endSec };
+    const withoutMoves = entriesFrom(chartEntries(song, options), charts.startSec);
+    expect(playedMix(charts, solo(4)[0], seed)).toEqual(chartMix(song, withoutMoves, 4));
+    const withMoves = entriesFrom(chartEntries(song, { ...options, moves: cueSetMoveShare(5) }), charts.startSec);
+    expect(withMoves.some((entry) => entry.role === 'move')).toBe(true);
+  });
+
   it('comes from the charts of the pool, one for each player', () => {
     const song = realSong(2);
     const charts = round(song, [{ level: 3, shapes: false }, { level: 4, shapes: true }]);
@@ -204,14 +205,14 @@ describe('the typical mix', () => {
   });
 });
 
-describe('the seed of a later set', () => {
+describe('the seed of a set', () => {
   const song = realSong(2);
 
-  it('is the candidate closest to the typical mix, the earlier one on a tie', () => {
+  it('is the candidate closest to the typical mix, the earlier one on a tie, for every set: set 1 too', () => {
     for (const level of [2, 3, 4] as Level[]) {
       const charts = round(song, solo(level));
       const pool = measurePool(charts);
-      for (const set of LATER_SETS) {
+      for (const set of ALL_SETS) {
         const distances = candidateSeeds(set).map((seed) => poolDistance(pool, seed));
         const closest = candidateSeeds(set)[distances.indexOf(Math.min(...distances))];
         expect(closestCandidate(set, pool)).toBe(closest);
@@ -238,15 +239,16 @@ describe('the seed of a later set', () => {
 
   it('plays like the level usually does, on every song: close to the typical shares of slides and doubles', () => {
     // A seed of the pool is a median of 8 points from the typical mix at level 3, and 9 at
-    // level 4. The chosen sets are at most 4.7 points off in each share today.
+    // level 4. The chosen sets are at most 8 points off in each share today: set 5 of Hey-Ho,
+    // Jonah at level 4. With 4 sets and a pool of 96 seeds, the most was 5.1 points.
     for (const [index] of SONGS.entries()) {
       for (const level of [3, 4] as Level[]) {
         const pool = songPool(index, level);
         const target = pool.targets[0];
-        for (const set of LATER_SETS) {
+        for (const set of ALL_SETS) {
           const mix = pool.mixes[0][pool.seeds.indexOf(closestCandidate(set, pool))];
-          expect(Math.abs(mix.slides - target.slides)).toBeLessThan(0.06);
-          expect(Math.abs(mix.doubles - target.doubles)).toBeLessThan(0.06);
+          expect(Math.abs(mix.slides - target.slides)).toBeLessThan(0.09);
+          expect(Math.abs(mix.doubles - target.doubles)).toBeLessThan(0.09);
         }
       }
     }
@@ -254,15 +256,16 @@ describe('the seed of a later set', () => {
 
   it('keeps the sets of a song close in fast slides, off-beat taps and number of cues', () => {
     // Chosen by slides and doubles alone, the sets of a song at level 4 were up to 9.5 points
-    // apart in fast slides, 14.7 in off-beat taps and 13% in cues. Today: 6.6, 8.9 and 6.3%.
+    // apart in fast slides, 14.7 in off-beat taps and 13% in cues. With 4 sets: 6.6, 8.9 and
+    // 6.3%. Today, with 6 sets: 6.6, 9.0 and 8.8%, the last at level 3 of Peace, Be Still.
     const spread = (values: number[]): number => Math.max(...values) - Math.min(...values);
     for (const [index] of SONGS.entries()) {
       for (const level of [3, 4] as Level[]) {
         const pool = songPool(index, level);
-        const mixes = LATER_SETS.map((set) => pool.mixes[0][pool.seeds.indexOf(closestCandidate(set, pool))]);
+        const mixes = ALL_SETS.map((set) => pool.mixes[0][pool.seeds.indexOf(closestCandidate(set, pool))]);
         expect(spread(mixes.map((mix) => mix.fastSlides))).toBeLessThan(0.08);
         expect(spread(mixes.map((mix) => mix.offbeats))).toBeLessThan(0.11);
-        expect(spread(mixes.map((mix) => mix.cues)) / pool.targets[0].cues).toBeLessThan(0.08);
+        expect(spread(mixes.map((mix) => mix.cues)) / pool.targets[0].cues).toBeLessThan(0.09);
       }
     }
   });

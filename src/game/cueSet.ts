@@ -1,53 +1,63 @@
 /**
  * Cue sets give one song more than one chart. Each set gives the same chart on every run, so
- * "Play again" repeats it, and another set gives other cues for the same song.
+ * "Play again" repeats it, and another set gives other cues for the same song. The sets also
+ * differ by their share of moves (`CUE_SETS.moveShares`), so players can rate the sets and
+ * learn which share they like.
  *
- * A set must give other cues at the same difficulty. Set 1 is the chart from DEFAULT_SEED.
- * Every other set tries a fixed list of candidate seeds and keeps the one whose charts play
- * most like the level usually does: closest to the typical mix. The mix holds what makes a
- * chart harder: its shares of slides, doubles and fast slides, its off-beat taps, and its
- * number of cues. Two shares alone left the sets of one song apart by up to 9 fast slides and
- * 16 off-beat taps at level 4.
+ * A set must give other cues at the same difficulty. Every set tries a fixed list of candidate
+ * seeds and keeps the one whose charts play most like the level usually does: closest to the
+ * typical mix. The mix holds what makes a chart harder: its shares of slides, doubles and fast
+ * slides, its off-beat taps, and its number of cues. Two shares alone left the sets of one
+ * song apart by up to 9 fast slides and 16 off-beat taps at level 4.
+ *
+ * The choice measures the charts without moves. A move takes the place of cues on the same
+ * cue beats, and the rest of the chart is what makes it easy or hard. The round then plays the
+ * chosen seed with the set's share of moves.
  *
  * The typical mix is not the level rules. At levels 4 and 5 a slide never follows an
  * off-beat tap, and a double needs both hands free, so their charts stay well under the
  * chances in the rules. A choice aimed at the rules would pick the rare charts with the most
  * slides and doubles, which are harder than the level usually is. The typical mix is the
- * median over a pool of charts for the round: the candidates of all sets from 2 on. One pool
- * for all sets makes every set aim at the same mix.
+ * median over a pool of charts for the round: the candidates of all sets. One pool for all
+ * sets makes every set aim at the same mix.
  */
-import { chartEntries, cuesFrom } from './chart';
+import { chartEntries, entriesFrom } from './chart';
 import type { ChartEntry } from './chart';
 import { CHART, CUE_SETS, DEFAULT_SEED, LEVELS } from './config';
 import { isBarStart } from './manifest';
 import { median } from './numbers';
 import type { Cue, Level, Manifest } from './types';
 
-/** The set with today's chart. A new player starts with it. */
+/** The first set. A new player starts with it. */
 export const FIRST_CUE_SET = 1;
 
+/** The number of sets: one for each share of moves in `CUE_SETS.moveShares`. */
+export const CUE_SET_COUNT = CUE_SETS.moveShares.length;
+
 export function isCueSet(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value >= FIRST_CUE_SET && value <= CUE_SETS.count;
+  return typeof value === 'number' && Number.isInteger(value) && value >= FIRST_CUE_SET && value <= CUE_SET_COUNT;
 }
 
 /** The set after this one. After the last comes the first. */
 export function nextCueSet(set: number): number {
-  return (set % CUE_SETS.count) + 1;
+  return (set % CUE_SET_COUNT) + 1;
 }
 
-/**
- * The seeds that a set from 2 on tries, in order: DEFAULT_SEED + set × the spacing, and the
- * numbers after it. Set 1 tries none: it is DEFAULT_SEED.
- */
+/** The share of phrases in busy music that hold a move, for this set. */
+export function cueSetMoveShare(set: number): number {
+  return CUE_SETS.moveShares[set - FIRST_CUE_SET];
+}
+
+/** The seeds that a set tries, in order: DEFAULT_SEED + set × the spacing, and the numbers after it. */
 export function candidateSeeds(set: number): number[] {
   const first = DEFAULT_SEED + set * CUE_SETS.candidateSpacing;
   return Array.from({ length: CUE_SETS.candidates }, (_, i) => first + i);
 }
 
-/** The seeds whose charts give the typical mix: the candidates of every set from 2 on, in order. */
+/** The seeds whose charts give the typical mix: the candidates of every set, in order. */
 export function poolSeeds(): number[] {
-  const laterSets = Array.from({ length: CUE_SETS.count - FIRST_CUE_SET }, (_, i) => FIRST_CUE_SET + 1 + i);
-  return laterSets.flatMap(candidateSeeds);
+  const sets = Array.from({ length: CUE_SET_COUNT }, (_, i) => FIRST_CUE_SET + i);
+  return sets.flatMap(candidateSeeds);
 }
 
 /** What one player's chart is made for. */
@@ -141,11 +151,10 @@ export function mixDistance(mix: ChartMix, target: ChartMix): number {
   );
 }
 
-/** The mix of the part of one player's chart that the round plays. */
+/** The mix of the part of one player's chart that the round plays. The chart has no moves. */
 export function playedMix(round: RoundCharts, player: ChartFor, seed: number): ChartMix {
   const entries = chartEntries(round.manifest, { ...player, seed, endSec: round.endSec });
-  const played = new Set(cuesFrom(entries.map((entry) => entry.cue), round.startSec));
-  return chartMix(round.manifest, entries.filter((entry) => played.has(entry.cue)), player.level);
+  return chartMix(round.manifest, entriesFrom(entries, round.startSec), player.level);
 }
 
 /** What the choice of a round's seed works from. Each chart of the pool is made once. */
@@ -173,15 +182,14 @@ export function poolDistance(pool: PoolMeasure, seed: number): number {
 }
 
 /**
- * The chart seed of a round with this cue set. Set 1 gives DEFAULT_SEED. Another set gives
- * its candidate closest to the typical mix. The same round always gives the same seed.
+ * The chart seed of a round with this cue set: its candidate closest to the typical mix. The
+ * same round always gives the same seed.
  */
 export function cueSetSeed(set: number, round: RoundCharts): number {
-  if (set === FIRST_CUE_SET) return DEFAULT_SEED;
   return closestCandidate(set, measurePool(round));
 }
 
-/** The candidate of a set from 2 on that is closest to the typical mix, the earlier one on a tie. */
+/** The candidate of a set that is closest to the typical mix, the earlier one on a tie. */
 export function closestCandidate(set: number, pool: PoolMeasure): number {
   let best = { seed: DEFAULT_SEED, distance: Infinity };
   for (const seed of candidateSeeds(set)) {

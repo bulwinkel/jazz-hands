@@ -153,27 +153,32 @@ export const PREVIEW = {
 } as const;
 
 /**
- * The chart is the same every run unless the URL gives another seed.
- * This seed was picked from 400 candidates: its charts for both songs, at levels 3 and 4,
- * come closest to the shares of slides and doubles that the level rules ask for.
- * A random seed can be off by 15 points, which makes a level feel unlike its rules.
+ * The seed that the candidate seeds of the cue sets count from, and the seed of the tests.
+ * Before cue sets, every round played the chart from this seed. It was picked from 400
+ * candidates: its charts for both songs, at levels 3 and 4, come closest to the shares of
+ * slides and doubles that the level rules ask for. A random seed can be off by 15 points,
+ * which makes a level feel unlike its rules.
  */
 export const DEFAULT_SEED = 20261315;
 
 /**
- * Cue sets give one song other charts at the same difficulty. Set 1 is the chart from
- * DEFAULT_SEED. Every other set tries a few candidate seeds and keeps the one whose charts come
- * closest to the typical mix of the level on this song: its slides, doubles, fast slides,
- * off-beat taps and number of cues. See cueSet.ts.
+ * Cue sets give one song other charts at the same difficulty, and differ by their share of
+ * moves. Every set tries a few candidate seeds and keeps the one whose charts come closest to
+ * the typical mix of the level on this song: its slides, doubles, fast slides, off-beat taps
+ * and number of cues. See cueSet.ts.
  */
 export const CUE_SETS = {
-  /** The sets are numbered from 1 to this count. */
-  count: 5,
   /**
-   * Seeds that each set from 2 on tries. The candidates of all these sets together are the
-   * pool that gives the typical mix, so a round start makes (count − 1) × candidates charts
-   * per player: about 0.1 s for two players and the longest song. More candidates find a
-   * closer match, and take longer.
+   * The share of phrases in busy music that hold a move, for each set: set k plays with entry
+   * k − 1. The sets are numbered from 1 to the length of this list. Two sets for each share
+   * let players compare two charts of each kind and rate the shares.
+   */
+  moveShares: [0, 0, 0.35, 0.35, 0.7, 0.7],
+  /**
+   * Seeds that each set tries. The candidates of all sets together are the pool that gives
+   * the typical mix, so a round start makes (sets × candidates) charts per player: about
+   * 0.15 s for two players and the longest song. More candidates find a closer match, and
+   * take longer.
    */
   candidates: 24,
   /**

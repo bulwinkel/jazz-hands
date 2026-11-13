@@ -138,9 +138,10 @@ describe('URL parameters', () => {
     expect(parseSettings(null, '?framelog=1').frameLog).toBe(true);
   });
 
-  it('keep cue set 1 until a player picks another, and take a set from 1 to 5', () => {
+  it('keep cue set 1 until a player picks another, and take a set from 1 to 6', () => {
     expect(parseSettings(null, '').settings.cueSet).toBe(1);
-    expect(parseSettings({ cueSet: 6 }, '').settings.cueSet).toBe(1);
+    expect(parseSettings({ cueSet: 6 }, '').settings.cueSet).toBe(6);
+    expect(parseSettings({ cueSet: 7 }, '').settings.cueSet).toBe(1);
     expect(parseSettings({ cueSet: '2' }, '').settings.cueSet).toBe(1);
     expect(parseSettings(null, '?set=3').settings.cueSet).toBe(3);
     expect(parseSettings({ cueSet: 5 }, '?set=1').settings.cueSet).toBe(1);
