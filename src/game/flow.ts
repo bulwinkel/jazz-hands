@@ -553,7 +553,8 @@ export class DanceGame {
   private onTrackingFrame = (raw: TrackingFrame): void => {
     if (this.options.frameLog) {
       const { input } = this.inputs;
-      this.frameLog.push(logEntry(raw, this.phase, { mode: input?.mode ?? '', thread: input?.thread ?? null }));
+      const source = { mode: input?.mode ?? '', thread: input?.thread ?? null, delegate: input?.delegate ?? '' };
+      this.frameLog.push(logEntry(raw, this.phase, source));
     }
     const frame = this.options.settings.playerCount === 1 ? mergeForSolo(raw) : raw;
     const previous = this.frame;

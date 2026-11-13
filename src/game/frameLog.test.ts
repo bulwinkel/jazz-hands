@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { TrackingFrame } from '../tracking/types';
 import { logEntry } from './frameLog';
 
-const source = { mode: 'hands-split', thread: 'worker' };
+const source = { mode: 'hands-split', thread: 'worker', delegate: 'GPU' };
 
 const frame: TrackingFrame = {
   timeMs: 1234.567,
@@ -46,11 +46,12 @@ describe('an entry of the frame log', () => {
     expect(other).toEqual({ hands: [] });
   });
 
-  it('names the phase, the tracker mode and its thread', () => {
-    expect(logEntry(frame, 'ready', { mode: 'pose', thread: 'main' })).toMatchObject({
+  it('names the phase, the tracker mode, its thread and its delegate', () => {
+    expect(logEntry(frame, 'ready', { mode: 'pose', thread: 'main', delegate: 'CPU' })).toMatchObject({
       phase: 'ready',
       mode: 'pose',
       thread: 'main',
+      delegate: 'CPU',
       timeMs: 1234.6,
       inferenceMs: 23.5,
     });

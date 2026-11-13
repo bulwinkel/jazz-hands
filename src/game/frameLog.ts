@@ -36,6 +36,8 @@ export interface LoggedFrame {
   mode: string;
   /** Where that tracker ran. Null for a test input. */
   thread: string | null;
+  /** What its hand models ran on: 'GPU' or 'CPU'. Hands from the two differ. */
+  delegate: string;
   players: LoggedPlayer[];
 }
 
@@ -43,6 +45,7 @@ export interface LoggedFrame {
 export interface FrameSource {
   mode: string;
   thread: string | null;
+  delegate: string;
 }
 
 /** Four decimals of a frame fraction are a fifth of a pixel at 1920 pixels. */
@@ -58,6 +61,7 @@ export function logEntry(frame: TrackingFrame, phase: Phase, source: FrameSource
     phase,
     mode: source.mode,
     thread: source.thread,
+    delegate: source.delegate,
     players: frame.players.map((player) => {
       const logged: LoggedPlayer = {
         hands: player.hands.map((hand) => ({

@@ -5,6 +5,7 @@
 // Usage:
 //   node scripts/compare-threads.mjs --camera-file=<path> [--url=http://localhost:5192/]
 //          [--players=2] [--tracker=<mode>] [--faces] [--seconds=45] [--fps=<rate>]
+//          [--threads=main,worker]
 //
 //   --camera-file  The recording. A .y4m or .mjpeg file plays as it is. Any other video goes
 //                  through ffmpeg first, into a 30 fps .mjpeg file at most 1920 pixels wide.
@@ -15,11 +16,16 @@
 //   --seconds      How long each run records, from the page load. Default 45. The round starts
 //                  at once, without the menu; Space is pressed at the ready check.
 //   --fps          The rate Chrome plays the file at. Default: from a .y4m header, else 30.
+//   --threads      The threads of the two runs. Default main,worker. main,main shows how much
+//                  two runs on one thread differ: the floor for main against worker.
 //
 // The two runs match frames by the camera stream's own clock, so frames that both runs
 // tracked are compared one to one. Saves both frame logs and the comparison to
 // test-results/compare-threads-<time>.json.
-// Exits 0 when both runs tracked frames on the thread they asked for with no page error, else 1.
+//
+// Compares the runs only when each tracked frames on the thread it asked for, both on the
+// same delegate, with no error on the page or in a worker and without the game's error
+// phase. Exits 0 then, else 1.
 
 import { spawnSync } from 'node:child_process';
 import { closeSync, mkdirSync, mkdtempSync, openSync, readSync, rmSync, writeFileSync } from 'node:fs';
@@ -43,31 +49,70 @@ const players = flag('players') ?? '2';
 const tracker = flag('tracker');
 const faces = flags.includes('--faces');
 const seconds = Number(flag('seconds') ?? 45);
+const threads = (flag('threads') ?? 'main,worker').split(',');
+if (threads.length !== 2 || !threads.every((thread) => THREADS.includes(thread))) {
+  console.error('--threads takes two of main and worker, for example main,worker or main,main.');
+  process.exit(2);
+}
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
 const sourcePath = resolve(sourceFile);
-const cameraFile = cameraReadyFile(sourcePath);
-const fps = Number(flag('fps') ?? y4mHeader(cameraFile)?.fps ?? 30);
-const aspect = frameAspect(cameraFile);
-console.log(`camera: ${cameraFile} · ${fps} fps · aspect ${aspect.toFixed(3)}`);
+let cameraFile;
+try {
+  cameraFile = cameraReadyFile(sourcePath);
+  process.exitCode = await compareThreads();
+} finally {
+  // A converted recording can take hundreds of megabytes.
+  if (cameraFile && cameraFile !== sourcePath) rmSync(dirname(cameraFile), { recursive: true, force: true });
+}
 
-const runs = [];
-for (const thread of THREADS) runs.push(await recordRun(thread));
-// A converted recording can take hundreds of megabytes.
-if (cameraFile !== sourcePath) rmSync(dirname(cameraFile), { recursive: true, force: true });
-for (const run of runs) printRun(run);
+/** Records both runs, prints and saves the result, and returns the exit code. */
+async function compareThreads() {
+  const fps = Number(flag('fps') ?? y4mHeader(cameraFile)?.fps ?? 30);
+  const aspect = frameAspect(cameraFile);
+  console.log(`camera: ${sourcePath} · ${fps} fps · aspect ${aspect.toFixed(3)}`);
 
-const [main, worker] = runs;
-const comparison = compareRuns(main.frames, worker.frames, { fps, aspect });
-const shifts = shiftCheck(main.frames, worker.frames, { fps, aspect });
-printComparison(comparison, shifts);
+  const runs = [];
+  for (const [index, thread] of threads.entries()) runs.push(await recordRun(thread, `run ${index + 1}`));
+  for (const run of runs) printRun(run);
 
-const savedTo = saveResult({ cameraFile: sourcePath, fps, aspect, players, tracker, faces, seconds, runs, comparison, shifts });
-console.log(`saved: ${savedTo}`);
+  const problems = runProblems(runs);
+  let comparison;
+  let shifts;
+  if (problems.length) {
+    console.log('\nnot compared:');
+    for (const problem of problems) console.log(`  ${problem}`);
+  } else {
+    const [first, second] = runs;
+    comparison = compareRuns(first.frames, second.frames, { fps, aspect });
+    shifts = shiftCheck(first.frames, second.frames, { fps, aspect });
+    printComparison(runs, comparison, shifts);
+  }
 
-const ranAsAsked = runs.every((run) => run.frames.length > 0 && run.threads.length === 1 && run.threads[0] === run.thread);
-process.exit(ranAsAsked && runs.every((run) => run.errors.length === 0) ? 0 : 1);
+  const settings = { cameraFile: sourcePath, fps, aspect, players, tracker, faces, seconds, threads };
+  console.log(`saved: ${saveResult({ ...settings, runs, problems, comparison, shifts })}`);
+  return problems.length ? 1 : 0;
+}
+
+/** Why the two runs cannot be compared. None when they can. */
+function runProblems(runs) {
+  const problems = [];
+  for (const run of runs) {
+    if (run.phases.some((seen) => seen.phase === 'error')) problems.push(`${run.label} ended in the game's error phase.`);
+    if (run.errors.length) problems.push(`${run.label} had errors on the page or in a worker.`);
+    if (!run.frames.length) problems.push(`${run.label} logged no frames.`);
+    else if (run.threads.join() !== run.thread) {
+      problems.push(`${run.label} asked for the ${run.thread} thread, but ran on ${run.threads.join(' and ')}.`);
+    }
+    if (run.delegates.length > 1) problems.push(`${run.label} ran on more than one delegate: ${run.delegates.join(' and ')}.`);
+  }
+  const [first, second] = runs.map((run) => run.delegates.join(' and '));
+  if (first && second && first !== second) {
+    problems.push(`The runs ran on different delegates (${first}, ${second}): their hands are not comparable.`);
+  }
+  return problems;
+}
 
 // --- The camera file ---
 
@@ -113,51 +158,43 @@ function frameAspect(path) {
 
 // --- One run of the game ---
 
-async function recordRun(thread) {
+async function recordRun(thread, label) {
   const params = new URLSearchParams({ input: 'camera', autostart: '1', framelog: '1', previews: '0', hands: '0', players, thread });
   if (tracker) params.set('tracker', tracker);
   if (faces) for (const player of ['0', '1']) params.set(`faces${player}`, '1');
   const url = `${gameUrl}?${params}`;
-  console.log(`run ${thread}: ${url}`);
+  console.log(`${label}, ${thread}: ${url}`);
 
   const chrome = await openHeadlessChrome({ cameraFile });
-  const errors = [];
-  chrome.onEvent((message) => {
-    if (message.method === 'Runtime.exceptionThrown') {
-      const details = message.params.exceptionDetails;
-      errors.push(details.exception?.description ?? details.text);
-    }
-    if (message.method === 'Runtime.consoleAPICalled' && message.params.type === 'error') {
-      const text = message.params.args.map((arg) => arg.value ?? arg.description).join(' ');
-      // MediaPipe writes its INFO lines through console.error. They are not errors.
-      if (!text.startsWith('INFO:')) errors.push(`console.error: ${text}`);
-    }
-  });
-  await chrome.send('Runtime.enable');
-  await chrome.send('Page.navigate', { url });
+  try {
+    const errors = await chrome.watchErrors();
+    await chrome.send('Page.navigate', { url });
+    const phases = await playFor(chrome);
+    const frames = JSON.parse((await chrome.evaluate('JSON.stringify(window.__dance?.frameLog ?? [])')) ?? '[]');
+    const distinct = (key) => [...new Set(frames.map((frame) => frame[key]))];
+    return { label, thread, url, phases, errors, frames, threads: distinct('thread'), delegates: distinct('delegate') };
+  } finally {
+    chrome.close();
+  }
+}
 
+/** Lets the game play for `--seconds`, presses Space at the ready check, and returns the phases seen. */
+async function playFor(chrome) {
   const phases = [];
   const startedMs = Date.now();
+  let pressed = false;
   while (Date.now() - startedMs < seconds * 1000) {
     await sleep(POLL_MS);
     const phase = await chrome.evaluate('window.__dance?.phase');
     if (!phase) continue;
     if (phases.at(-1)?.phase !== phase) phases.push({ phase, atSec: Number(((Date.now() - startedMs) / 1000).toFixed(1)) });
-    if (phase === 'ready' && !phases.some((seen) => seen.pressed)) {
-      phases.at(-1).pressed = true;
-      await pressSpace(chrome);
+    if (phase === 'ready' && !pressed) {
+      pressed = true;
+      await chrome.pressSpace();
     }
     if (phase === 'error') break;
   }
-  const frames = JSON.parse((await chrome.evaluate('JSON.stringify(window.__dance?.frameLog ?? [])')) ?? '[]');
-  chrome.close();
-  return { thread, url, phases, errors, frames, threads: [...new Set(frames.map((frame) => frame.thread))] };
-}
-
-async function pressSpace(chrome) {
-  const key = { key: ' ', code: 'Space', windowsVirtualKeyCode: 32 };
-  await chrome.send('Input.dispatchKeyEvent', { type: 'keyDown', ...key });
-  await chrome.send('Input.dispatchKeyEvent', { type: 'keyUp', ...key });
+  return phases;
 }
 
 // --- The report ---
@@ -167,8 +204,9 @@ function printRun(run) {
   const span = frames.length > 1 ? (frames.at(-1).timeMs - frames[0].timeMs) / 1000 : 0;
   const hands = frames.reduce((sum, frame) => sum + frame.players.reduce((n, player) => n + player.hands.length, 0), 0);
   const inference = frames.map((frame) => frame.inferenceMs);
-  console.log(`\n${run.thread} run`);
-  console.log(`  ran on:   ${run.threads.join(', ') || 'no frames'} · trackers ${[...new Set(frames.map((frame) => frame.mode))].join(', ')}`);
+  console.log(`\n${run.label}, ${run.thread} thread asked for`);
+  const trackers = [...new Set(frames.map((frame) => frame.mode))].join(', ');
+  console.log(`  ran on:   ${run.threads.join(', ') || 'no frames'} · ${run.delegates.join(', ') || '—'} · trackers ${trackers}`);
   console.log(`  phases:   ${run.phases.map((seen) => `${seen.atSec}s ${seen.phase}`).join(' | ')}`);
   console.log(`  frames:   ${frames.length} · ${span ? (frames.length / span).toFixed(1) : '—'} per second`);
   console.log(`  hands:    ${frames.length ? (hands / frames.length).toFixed(2) : '—'} per frame`);
@@ -176,11 +214,12 @@ function printRun(run) {
   console.log(`  errors:   ${run.errors.length ? run.errors.join(' | ') : 'none'}`);
 }
 
-function printComparison(result, shifts) {
+function printComparison(runs, result, shifts) {
   const percent = (share) => (share === null ? '—' : `${(share * 100).toFixed(1)}%`);
   const heights = ({ median, p95, max }) => `median ${median ?? '—'} · p95 ${p95 ?? '—'} · max ${max ?? '—'}`;
-  console.log('\nmain against worker, on camera frames both tracked');
-  console.log(`  frames:          ${result.matchedFrames} matched (main ${result.framesA}, worker ${result.framesB}, ${result.otherMode} with other trackers)`);
+  const [first, second] = runs;
+  console.log(`\n${first.thread} against ${second.thread}, both on ${first.delegates.join()}, on camera frames both tracked`);
+  console.log(`  frames:          ${result.matchedFrames} matched (${first.label} ${result.framesA}, ${second.label} ${result.framesB}, ${result.otherMode} with other trackers)`);
   console.log(`  same hand count: ${percent(result.sameHandCount)} of player slots`);
   console.log(`  paired hands:    ${result.pairedHands}`);
   console.log(`  palm distance:   ${heights(result.palmDistance)} (frame heights)`);
