@@ -240,8 +240,10 @@ RISE_SEPARATION_BEATS = 6
 RISE_MIN_DB = 2.0
 # A pickup or drum fill can make a rise show one beat early. Such a rise counts this much.
 RISE_ONE_EARLY_WEIGHT = 0.5
-# A clue points to a beat only when that beat scores this many times the next best.
+# The rises point to a beat only when it scores this many times the next best.
 RISE_DECISIVE_RATIO = 1.5
+# The chords point to a beat only when they change there this many times as much as on each
+# beat next to it.
 CHORD_DECISIVE_RATIO = 1.25
 CHROMA_HOP = 512
 # Chroma is read this far inside each beat, away from the note changes at its edges.
@@ -1695,12 +1697,17 @@ def harmony_change(harmony: tuple[np.ndarray, np.ndarray], beats: np.ndarray) ->
 def chords_clue(change: np.ndarray) -> BarClue:
     """Chords and bass notes change on bar starts.
 
-    `change` holds the mean change of chords and bass on each beat of the bar, 0 to 3.
+    `change` holds the mean change of chords and bass on each beat of the bar, 0 to 3. Many songs
+    change chords at the half bar too, so the beat half a bar from the bar start can change almost
+    as much: the bar start is the one with the larger change. The beats next to a bar start seldom
+    bring a new chord, so the chords decide only when the best beat clearly beats both neighbours.
     """
-    choice = decisive_choice(change, CHORD_DECISIVE_RATIO)
+    best = int(np.argmax(change))
+    neighbours = max(change[(best - 1) % BEATS_PER_BAR], change[(best + 1) % BEATS_PER_BAR])
+    decides = change[best] > 0 and change[best] >= CHORD_DECISIVE_RATIO * neighbours
     detail = 'chord and bass change, on   ' + '   '.join(
         f'beat {beat}: {score:.2f}' for beat, score in enumerate(change))
-    return BarClue('chord changes', CHORDS_WEIGHT, () if choice is None else (choice,), detail)
+    return BarClue('chord changes', CHORDS_WEIGHT, (best,) if decides else (), detail)
 
 
 def drums_clue(kick: np.ndarray, snare: np.ndarray) -> BarClue:
