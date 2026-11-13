@@ -56,7 +56,8 @@ video is being finished, with a full bar that pulses.
 When the videos are ready, the results screen shows the round as a small silent preview.
 A click on it, or a fist held on it, plays the round with its sound in a player that fills
 the window. The player has buttons to switch between the game view and the camera view, to
-download the video on show, and to close. A real click also switches the browser to full
+play the video on show again from its start (**↺ Restart**, also after it has ended), to
+download it, and to close. A real click also switches the browser to full
 screen. Space pauses and Esc closes. Under the preview are the download links of both videos.
 
 The game keeps no history of recordings. It holds only the videos of the round whose results

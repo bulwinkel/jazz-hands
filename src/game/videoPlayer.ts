@@ -14,6 +14,7 @@ const PLAYER_HTML = `
   <div class="player-bar">
     <button type="button" id="player-game" data-hand="player-game">🎮 ${VIDEO_NAMES.game}</button>
     <button type="button" id="player-camera" data-hand="player-camera">🎥 ${VIDEO_NAMES.camera}</button>
+    <button type="button" id="player-restart" data-hand="player-restart">↺ Restart</button>
     <a id="player-download" data-hand="player-download"></a>
     <button type="button" id="player-close" data-hand="player-close">✕ Close · Esc</button>
   </div>`;
@@ -50,15 +51,8 @@ export class VideoPlayer {
     element.tabIndex = -1;
     this.element = element;
     this.video = find(element, 'video');
-    for (const kind of ['game', 'camera'] as const) {
-      find(element, `#player-${kind}`).addEventListener('click', (event) => {
-        this.show(kind);
-        // A mouse click leaves the focus on the button, and Space would then press it again.
-        // Give the focus back to the player, so Space pauses. A press by keyboard (detail 0)
-        // keeps the focus where the player put it.
-        if ((event as MouseEvent).detail > 0) element.focus({ preventScroll: true });
-      });
-    }
+    for (const kind of ['game', 'camera'] as const) this.onBarButton(`#player-${kind}`, () => this.show(kind));
+    this.onBarButton('#player-restart', () => this.restart());
     find(element, '#player-close').addEventListener('click', () => this.close());
     document.addEventListener('fullscreenchange', this.onFullscreenChange);
   }
@@ -112,6 +106,29 @@ export class VideoPlayer {
     if (!this.playing) return;
     if (this.video.paused) void this.video.play().catch(() => {});
     else this.video.pause();
+  }
+
+  /**
+   * Runs `action` when the bar button at `selector` is pressed. A mouse click leaves the focus
+   * on the button, and Space would then press it again. The focus goes back to the player, so
+   * Space pauses. A press by keyboard (detail 0) keeps the focus where the player put it.
+   */
+  private onBarButton(selector: string, action: () => void): void {
+    find(this.element, selector).addEventListener('click', (event) => {
+      action();
+      if ((event as MouseEvent).detail > 0) this.element.focus({ preventScroll: true });
+    });
+  }
+
+  /**
+   * Plays the video on show from its start, with its sound: while it plays, while it is
+   * paused, and after it has ended. A hand has no other way to see the round again.
+   */
+  private restart(): void {
+    if (!this.playing) return;
+    this.video.currentTime = 0;
+    this.video.muted = false;
+    void this.video.play().catch(() => {});
   }
 
   /**
