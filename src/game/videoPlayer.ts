@@ -65,6 +65,11 @@ export class VideoPlayer {
     return this.playing?.round === round;
   }
 
+  /** True when `target` is one of the player's own buttons or links. A key there acts on it. */
+  isOwnControl(target: EventTarget | null): boolean {
+    return target instanceof Element && this.element.contains(target) && target.matches('button, a');
+  }
+
   /** The items a hand can choose in the player: its buttons on show. */
   handElements(): HTMLElement[] {
     return [...this.element.querySelectorAll<HTMLElement>('[data-hand]')].filter((element) => !element.hidden);

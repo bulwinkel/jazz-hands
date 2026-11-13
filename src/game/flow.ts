@@ -756,10 +756,10 @@ export class DanceGame {
     const { settings } = this.options;
 
     // The open video player takes the keys: Esc closes it, Space pauses it, and no key
-    // starts or leaves a round behind it.
+    // starts or leaves a round behind it. Space on one of its buttons presses that button.
     if (this.ui.player.isOpen) {
       if (key === 'escape') this.ui.player.close();
-      else if (key === ' ') this.ui.player.togglePause();
+      else if (key === ' ' && !this.ui.player.isOwnControl(event.target)) this.ui.player.togglePause();
       else return;
       event.preventDefault();
       return;
