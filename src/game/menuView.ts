@@ -87,6 +87,8 @@ export interface MenuControls {
   stepSong: (direction: 1 | -1) => void;
   /** Names the cue style on its switch. */
   showCueStyle: (style: CueStyle) => void;
+  /** Stops what the menu listens to outside its own elements. Call it when the menu goes. */
+  close: () => void;
 }
 
 /** Ties a group of radio inputs to one value. */
@@ -171,6 +173,8 @@ function playerCard(player: PlayerIndex, settings: Settings, onChange: () => voi
  */
 export function buildMenu(panel: HTMLElement, settings: Settings, handlers: MenuHandlers): MenuControls {
   const { onStart, onChange } = handlers;
+  // The menu's listeners on the window end with the menu, also when no click or key came.
+  const listening = new AbortController();
 
   // The switches in the corner. Each shows its state in its text.
   const handHint = find(panel, '#hand-hint');
@@ -243,8 +247,8 @@ export function buildMenu(panel: HTMLElement, settings: Settings, handlers: Menu
   const hideSoundHint = (): void => {
     soundHint.hidden = true;
   };
-  window.addEventListener('pointerdown', hideSoundHint, { once: true });
-  window.addEventListener('keydown', hideSoundHint, { once: true });
+  window.addEventListener('pointerdown', hideSoundHint, { once: true, signal: listening.signal });
+  window.addEventListener('keydown', hideSoundHint, { once: true, signal: listening.signal });
 
   const cards = find(panel, '.players');
   const standHint = find(panel, '#stand-hint');
@@ -267,5 +271,5 @@ export function buildMenu(panel: HTMLElement, settings: Settings, handlers: Menu
   });
   find(panel, '#start').addEventListener('click', (event) => onStart(isHandClick(event)));
 
-  return { stepSong, showCueStyle };
+  return { stepSong, showCueStyle, close: () => listening.abort() };
 }

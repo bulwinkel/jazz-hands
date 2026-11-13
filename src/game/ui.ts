@@ -125,7 +125,7 @@ export class GameUI {
   hidePanel(): void {
     removePreview(this.panel);
     this.panel.hidden = true;
-    this.menu = undefined;
+    this.closeMenu();
   }
 
   /**
@@ -316,7 +316,7 @@ export class GameUI {
   /** Opens the panel with `html` as its content. `outsideHtml` sits beside the content, in the panel's own corners. */
   private openPanel(className: string, html: string, outsideHtml = ''): void {
     removePreview(this.panel);
-    this.menu = undefined;
+    this.closeMenu();
     this.panel.className = className;
     this.panel.innerHTML = `<div class="fit">${html}</div>${outsideHtml}`;
     this.panel.hidden = false;
@@ -327,6 +327,12 @@ export class GameUI {
     this.fitObserver.observe(this.panel);
     this.fitObserver.observe(find(this.panel, '.fit'));
     this.fitPanel();
+  }
+
+  /** The menu leaves the panel: its listeners outside the panel end. */
+  private closeMenu(): void {
+    this.menu?.close();
+    this.menu = undefined;
   }
 
   /**
