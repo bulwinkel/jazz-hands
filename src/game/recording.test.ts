@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nextFrameDue, pickFormat, sizeText, videoFileName, videoSize } from './recording';
+import { mainVideo, nextFrameDue, pickFormat, sizeText, videoFileName, videoSize } from './recording';
 
 describe('video format', () => {
   it('is MP4 with H.264 and AAC when the browser can record it', () => {
@@ -85,5 +85,21 @@ describe('game view pacing', () => {
     const next = nextFrameDue(1000, 5000, 30);
     expect(next).toBeCloseTo(5000 + 1000 / 30);
     expect(nextFrameDue(next ?? 0, 5017, 30)).toBeNull();
+  });
+});
+
+describe('main video of a round', () => {
+  const video = (kind: 'game' | 'camera') => ({ kind, url: `blob:${kind}`, fileName: `${kind}.mp4`, sizeBytes: 1 });
+
+  it('is the game view when the round has one', () => {
+    expect(mainVideo({ id: 1, label: '', videos: [video('camera'), video('game')] })?.kind).toBe('game');
+  });
+
+  it('is the first video when the round has no game view', () => {
+    expect(mainVideo({ id: 1, label: '', videos: [video('camera')] })?.kind).toBe('camera');
+  });
+
+  it('is nothing for a round with no video', () => {
+    expect(mainVideo({ id: 1, label: '', videos: [] })).toBeUndefined();
   });
 });

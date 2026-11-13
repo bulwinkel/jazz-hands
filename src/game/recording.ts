@@ -96,13 +96,29 @@ export interface RecordedVideo {
   extension: string;
 }
 
+/** One video of a round, ready to download. */
+export interface RoundVideo {
+  kind: VideoKind;
+  url: string;
+  fileName: string;
+  sizeBytes: number;
+}
+
 /** The videos of one round, ready to download. */
 export interface RoundVideos {
   /** Names the round for as long as the game keeps it. A new round gets a new id. */
   id: number;
   /** For example "20:41 · Todo Bueno". */
   label: string;
-  videos: { kind: VideoKind; url: string; fileName: string; sizeBytes: number }[];
+  videos: RoundVideo[];
+}
+
+/** The name of each kind of video, as the page shows it. */
+export const VIDEO_NAMES: Record<VideoKind, string> = { game: 'Game view', camera: 'Camera only' };
+
+/** The video of a round to show first: the game view, else the first video there is. */
+export function mainVideo(round: RoundVideos): RoundVideo | undefined {
+  return round.videos.find((video) => video.kind === 'game') ?? round.videos[0];
 }
 
 interface Track {

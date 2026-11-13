@@ -1,5 +1,5 @@
 import { find } from './dom';
-import { sizeText } from './recording';
+import { mainVideo, sizeText, VIDEO_NAMES } from './recording';
 import type { RoundVideos, VideoKind } from './recording';
 
 /**
@@ -12,8 +12,8 @@ const PLAYER_HTML = `
   <video playsinline controls disablepictureinpicture
     controlslist="nofullscreen nodownload noremoteplayback noplaybackrate"></video>
   <div class="player-bar">
-    <button type="button" id="player-game" data-hand="player-game">🎮 Game view</button>
-    <button type="button" id="player-camera" data-hand="player-camera">🎥 Camera only</button>
+    <button type="button" id="player-game" data-hand="player-game">🎮 ${VIDEO_NAMES.game}</button>
+    <button type="button" id="player-camera" data-hand="player-camera">🎥 ${VIDEO_NAMES.camera}</button>
     <a id="player-download" data-hand="player-download"></a>
     <button type="button" id="player-close" data-hand="player-close">✕ Close · Esc</button>
   </div>`;
@@ -76,7 +76,7 @@ export class VideoPlayer {
    * goes to full screen only on a click or a key press.
    */
   open(round: RoundVideos, byHand: boolean): void {
-    const first = round.videos.find((video) => video.kind === 'game') ?? round.videos[0];
+    const first = mainVideo(round);
     if (!first) return;
     const playing: Showing = { round, kind: first.kind, ownsFullscreen: !byHand && !document.fullscreenElement };
     this.playing = playing;
