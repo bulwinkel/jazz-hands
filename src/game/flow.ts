@@ -60,6 +60,8 @@ declare global {
 }
 
 const PLAYER_SLOTS: readonly PlayerIndex[] = [0, 1];
+/** The note that hand control stopped is a sentence to read from the dance spot: it stays a while. */
+const HAND_CONTROL_STOPPED_TOAST_MS = 6000;
 
 function readStoredSettings(): unknown {
   try {
@@ -231,9 +233,19 @@ export class DanceGame {
     if (!this.inputs.input) throw this.inputs.error ?? new Error('The camera did not start.');
   }
 
-  /** Tracking broke while running. In the menu that only ends pointing; in a round it ends the round. */
+  /**
+   * Tracking broke while running. In a round, that ends the round. In the menu, it ends
+   * pointing: the rings and the highlight go, and a note says how to try again. The menu
+   * opens the camera again only when hand control is turned on (see `syncMenuInput`).
+   */
   private onTrackingFailure = (error: unknown): void => {
-    if (this.phase !== 'menu') this.fail(error);
+    if (this.phase !== 'menu') {
+      this.fail(error);
+      return;
+    }
+    this.frame = undefined;
+    this.clearHandPointer();
+    this.ui.showToast('Hand control stopped. Turn it off and on to try again.', HAND_CONTROL_STOPPED_TOAST_MS);
   };
 
   /** Loads the song and the tracker for this round, then begins the reach fit. */

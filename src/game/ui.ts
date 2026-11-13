@@ -138,12 +138,12 @@ export class GameUI {
     this.menu?.showCueStyle(style);
   }
 
-  /** Shows a short note at the top of the screen, which goes away by itself. */
-  showToast(text: string): void {
+  /** Shows a short note at the top of the screen, which goes away by itself after `durationMs`. */
+  showToast(text: string, durationMs = TOAST_MS): void {
     this.toast.textContent = text;
     this.toast.hidden = false;
     window.clearTimeout(this.toastTimer);
-    this.toastTimer = window.setTimeout(() => (this.toast.hidden = true), TOAST_MS);
+    this.toastTimer = window.setTimeout(() => (this.toast.hidden = true), durationMs);
   }
 
   /** The large message on screen now, or undefined when none shows. */
