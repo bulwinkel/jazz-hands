@@ -131,6 +131,15 @@ describe('disposing the trackers', () => {
     expect(created[1].dispose).toHaveBeenCalled();
   });
 
+  it('disposes a tracker that still loads at once, before its load ends', () => {
+    const { create, created } = fakeTrackers();
+    const trackers = new TrackerSwitch(create, 'hands-full', false);
+    void trackers.setMode('pose');
+    trackers.dispose();
+    // The load of the pose tracker never ends here, as a hung load would not.
+    expect(created[1].dispose).toHaveBeenCalled();
+  });
+
   it('disposes a tracker whose load ends after the dispose', async () => {
     const { create, created } = fakeTrackers();
     const trackers = new TrackerSwitch(create, 'hands-full', false);

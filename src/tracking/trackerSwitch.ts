@@ -16,6 +16,8 @@ export interface SwitchableTracker {
 export class TrackerSwitch<Tracker extends SwitchableTracker> {
   private readonly create: (mode: TrackerMode, faces: boolean) => Tracker;
   private readonly loaded = new Map<TrackerMode, Tracker>();
+  /** Trackers that still load. A dispose ends them too, so that a hung load holds nothing. */
+  private readonly loading = new Set<Tracker>();
   private inUse: Tracker;
   /** Counts the calls of `setMode`, so a load that ends late can tell that a newer call came. */
   private modeCalls = 0;
@@ -55,11 +57,14 @@ export class TrackerSwitch<Tracker extends SwitchableTracker> {
     }
 
     const next = this.create(mode, faces);
+    this.loading.add(next);
     try {
       await next.init();
     } catch (error) {
       next.dispose();
       throw error;
+    } finally {
+      this.loading.delete(next);
     }
     if (this.disposed) {
       next.dispose(); // The input was closed while this tracker loaded.
@@ -79,10 +84,14 @@ export class TrackerSwitch<Tracker extends SwitchableTracker> {
     if (replaced && replaced !== this.inUse) replaced.dispose();
   }
 
-  /** Disposes every loaded tracker. A load that ends later is disposed too. */
+  /**
+   * Disposes every tracker: those that have loaded, and those that still load, at once. A
+   * tracker in a worker ends its worker then, also when its load would never end.
+   */
   dispose(): void {
     this.disposed = true;
-    for (const tracker of this.loaded.values()) tracker.dispose();
+    for (const tracker of [...this.loaded.values(), ...this.loading]) tracker.dispose();
+    this.loading.clear();
   }
 }
 
