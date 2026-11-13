@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fileNameOf, newRoundId, RATINGS_PATH, ratingRecord, saveRating } from './cueSetRating';
-import type { RatedRound, RatingPlayer } from './cueSetRating';
+import { fileNameOf, newRoundId, ratedRoundOf, RATINGS_PATH, ratingRecord, saveRating } from './cueSetRating';
+import type { EndedRound, RatedRound, RatingPlayer } from './cueSetRating';
 
 const ROUND: RatedRound = {
   id: '20261113-083015-k3j9x2',
@@ -71,6 +71,37 @@ describe('a rating record', () => {
   it('gives an accuracy of 0 for a round with no cues', () => {
     const idle = { ...PLAYER, score: { ...PLAYER.score, score: 0, perfect: 0, good: 0, miss: 0, total: 0 } };
     expect(ratingRecord(ROUND, idle, 1, SAVED_AT).result.accuracy).toBe(0);
+  });
+});
+
+describe('the round that the players rate', () => {
+  const ENDED: EndedRound = {
+    endedAt: new Date('2026-11-13T08:30:15Z'),
+    songId: 'todo-bueno',
+    length: 'full',
+    playerCount: 1,
+    cueSet: 2,
+    seed: 20261490,
+    cueSetRandom: false,
+    moveShare: 0,
+  };
+
+  it('keeps what the round played, with a new id and no run report yet', () => {
+    expect(ratedRoundOf(ENDED, () => 0)).toEqual({
+      id: '20261113-083015-000000',
+      runReport: null,
+      songId: 'todo-bueno',
+      length: 'full',
+      playerCount: 1,
+      cueSet: 2,
+      seed: 20261490,
+      cueSetRandom: false,
+      moveShare: 0,
+    });
+  });
+
+  it('is none for a round with no cue set, so its results have no rating row', () => {
+    expect(ratedRoundOf({ ...ENDED, cueSet: null }, () => 0)).toBeNull();
   });
 });
 

@@ -45,6 +45,30 @@ export interface RatedRound {
   moveShare: number;
 }
 
+/** What the game knows of a round when it ends, for its ratings. */
+export interface EndedRound {
+  endedAt: Date;
+  songId: string;
+  length: SongLength;
+  playerCount: PlayerCount;
+  /** Null for a round with no cue set: a seed from the URL. */
+  cueSet: number | null;
+  seed: number;
+  cueSetRandom: boolean;
+  moveShare: number;
+}
+
+/**
+ * What the ratings of a round that just ended share, with a new round id. Null for a round
+ * with no cue set: it has no set to rate, so its results show no rating row. `random` gives a
+ * number from 0 to 1.
+ */
+export function ratedRoundOf(round: EndedRound, random: () => number): RatedRound | null {
+  const { endedAt, cueSet, ...facts } = round;
+  if (cueSet === null) return null;
+  return { ...facts, cueSet, id: newRoundId(endedAt, random), runReport: null };
+}
+
 /** What a record needs of the player who rates. */
 export type RatingPlayer = Pick<PlayerRun, 'index' | 'level' | 'shapes' | 'faces' | 'mix' | 'moves' | 'score'>;
 
