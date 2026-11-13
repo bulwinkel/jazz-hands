@@ -26,6 +26,22 @@ export interface InputView {
   faceRegions: FaceRegions;
 }
 
+/**
+ * Where the mouse puts the hands, as x positions in the frame: player 1's hand, then player 2's
+ * or null for none.
+ *
+ * In a round, two players share the one pointer: it is folded into the left half for player 1
+ * and mirrored into the right half for player 2, so one mouse raises the hands of both. The
+ * menu has no player areas and each player has a pointer of their own there (see
+ * playerPointers.ts), so a mirrored hand would choose a second item. There the mouse is one
+ * hand, where the pointer is.
+ */
+export function mouseHandPositions(pointerX: number, playerCount: PlayerCount, phase: Phase): [number, number | null] {
+  if (playerCount === 1 || phase === 'menu') return [pointerX, null];
+  const folded = pointerX > 0.5 ? 1 - pointerX : pointerX;
+  return [folded, 1 - folded];
+}
+
 /** A source of tracking frames: the camera, or a stand-in for tests. */
 export interface GameInput {
   readonly video?: HTMLVideoElement;
@@ -262,10 +278,8 @@ export class SimulatedInput implements GameInput {
       hands: [{ x, y: this.pointer.y, size: 0.05, gesture, gestureScore: 1 }],
     });
 
-    if (view.playerCount === 1) return [handAt(this.pointer.x), { hands: [] }];
-    // Two players share one pointer: fold it into the left half and mirror it into the right.
-    const folded = this.pointer.x > 0.5 ? 1 - this.pointer.x : this.pointer.x;
-    return [handAt(folded), handAt(1 - folded)];
+    const [first, second] = mouseHandPositions(this.pointer.x, view.playerCount, view.phase);
+    return [handAt(first), second === null ? { hands: [] } : handAt(second)];
   }
 
   private onPointerMove = (event: PointerEvent): void => {
