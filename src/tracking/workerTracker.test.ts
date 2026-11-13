@@ -1,54 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WORKER_LIMITS } from './config';
-import type { TrackingFrame } from './types';
+import { emptyFrame, FakeWorker } from './testDoubles';
 import { WorkerTracker } from './workerTracker';
-import type { WorkerAnswer, WorkerRequest } from './workerProtocol';
-
-type Listener = (event: { data?: WorkerAnswer; message?: string; preventDefault?: () => void }) => void;
-
-/** A stand-in for the browser's Worker. The test answers for the worker by hand. */
-class FakeWorker {
-  static made: FakeWorker[] = [];
-  readonly options: WorkerOptions;
-  readonly posted: { request: WorkerRequest; transfer: Transferable[] }[] = [];
-  private readonly listeners = new Map<string, Listener[]>();
-  terminated = false;
-
-  constructor(_url: URL, options: WorkerOptions) {
-    this.options = options;
-    FakeWorker.made.push(this);
-  }
-
-  static get last(): FakeWorker {
-    return FakeWorker.made[FakeWorker.made.length - 1];
-  }
-
-  addEventListener(type: string, listener: Listener): void {
-    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
-  }
-
-  postMessage(request: WorkerRequest, transfer: Transferable[] = []): void {
-    this.posted.push({ request, transfer });
-  }
-
-  terminate(): void {
-    this.terminated = true;
-  }
-
-  answer(answer: WorkerAnswer): void {
-    for (const listener of this.listeners.get('message') ?? []) listener({ data: answer });
-  }
-
-  breakDown(message: string): void {
-    for (const listener of this.listeners.get('error') ?? []) listener({ message, preventDefault: () => {} });
-  }
-}
 
 const picture = (): VideoFrame => ({ close: vi.fn() }) as unknown as VideoFrame;
-const result = (timeMs: number): TrackingFrame => ({ timeMs, inferenceMs: 12, players: [{ hands: [] }, { hands: [] }] });
+const result = emptyFrame;
 
 beforeEach(() => {
-  FakeWorker.made = [];
+  FakeWorker.reset();
   vi.stubGlobal('Worker', FakeWorker);
 });
 afterEach(() => {

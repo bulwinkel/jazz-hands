@@ -7,8 +7,7 @@ import type {
   TrackingFrame,
   TrackingThread,
 } from '../tracking/types';
-import { cameraTracking, PageTracking } from '../tracking/cameraTracking';
-import type { CameraTracking } from '../tracking/cameraTracking';
+import { CameraTracking } from '../tracking/cameraTracking';
 import { botPlayer } from './bot';
 import { DEFAULT_SEED } from './config';
 import { containRect } from './geometry';
@@ -48,13 +47,10 @@ export interface GameInput {
   dispose(): void;
 }
 
-/** The real input: the webcam, tracked by MediaPipe on the main thread or in the tracking worker. */
+/** The real input: the webcam, tracked by MediaPipe on the main thread or in the tracking workers. */
 export class CameraInput implements GameInput {
   video?: HTMLVideoElement;
-  /** The trackers. They move to the main thread when the worker fails to start. */
-  private tracking: CameraTracking;
-  /** The first tracker, to load once more on the main thread when the worker fails to start. */
-  private readonly firstTracker: { mode: TrackerMode; faces: boolean };
+  private readonly tracking: CameraTracking;
   /** Stops the camera while it still starts, when the input is disposed. */
   private readonly cameraStart = new AbortController();
   private running = false;
@@ -65,15 +61,15 @@ export class CameraInput implements GameInput {
 
   /**
    * With `faces`, the first tracker loads the face models with the hand models.
-   * With `worker`, the trackers run in the tracking worker when it starts.
+   * With `worker`, each tracker runs in a tracking worker of its own where it can.
    */
   constructor(mode: TrackerMode, faces: boolean, thread: TrackingThread = 'main') {
-    this.firstTracker = { mode, faces };
-    this.tracking = cameraTracking(mode, faces, thread);
+    this.tracking = new CameraTracking(mode, faces, thread);
   }
 
+  /** Where the tracker in use runs. */
   get thread(): TrackingThread {
-    return this.tracking.thread;
+    return this.tracking.current.thread;
   }
 
   get mode(): string {
@@ -97,7 +93,7 @@ export class CameraInput implements GameInput {
       if (this.disposed) this.stopCamera();
     });
     // Wait for both, so a model failure never leaves the camera running.
-    const [camera, models] = await Promise.allSettled([cameraStarted, this.loadFirstTracker()]);
+    const [camera, models] = await Promise.allSettled([cameraStarted, this.tracking.init()]);
     if (camera.status === 'rejected') {
       this.dispose();
       throw new Error(`Camera failed: ${String(camera.reason)}. Allow camera access in Chrome.`);
@@ -105,22 +101,6 @@ export class CameraInput implements GameInput {
     if (models.status === 'rejected') {
       this.dispose();
       throw new Error(`Model load failed: ${String(models.reason)}. Check the local model files.`);
-    }
-  }
-
-  /**
-   * Loads the first tracker. When the worker fails to start, the trackers move to the main
-   * thread, as they ran before the worker existed.
-   */
-  private async loadFirstTracker(): Promise<void> {
-    try {
-      await this.tracking.init();
-    } catch (error) {
-      if (this.tracking.thread === 'main' || this.disposed) throw error;
-      console.warn('The tracking worker failed to start. Tracking runs on the main thread.', error);
-      this.tracking.dispose();
-      this.tracking = new PageTracking(this.firstTracker.mode, this.firstTracker.faces);
-      await this.tracking.init();
     }
   }
 
