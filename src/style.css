@@ -548,17 +548,20 @@ canvas {
   color: var(--text-faint);
 }
 
-/* --- The results --- */
+/* --- The results ---
+   The gaps of the results are tight: the rating rows take room, and a 1280×720 window must
+   still show the results at a scale of 0.85 or more, so that a hand can hit each star. */
 
 .results h1 {
   font-size: clamp(34px, 4vw, 58px);
+  margin: 8px 0 10px;
 }
 .result-players {
   display: flex;
   gap: 32px;
   justify-content: center;
   max-width: 1100px;
-  margin: 20px auto;
+  margin: 12px auto;
 }
 .result-players section {
   flex: 1;
@@ -566,12 +569,12 @@ canvas {
   border: 2px solid var(--player);
   background: #11172bbd;
   border-radius: 24px;
-  padding: 20px 20px 14px;
+  padding: 16px 20px 12px;
 }
 .result-players h2 {
   color: var(--player);
   font-size: 24px;
-  margin: 0 0 8px;
+  margin: 0 0 4px;
 }
 .stars {
   color: var(--game-yellow);
@@ -604,18 +607,17 @@ canvas {
   display: flex;
   justify-content: space-around;
   font-size: 17px;
-  margin-top: 14px;
+  margin-top: 10px;
   color: #d1fae5;
 }
 .counts span:last-child {
   color: #fda4af;
 }
-/* The moves of the player's chart. The line keeps its height when it is empty, and the card
-   gave up the same height in its gaps and its padding, so the card is as tall as before it
-   had this line: the score and the buttons stay where they were. */
+/* The moves of the player's chart. The line keeps its height when it is empty, so the cards
+   of a round with moves and of one with none are as tall, and nothing moves between rounds. */
 .result-moves {
   min-height: 20px;
-  margin: 6px 0 0;
+  margin: 4px 0 0;
   font-size: 16px;
   line-height: 20px;
   font-weight: 500;
@@ -627,7 +629,7 @@ canvas {
    read as the score's stars: they are larger, and an outline or a fill in the player's
    colour, not yellow. */
 .rating {
-  margin-top: 8px;
+  margin-top: 6px;
 }
 .rating-label {
   margin: 0;
@@ -677,7 +679,7 @@ canvas {
   height: 14px;
   background: var(--border-faint);
   border-radius: 20px;
-  margin-top: 10px;
+  margin-top: 8px;
   overflow: hidden;
 }
 .replay-hold span {
@@ -706,10 +708,10 @@ canvas {
 .replay-prompt {
   font-size: 32px;
   font-weight: 850;
-  margin: 18px 0 4px;
+  margin: 12px 0 4px;
 }
 .replay-hint {
-  margin: 4px 0 16px;
+  margin: 4px 0 12px;
   font-size: 18px;
   color: var(--text-soft);
 }
@@ -728,7 +730,7 @@ canvas {
   align-items: center;
   justify-content: center;
   gap: 14px;
-  margin-top: 16px;
+  margin-top: 10px;
   font-size: 15px;
   color: var(--text-faint);
 }
