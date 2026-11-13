@@ -493,7 +493,7 @@ export class DanceGame {
     this.report = this.buildReport();
     this.audio?.stop();
     this.setPhase('results');
-    this.ui.showResults(this.players, this.beginCountdown, this.showMenu, (byHand) => this.refit(byHand));
+    this.ui.showResults(this.players, this.cueSet, this.beginCountdown, this.showMenu, (byHand) => this.refit(byHand));
     // A recording goes on for a few seconds: the cheer, and the result card in the game view.
     const tailSec = recordingTailSec(this.audio?.soundDelays ?? { game: 0, camera: 0 });
     this.recordings.endAfter(tailSec, performance.now());

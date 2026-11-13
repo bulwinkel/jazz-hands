@@ -7,7 +7,7 @@ import type { MenuControls } from './menuView';
 import type { PlayerRun } from './player';
 import { RECORDINGS_HTML, removePreview, showRecordings } from './recordingsView';
 import type { RecordingsView } from './roundRecordings';
-import { playerHeading, RESULTS_HEADING } from './resultText';
+import { cueSetLine, movesLine, playerHeading, RESULTS_HEADING } from './resultText';
 import { accuracy, stars } from './scoring';
 import type { Settings } from './settings';
 import { VideoPlayer } from './videoPlayer';
@@ -28,7 +28,10 @@ const SHELL_HTML = `
   <button id="refit" hidden data-hand="refit" data-hand-hold="${HAND_MENU.slowHoldSec}">↺ Recalibrate · C</button>
   <pre id="debug" hidden></pre>`;
 
-/** One player's result card. */
+/**
+ * One player's result card. The line of the chart's moves is there for every player, empty
+ * for a chart with no moves, so the cards of two players line up and no round moves them.
+ */
 function resultCard(player: PlayerRun): HTMLElement {
   const { score } = player;
   const starCount = stars(score);
@@ -49,11 +52,21 @@ function resultCard(player: PlayerRun): HTMLElement {
       <span>${score.good} Good</span>
       <span>${score.miss} Miss</span>
     </div>
+    <p class="result-moves">${movesLine(player.moves) ?? ''}</p>
     <div class="replay-hold" data-player="${player.index}" role="progressbar"
       aria-label="Player ${player.index + 1} replay hold" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
       <span></span>
     </div>`;
   return card;
+}
+
+/**
+ * The round's cue set on the results, in the top corner where the menu has its set switch.
+ * There it takes no room from the score and the buttons. Nothing for a round with no set.
+ */
+function setCorner(cueSet: number | null): string {
+  const line = cueSetLine(cueSet);
+  return line === null ? '' : `<div class="corner"><p class="result-set">${line}</p></div>`;
 }
 
 /** The page around the canvas: menu, results, messages and buttons. */
@@ -165,9 +178,13 @@ export class GameUI {
     this.menu = buildMenu(this.panel, settings, { onStart, onChange });
   }
 
-  /** `onRefit` hears whether a pointing hand chose it, and not a mouse. */
+  /**
+   * `cueSet` is the set that the round played, or null for a round with no set.
+   * `onRefit` hears whether a pointing hand chose it, and not a mouse.
+   */
   showResults(
     players: readonly PlayerRun[],
+    cueSet: number | null,
     onReplay: () => void,
     onMenu: () => void,
     onRefit: (byHand: boolean) => void,
@@ -195,6 +212,7 @@ export class GameUI {
         <button id="copy-diagnostics">Copy diagnostics</button>
         <span id="diagnostics-status" role="status"></span>
       </div>`,
+      setCorner(cueSet),
     );
     find(this.panel, '.result-players').append(...players.map(resultCard));
     find(this.panel, '#replay').addEventListener('click', onReplay);
