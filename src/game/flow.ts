@@ -2,27 +2,20 @@ import type { FaceExpression, FaceRegions, TrackingFrame } from '../tracking/typ
 import { SongAudio } from './audio';
 import { cuesFrom, generateChart } from './chart';
 import { CUE_STYLE_NAMES, nextCueStyle } from './cueStyle';
-import { FACE_EMOJI, HAND_MENU, HANDS_UP_CELL, LEVELS, MENU_TRACKER, SONGS, TIMING, TOAST } from './config';
-import {
-  buildRunReport,
-  newFaceObservation,
-  newObservation,
-  newTrackingStats,
-  observeFaceFrame,
-  observeFrame,
-} from './diagnostics';
+import { FACE_EMOJI, HAND_MENU, MENU_TRACKER, SONGS, TIMING, TOAST } from './config';
+import { buildRunReport, newFaceObservation, newObservation, newTrackingStats } from './diagnostics';
 import type { RunReport, TrackingStats } from './diagnostics';
 import { isHandClick } from './dom';
 import { generateFaceCues } from './faceChart';
-import { judgeFaceFrame, needsFace, newFaceCueState } from './faceJudgment';
+import { needsFace, newFaceCueState } from './faceJudgment';
 import { fitMomentAt, planFit } from './fitTiming';
 import type { FitPlan } from './fitTiming';
-import { cellRect, containRect, defaultGrid, faceRegion, fitGrid, insideCell } from './geometry';
+import { containRect, defaultGrid, faceRegion, fitGrid } from './geometry';
 import { newHandMenuState, stepHandMenu } from './handMenu';
+import { clearHolds, stepHandsUp } from './handsUp';
 import type { InputView } from './input';
 import { InputHost } from './inputHost';
-import { frameSongTime, judgeFrame, newCueState } from './judgment';
-import type { CueState } from './judgment';
+import { frameSongTime, newCueState } from './judgment';
 import { fetchManifest, playEndSec, playStartSec } from './manifest';
 import { createPlayers, summariseChart } from './player';
 import type { ChartSummary, PlayerRun } from './player';
@@ -32,12 +25,13 @@ import { GameRenderer } from './render';
 import type { Feedback } from './render';
 import type { RoundVideos } from './recording';
 import { resultLines } from './recordingScene';
+import { judgePlayers } from './roundJudging';
 import { recordingTailSec, RoundRecordings } from './roundRecordings';
-import { award, freshScore } from './scoring';
+import { freshScore } from './scoring';
 import { parseSettings, STORAGE_KEY, usesFaces } from './settings';
 import type { Options } from './settings';
 import { mergeForSolo } from './solo';
-import type { Manifest, Phase, PlayerIndex, Point, Rating, Score } from './types';
+import type { Manifest, Phase, PlayerIndex, Point, Score } from './types';
 import { GameUI } from './ui';
 
 /** Live state for automated checks, at `window.__dance`. Always two player entries. */
@@ -149,7 +143,7 @@ export class DanceGame {
   private setPhase(phase: Phase): void {
     this.phase = phase;
     this.phaseStartedMs = performance.now();
-    this.clearHolds();
+    clearHolds(this.players);
     this.ui.player.close();
     this.ui.pauseButton.hidden = phase !== 'play';
     // The recalibrate button shows in the ready check: there the players see whether the grids
@@ -349,7 +343,7 @@ export class DanceGame {
    * videos of the round it shows alive.
    */
   private onPlayerChange = (shown: RoundVideos | undefined): void => {
-    this.clearHolds();
+    clearHolds(this.players);
     this.followPreview();
     this.recordings.playerShows(shown);
   };
@@ -418,14 +412,6 @@ export class DanceGame {
     this.paused = false;
     this.feedback = [];
     this.ui.hidePanel();
-  }
-
-  /** Forgets every player's hands-up hold. */
-  private clearHolds(): void {
-    for (const player of this.players) {
-      player.holdStartMs = null;
-      player.hold = 0;
-    }
   }
 
   /** Tells the recordings that a round begins. It is recorded when the players turned recording on. */
@@ -610,19 +596,10 @@ export class DanceGame {
     }
   }
 
-  /** Ready and replay: every player holds a hand in the hands-up cell without a break. */
+  /** Ready and replay: the round starts when every player holds a hand up. */
   private trackHandsUp(frame: TrackingFrame, previous: TrackingFrame | undefined): void {
     const holdSec = this.phase === 'ready' ? TIMING.readyHoldSec : TIMING.replayHoldSec;
-    const stalled = previous !== undefined && frame.timeMs - previous.timeMs > TIMING.staleFrameMs;
-    for (const player of this.players) {
-      const target = cellRect(player.grid, HANDS_UP_CELL);
-      const raised = frame.players[player.index].hands.some((hand) => insideCell(hand, target));
-      if (!raised || stalled) player.holdStartMs = null;
-      if (raised && player.holdStartMs === null) player.holdStartMs = frame.timeMs;
-      player.hold =
-        player.holdStartMs === null ? 0 : Math.min(1, (frame.timeMs - player.holdStartMs) / (holdSec * 1000));
-    }
-    if (this.players.every((player) => player.hold >= 1)) this.beginCountdown();
+    if (stepHandsUp(this.players, frame, previous, holdSec)) this.beginCountdown();
   }
 
   private countFrame(frame: TrackingFrame): void {
@@ -635,53 +612,9 @@ export class DanceGame {
     }
   }
 
-  /** Judges every open cue at `timeSec`. With no frame, it only closes cues whose time has passed. */
+  /** Judges every open cue at `timeSec`, and flashes each result. With no frame, it only closes cues whose time has passed. */
   private judge(timeSec: number, frame?: TrackingFrame): void {
-    for (const player of this.players) {
-      const hands = frame?.players[player.index].hands ?? [];
-      const opensAheadSec = -LEVELS[player.level].goodMs[0] / 1000;
-      for (let i = 0; i < player.states.length; i++) {
-        const state = player.states[i];
-        if (state.cue.timeSec - opensAheadSec > timeSec) break; // This cue and all later ones are not open yet.
-        if (frame) observeFrame(player.observations[i], state.cue, player.level, player.grid, hands, timeSec);
-        if (state.result) continue;
-        const next = judgeFrame(state, player.level, player.grid, hands, timeSec);
-        player.states[i] = next;
-        if (next.result) this.award(player, next);
-      }
-      this.judgeFaceCues(player, timeSec, frame);
-    }
-  }
-
-  /** The same as for hand cues: with no frame, it only closes cues whose time has passed. */
-  private judgeFaceCues(player: PlayerRun, timeSec: number, frame?: TrackingFrame): void {
-    const face = frame?.players[player.index].face;
-    const opensAheadSec = -LEVELS[player.level].goodMs[0] / 1000;
-    for (let i = 0; i < player.faceStates.length; i++) {
-      const state = player.faceStates[i];
-      if (state.cue.timeSec - opensAheadSec > timeSec) break; // This cue and all later ones are not open yet.
-      if (frame) observeFaceFrame(player.faceObservations[i], state.cue, player.level, face, timeSec);
-      if (state.result) continue;
-      const next = judgeFaceFrame(state, player.level, face, timeSec);
-      player.faceStates[i] = next;
-      if (next.result) this.awardFace(player, next.result);
-    }
-  }
-
-  private award(player: PlayerRun, state: CueState): void {
-    const { cue, result } = state;
-    if (!result) return;
-    player.score = award(player.score, result);
-    // A slide shows its result where it ends. A tap shows it on each of its cells.
-    const cells = cue.kind === 'slide' ? cue.cells.slice(-1) : cue.cells;
-    const atMs = performance.now();
-    for (const cell of cells) this.feedback.push({ player: player.index, target: cell, result, atMs });
-  }
-
-  /** A face cue scores exactly like a hand cue. Its result shows on the player's face. */
-  private awardFace(player: PlayerRun, result: Rating): void {
-    player.score = award(player.score, result);
-    this.feedback.push({ player: player.index, target: 'face', result, atMs: performance.now() });
+    this.feedback.push(...judgePlayers(this.players, timeSec, frame, performance.now()));
   }
 
   // --- Controls ---
