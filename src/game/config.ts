@@ -207,7 +207,9 @@ export const LEVELS: Record<Level, LevelRules> = {
     slideChance: 0.22,
     slideSpeeds: { fast: 0, normal: 0.7, slow: 0.3 },
     offbeatChance: 0,
-    companionTapChance: 0,
+    // Without these taps, the other hand had nothing to do during a slow slide. Half is
+    // gentler than level 4.
+    companionTapChance: 0.5,
     shapeOnEveryCue: false,
     approachSec: 1,
     perfectMs: [-120, 160],
