@@ -27,14 +27,6 @@ export interface RecordingSource {
   song: { id: string; title: string };
 }
 
-/** What the recordings ask of the game. */
-export interface RecordingsHooks {
-  /** Hears when a recording starts or ends, and when the list changes. */
-  onChange: () => void;
-  /** True while the video player shows `round`. */
-  isOnShow: (round: RoundVideos) => boolean;
-}
-
 /**
  * How long a recording goes on after the results show: the cheer and the result card, and at
  * least until the end of the song has reached the video with the longest sound delay.
@@ -71,7 +63,7 @@ export function resultLines(players: readonly PlayerRun[]): ResultLine[] {
  * of the last few. The game says when a round begins and ends, and whether its videos are kept.
  */
 export class RoundRecordings {
-  private readonly hooks: RecordingsHooks;
+  private readonly onChange: () => void;
   /** Records the round that runs now. */
   private recorder?: RoundRecorder;
   private song = { id: 'song', title: '' };
@@ -84,11 +76,14 @@ export class RoundRecordings {
   private roundNumber = 0;
   private lastRound?: RoundVideos;
   private nextRoundId = 1;
-  /** Rounds dropped from the list while the video player showed them. They are freed when it closes. */
+  /** The round the video player shows now, if any. */
+  private onShow?: RoundVideos;
+  /** Rounds that left the list while the video player showed them. They wait until it shows them no more. */
   private droppedOnShow: RoundVideos[] = [];
 
-  constructor(hooks: RecordingsHooks) {
-    this.hooks = hooks;
+  /** `onChange` hears when a recording starts or ends, and when the list changes. */
+  constructor(onChange: () => void) {
+    this.onChange = onChange;
   }
 
   /** True while a round is recorded. */
@@ -120,7 +115,7 @@ export class RoundRecordings {
     }
     this.recorder = recorder;
     this.song = source.song;
-    this.hooks.onChange();
+    this.onChange();
   }
 
   /**
@@ -135,7 +130,7 @@ export class RoundRecordings {
       if (keep) void this.keep(recorder, this.song);
       else recorder.discard();
     }
-    this.hooks.onChange();
+    this.onChange();
   }
 
   /** Keeps the recording on for `delaySec`, then ends it and keeps its videos. */
@@ -160,15 +155,20 @@ export class RoundRecordings {
   }
 
   /**
-   * Frees the videos of the rounds that left the list, except a round the video player shows
-   * now: it is freed when the player closes. Call it then.
+   * The video player shows `round` now, or nothing. A round that left the list stays alive
+   * while the player shows it, and is freed once it shows it no more.
    */
-  freeDropped(): void {
-    const onShow = this.droppedOnShow.filter((round) => this.hooks.isOnShow(round));
+  playerShows(round: RoundVideos | undefined): void {
+    this.onShow = round;
+    this.freeDropped();
+  }
+
+  /** Frees the videos of the rounds that left the list, except the one the player shows. */
+  private freeDropped(): void {
     for (const round of this.droppedOnShow) {
-      if (!onShow.includes(round)) for (const video of round.videos) URL.revokeObjectURL(video.url);
+      if (round !== this.onShow) for (const video of round.videos) URL.revokeObjectURL(video.url);
     }
-    this.droppedOnShow = onShow;
+    this.droppedOnShow = this.droppedOnShow.filter((round) => round === this.onShow);
   }
 
   dispose(): void {
@@ -181,7 +181,7 @@ export class RoundRecordings {
     const endedAt = new Date();
     const roundNumber = this.roundNumber;
     this.finishing++;
-    this.hooks.onChange();
+    this.onChange();
     const videos = await recorder.stop();
     this.finishing--;
 
@@ -205,6 +205,6 @@ export class RoundRecordings {
       // Until a newer round begins, its results may show these videos as a preview.
       if (roundNumber === this.roundNumber) this.lastRound = round;
     }
-    this.hooks.onChange();
+    this.onChange();
   }
 }

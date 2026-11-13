@@ -40,8 +40,8 @@ export class VideoPlayer {
   private returnFocus?: HTMLElement;
   /** The elements behind the player that it made inert. */
   private madeInert: HTMLElement[] = [];
-  /** Hears when the player opens and when it closes. */
-  onChange?: (isOpen: boolean) => void;
+  /** Hears which round the player shows when it opens, and nothing when it closes. */
+  onChange?: (shown: RoundVideos | undefined) => void;
 
   /** Builds the player in `element`, which stays hidden while the player is closed. */
   constructor(element: HTMLElement) {
@@ -58,11 +58,6 @@ export class VideoPlayer {
 
   get isOpen(): boolean {
     return this.playing !== undefined;
-  }
-
-  /** True while the player shows `round`. */
-  shows(round: RoundVideos): boolean {
-    return this.playing?.round === round;
   }
 
   /** True when `target` is one of the player's own buttons or links. A key there acts on it. */
@@ -89,7 +84,7 @@ export class VideoPlayer {
     this.element.hidden = false;
     this.holdFocus();
     this.playFrom(0);
-    this.onChange?.(true);
+    this.onChange?.(round);
   }
 
   close(): void {
@@ -102,7 +97,7 @@ export class VideoPlayer {
     this.element.hidden = true;
     this.releaseFocus();
     if (playing.ownsFullscreen && document.fullscreenElement) void document.exitFullscreen().catch(() => {});
-    this.onChange?.(false);
+    this.onChange?.(undefined);
   }
 
   /** Space in the player: pause, or play on. */

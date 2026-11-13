@@ -30,6 +30,7 @@ import { MenuPreview } from './preview';
 import type { PreviewState } from './preview';
 import { GameRenderer } from './render';
 import type { Feedback } from './render';
+import type { RoundVideos } from './recording';
 import { recordingTailSec, resultLines, RoundRecordings } from './roundRecordings';
 import { award, freshScore } from './scoring';
 import { parseSettings, STORAGE_KEY, usesFaces } from './settings';
@@ -113,10 +114,7 @@ export class DanceGame {
   private switchingTracker = false;
 
   /** Records the rounds while recording is on, and keeps the videos of the last few. */
-  private readonly recordings = new RoundRecordings({
-    onChange: () => this.onRecordingsChange(),
-    isOnShow: (round) => this.ui.player.shows(round),
-  });
+  private readonly recordings = new RoundRecordings(() => this.onRecordingsChange());
   private readonly preview = new MenuPreview();
 
   private debugVisible = false;
@@ -347,13 +345,13 @@ export class DanceGame {
 
   /**
    * The video player opened or closed. While it is open, a raised hand must not start a new
-   * round, and the menu's song preview must not play over the video. Once it closes, the
-   * videos of a round that left the list while it played can go.
+   * round, and the menu's song preview must not play over the video. The recordings keep the
+   * videos of the round it shows alive.
    */
-  private onPlayerChange = (isOpen: boolean): void => {
+  private onPlayerChange = (shown: RoundVideos | undefined): void => {
     this.clearHolds();
     this.followPreview();
-    if (!isOpen) this.recordings.freeDropped();
+    this.recordings.playerShows(shown);
   };
 
   // --- Song preview in the menu ---
