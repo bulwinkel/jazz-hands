@@ -2,8 +2,14 @@
 
 import { clamp01 } from './numbers';
 
-/** A cue has this colour on its beat. Before that, it fades toward it from the player's colour. */
-export const DUE_COLOR = '#fde047';
+/** A cue appears in this colour. It then fades to the player's colour, which it reaches on its beat. */
+export const CUE_START_COLOR = '#ffffff';
+
+/**
+ * The game's yellow: the large buttons, the highlights and the menu's hold mark. Only the
+ * page uses it: the stylesheet takes it from ui.ts.
+ */
+export const GAME_YELLOW = '#fde047';
 
 /**
  * The veil over the camera picture, so the cues stand out. The screen puts it there (the
@@ -33,11 +39,12 @@ export function mixColors(from: string, to: string, share: number): string {
 
 /**
  * The colour of a cue, which tells a player how soon the cue is due.
- * A cue appears in the player's colour and fades to the due colour, which it reaches on its
- * beat. With several cues on screen, the one nearest the due colour comes first.
+ * A cue appears white and fades to the player's colour, which it reaches on its beat: a full
+ * block on the beat has the player's colour. With several cues on screen, the one with the
+ * most of the player's colour comes first.
  *
  * `remaining` is the share of the approach time still to go: 1 when the cue appears, 0 on its beat.
  */
 export function cueColor(playerColor: string, remaining: number): string {
-  return mixColors(playerColor, DUE_COLOR, 1 - remaining);
+  return mixColors(CUE_START_COLOR, playerColor, 1 - remaining);
 }

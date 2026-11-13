@@ -1,8 +1,6 @@
 import { carouselOffset, stepRing } from './carousel';
 import { HAND_MENU, LEVELS, PLAYER_COLORS, SONGS } from './config';
-import { nextCueSet } from './cueSet';
-import { CUE_STYLE_NAMES, nextCueStyle } from './cueStyle';
-import type { CueStyle } from './cueStyle';
+import { nextCueSetChoice } from './cueSet';
 import { find, isHandClick } from './dom';
 import type { Settings } from './settings';
 import type { Level, PlayerCount, PlayerIndex, SongLength } from './types';
@@ -55,16 +53,15 @@ export const MENU_HTML = `
   </p>`;
 
 /**
- * Five switches in a top corner of the menu: previews, hand control, recording, the cue style
- * and the cue set. They are outside the scaled content, a little in from the side: the camera
- * tracks a hand badly at the edge of its picture.
+ * Four switches in a top corner of the menu: previews, hand control, recording and the cue
+ * set. They are outside the scaled content, a little in from the side: the camera tracks a
+ * hand badly at the edge of its picture.
  */
 export const MENU_SWITCHES_HTML = `
   <div class="corner">
     <button type="button" id="previews-switch" data-hand="previews"></button>
     <button type="button" id="hands-switch" data-hand="hand-control"></button>
     <button type="button" id="record-switch" data-hand="record"></button>
-    <button type="button" id="cues-switch" data-hand="cues"></button>
     <button type="button" id="set-switch" data-hand="cue-set"></button>
   </div>`;
 
@@ -85,8 +82,6 @@ export interface MenuHandlers {
 export interface MenuControls {
   /** Chooses the next song (1) or the previous one (-1). After the last comes the first. */
   stepSong: (direction: 1 | -1) => void;
-  /** Names the cue style on its switch. */
-  showCueStyle: (style: CueStyle) => void;
   /** Stops what the menu listens to outside its own elements. Call it when the menu goes. */
   close: () => void;
 }
@@ -197,23 +192,15 @@ export function buildMenu(panel: HTMLElement, settings: Settings, handlers: Menu
   bindSwitch('#previews-switch', 'previews', 'Previews', ['🔊', '🔇']);
   bindSwitch('#hands-switch', 'handControl', 'Hand control', ['✋', '🚫']);
   bindSwitch('#record-switch', 'record', 'Recording', ['🔴', '⚪']);
-  // The cue style has more than two values: each choice steps to the next one.
-  const cuesSwitch = find(panel, '#cues-switch');
-  const showCueStyle = (style: CueStyle): void => {
-    cuesSwitch.textContent = `◎ Cues: ${CUE_STYLE_NAMES[style].toLowerCase()}`;
-  };
-  cuesSwitch.addEventListener('click', () => {
-    settings.cueStyle = nextCueStyle(settings.cueStyle);
-    onChange();
-  });
-  // The cue set steps through its values too. Only this switch changes it.
+  // The cue set has more than two values: each choice steps to the next one, from random
+  // through every set and back to random. Only this switch changes it.
   const setSwitch = find(panel, '#set-switch');
   const showCueSet = (): void => {
     setSwitch.textContent = `🎲 Set: ${settings.cueSet}`;
   };
   showCueSet();
   setSwitch.addEventListener('click', () => {
-    settings.cueSet = nextCueSet(settings.cueSet);
+    settings.cueSet = nextCueSetChoice(settings.cueSet);
     showCueSet();
     onChange();
   });
@@ -282,5 +269,5 @@ export function buildMenu(panel: HTMLElement, settings: Settings, handlers: Menu
   });
   find(panel, '#start').addEventListener('click', (event) => onStart(isHandClick(event)));
 
-  return { stepSong, showCueStyle, close: () => listening.abort() };
+  return { stepSong, close: () => listening.abort() };
 }

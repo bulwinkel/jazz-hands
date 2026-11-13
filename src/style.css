@@ -5,14 +5,14 @@
 
 /* The colours that repeat. Three values come from the game's code, which sets them on this
    element (see `GameUI` in ui.ts), so a change there reaches the page too:
-   - `--due-color`: the colour of a cue on its beat, and the game's yellow;
-   - `--grow-start`: the share of a cell where a block of the grow style starts;
+   - `--game-yellow`: the game's yellow, of the large buttons, the highlights and the hold mark;
+   - `--grow-start`: the share of a cell where the block of a cue starts;
    - `--veil`: the veil over the camera picture, which the game view copies. */
 :root {
   --text-soft: #cbd5e1;
   --text-faint: #94a3b8;
-  /* Text on the due colour. */
-  --on-due: #181627;
+  /* Text on the game's yellow. */
+  --on-yellow: #181627;
   --button: #252b49;
   /* The dark, see-through face of small buttons and choices. */
   --surface: #0b1024cc;
@@ -61,17 +61,17 @@ button:hover {
 }
 button:focus-visible,
 input:focus-visible + span {
-  outline: 4px solid var(--due-color);
+  outline: 4px solid var(--game-yellow);
   outline-offset: 5px;
 }
 /* The large yellow button of the menu and the results. */
 .primary {
-  background: var(--due-color);
-  border-color: var(--due-color);
-  color: var(--on-due);
+  background: var(--game-yellow);
+  border-color: var(--game-yellow);
+  color: var(--on-yellow);
   font-size: 28px;
   padding: 17px 52px;
-  box-shadow: 0 6px 35px color-mix(in srgb, var(--due-color) 12.5%, transparent);
+  box-shadow: 0 6px 35px color-mix(in srgb, var(--game-yellow) 12.5%, transparent);
 }
 
 /* The small dark buttons of the menu's corner, the ready check and the video player. */
@@ -92,7 +92,7 @@ h1 {
   letter-spacing: -2px;
 }
 h1 > span {
-  color: var(--due-color);
+  color: var(--game-yellow);
   margin-left: 18px;
 }
 .eyebrow {
@@ -117,7 +117,7 @@ legend {
 
 /* --- Choosing by hand ---
    A ring at each hand the game sees, above the panel. The item under a hand is outlined.
-   While a fist holds on it, the cue style's mark shows the hold. */
+   While a fist holds on it, a cue's timing mark shows the hold. */
 
 #cursors {
   position: absolute;
@@ -139,9 +139,9 @@ legend {
 }
 /* A fist fills the ring, so a player sees that the game reads the fist. */
 .hand-cursor.fist {
-  background: color-mix(in srgb, var(--due-color) 85%, transparent);
-  border-color: var(--due-color);
-  box-shadow: 0 0 18px var(--due-color);
+  background: color-mix(in srgb, var(--game-yellow) 85%, transparent);
+  border-color: var(--game-yellow);
+  box-shadow: 0 0 18px var(--game-yellow);
 }
 
 [data-hand] {
@@ -149,48 +149,37 @@ legend {
 }
 /* `.preview` keeps its own corners: it has one class too, and comes later in this file. */
 .hand-hover {
-  outline: 4px solid var(--due-color);
+  outline: 4px solid var(--game-yellow);
   outline-offset: 4px;
   border-radius: 16px;
 }
 /* The mark of the fist hold. It works as the timing mark of a cue in a round does (see
-   cueStyle.ts), so the menu teaches how a round reads: the item is chosen when the mark is
-   exactly the size of the item, and its colour has reached the due colour.
-   `--hold` goes from 0 to 1, and `--outset` is a length; ui.ts sets both. */
+   cueMark.ts), so the menu teaches how a round reads: a block starts small in the middle of
+   the item, and the item is chosen when the block fills it. Its colour fades from white to
+   the game's yellow, as a cue fades from white to the player's colour. `--hold` goes from 0
+   to 1; ui.ts sets it. */
 .hand-hover::after {
-  --mark: color-mix(in srgb, var(--due-color) calc(var(--hold, 0) * 100%), #ffffff);
+  --mark: color-mix(in srgb, var(--game-yellow) calc(var(--hold, 0) * 100%), #ffffff);
   content: "";
   position: absolute;
-  pointer-events: none;
-  /* Nothing shows under an open hand: the mark starts with the fist. */
-  opacity: clamp(0, calc(var(--hold, 0) * 1000), 1);
-}
-/* Shrink: an outline starts well outside the item and meets its edge. */
-body[data-cues="shrink"] .hand-hover::after {
-  inset: calc(var(--outset, 40px) * (var(--hold, 0) - 1));
-  border: 4px solid var(--mark);
-  border-radius: 18px;
-}
-/* Grow: a block starts small in the middle of the item and fills it. */
-body[data-cues="grow"] .hand-hover::after {
   inset: 0;
   border: 3px solid var(--mark);
   border-radius: 14px;
   background: color-mix(in srgb, var(--mark) 50%, transparent);
   transform: scale(calc(var(--grow-start) + (1 - var(--grow-start)) * var(--hold, 0)));
+  pointer-events: none;
+  /* Nothing shows under an open hand: the mark starts with the fist. */
+  opacity: clamp(0, calc(var(--hold, 0) * 1000), 1);
 }
-/* The yellow buttons do not show the yellow highlight. Their highlight is white. Their hold
-   mark is white in the shrink style and dark in the grow style. */
+/* The yellow buttons do not show the yellow highlight. Their highlight is white, and their
+   hold mark is dark. */
 .primary.hand-hover {
   outline: 6px solid #fff;
   box-shadow: 0 0 34px #ffffffb3;
 }
 .primary.hand-hover::after {
-  --mark: #ffffff;
-}
-body[data-cues="grow"] .primary.hand-hover::after {
-  border-color: var(--on-due);
-  background: color-mix(in srgb, var(--on-due) 40%, transparent);
+  border-color: var(--on-yellow);
+  background: color-mix(in srgb, var(--on-yellow) 40%, transparent);
 }
 
 /* --- The stage: the camera picture and the game's canvas --- */
@@ -309,7 +298,7 @@ canvas {
 .songs legend {
   margin: 0 auto 6px;
   font-size: 26px;
-  color: var(--due-color);
+  color: var(--game-yellow);
 }
 .songs legend small {
   margin-left: 14px;
@@ -387,8 +376,8 @@ canvas {
   opacity: 0.16;
 }
 .song-card input:checked + .cover {
-  border-color: var(--due-color);
-  box-shadow: 0 0 34px color-mix(in srgb, var(--due-color) 33.3%, transparent);
+  border-color: var(--game-yellow);
+  box-shadow: 0 0 34px color-mix(in srgb, var(--game-yellow) 33.3%, transparent);
 }
 .song-step {
   display: grid;
@@ -445,9 +434,9 @@ canvas {
   pointer-events: none;
 }
 .choices input:checked + span {
-  border-color: var(--due-color);
+  border-color: var(--game-yellow);
   background: #3a3413e6;
-  color: var(--due-color);
+  color: var(--game-yellow);
 }
 
 /* The player cards: each player's level, hand shapes and faces. */
@@ -537,10 +526,10 @@ canvas {
   accent-color: var(--player);
 }
 
-/* Five switches in a top corner of the menu: previews, hand control, recording, the cue
-   style and the cue set. They sit a little in from the side and from the top, because the
-   camera tracks a hand badly at the edge of its picture. They shrink with the menu content
-   (`--fit` is set in ui.ts). */
+/* Four switches in a top corner of the menu: previews, hand control, recording and the cue
+   set. They sit a little in from the side and from the top, because the camera tracks a hand
+   badly at the edge of its picture. They shrink with the menu content
+   (`--fit` is set in ui.ts). The results show the round's set in the same corner. */
 .corner {
   position: absolute;
   top: 4%;
@@ -577,7 +566,7 @@ canvas {
   border: 2px solid var(--player);
   background: #11172bbd;
   border-radius: 24px;
-  padding: 20px;
+  padding: 20px 20px 14px;
 }
 .result-players h2 {
   color: var(--player);
@@ -585,7 +574,7 @@ canvas {
   margin: 0 0 8px;
 }
 .stars {
-  color: var(--due-color);
+  color: var(--game-yellow);
   font-size: 42px;
   letter-spacing: 5px;
   white-space: nowrap;
@@ -596,7 +585,7 @@ canvas {
 .result-score {
   display: block;
   font-size: 54px;
-  margin: 4px 0 12px;
+  margin: 4px 0 6px;
 }
 .result-stats {
   display: flex;
@@ -615,18 +604,29 @@ canvas {
   display: flex;
   justify-content: space-around;
   font-size: 17px;
-  margin-top: 20px;
+  margin-top: 14px;
   color: #d1fae5;
 }
 .counts span:last-child {
   color: #fda4af;
+}
+/* The moves of the player's chart. The line keeps its height when it is empty, and the card
+   gave up the same height in its gaps and its padding, so the card is as tall as before it
+   had this line: the score and the buttons stay where they were. */
+.result-moves {
+  min-height: 20px;
+  margin: 6px 0 0;
+  font-size: 16px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--text-soft);
 }
 /* Each card's bar fills while its player holds a hand up to play again. */
 .replay-hold {
   height: 14px;
   background: var(--border-faint);
   border-radius: 20px;
-  margin-top: 18px;
+  margin-top: 10px;
   overflow: hidden;
 }
 .replay-hold span {
@@ -640,8 +640,15 @@ canvas {
   font-size: 22px;
   color: var(--text-soft);
 }
+/* The round's cue set, in the corner of the results (see `.corner`). Small print, as the hint
+   under the prompt to play again. */
+.result-set {
+  margin: 0;
+  font-size: 18px;
+  color: var(--text-soft);
+}
 .team strong {
-  color: var(--due-color);
+  color: var(--game-yellow);
   font-size: 32px;
   margin-left: 16px;
 }
@@ -789,7 +796,7 @@ canvas {
 .wait-bar span {
   display: block;
   height: 100%;
-  background: var(--due-color);
+  background: var(--game-yellow);
   transform: scaleX(var(--tail-share, 1));
   transform-origin: left;
 }
@@ -851,8 +858,8 @@ canvas {
   text-decoration: none;
 }
 .player-bar [aria-pressed="true"] {
-  border-color: var(--due-color);
-  color: var(--due-color);
+  border-color: var(--game-yellow);
+  color: var(--game-yellow);
 }
 
 /* --- Messages and controls over the game --- */
@@ -902,7 +909,7 @@ body[data-phase="countdown"] #message h1 {
   margin-bottom: 10px;
 }
 
-/* A short note at the top of the screen, for example the name of the cue style after the V key. */
+/* A short note at the top of the screen, for example that hand control stopped. */
 #toast {
   position: absolute;
   z-index: 7;
@@ -911,8 +918,8 @@ body[data-phase="countdown"] #message h1 {
   padding: 10px 22px;
   border-radius: 14px;
   background: #0b1024e6;
-  border: 2px solid var(--due-color);
-  color: var(--due-color);
+  border: 2px solid var(--game-yellow);
+  color: var(--game-yellow);
   font-size: 24px;
   font-weight: 800;
   transform: translateX(-50%);
@@ -925,7 +932,7 @@ body[data-phase="countdown"] #message h1 {
   top: 65%;
   left: 50%;
   transform: translateX(-50%);
-  background: var(--due-color);
+  background: var(--game-yellow);
   color: #161629;
   font-size: 32px;
 }

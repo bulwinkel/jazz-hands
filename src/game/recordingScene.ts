@@ -1,7 +1,7 @@
 import { VEIL } from './colors';
 import { PLAYER_COLORS } from './config';
 import type { PlayerRun } from './player';
-import { playerHeading, RESULTS_HEADING } from './resultText';
+import { cueSetLine, movesLine, playerHeading, RESULTS_HEADING } from './resultText';
 import { accuracy, stars } from './scoring';
 import type { Rect } from './types';
 
@@ -12,17 +12,31 @@ export interface ResultLine {
   stars: number;
   score: number;
   accuracyPercent: number;
+  /** The moves of the player's chart, as on the results screen. Null for a chart with no moves. */
+  moves: string | null;
 }
 
-/** Each player's result, as the end card of the game view shows it. */
-export function resultLines(players: readonly PlayerRun[]): ResultLine[] {
-  return players.map((player) => ({
+/** The end card of the game view: the round's cue set and each player's result. */
+export interface EndCard {
+  /** The set, as on the results screen. Null for a round with no set. */
+  cueSet: string | null;
+  players: readonly ResultLine[];
+}
+
+/** The end card of a round that played `cueSet`, or no set (null). */
+export function endCard(players: readonly PlayerRun[], cueSet: number | null): EndCard {
+  return { cueSet: cueSetLine(cueSet), players: players.map(resultLine) };
+}
+
+function resultLine(player: PlayerRun): ResultLine {
+  return {
     title: playerHeading(player),
     color: PLAYER_COLORS[player.index],
     stars: stars(player.score),
     score: Math.round(player.score.score),
     accuracyPercent: Math.round(accuracy(player.score) * 100),
-  }));
+    moves: movesLine(player.moves),
+  };
 }
 
 /** What the game view shows in one frame. */
@@ -35,12 +49,14 @@ export interface RecordingScene {
   frame: Rect;
   /** The large message on screen, such as the countdown. */
   message?: { title: string; detail: string };
-  /** Each player's result, once the round is over. */
-  results?: readonly ResultLine[];
+  /** The end card, once the round is over. */
+  results?: EndCard;
 }
 
 const BACKGROUND = '#080d20';
 const RESULT_VEIL = 'rgba(8, 12, 32, 0.84)';
+/** The colour of the small lines of the end card, as the small print of the results screen. */
+const SMALL_PRINT = '#cbd5e1';
 const FONT = 'system-ui, sans-serif';
 
 /** Fills the game view with its background colour, as before the first frame. */
@@ -82,12 +98,18 @@ function drawMessage(ctx: CanvasRenderingContext2D, title: string, detail: strin
   if (detail) text(ctx, detail, width / 2, y + titleSize * 0.62 + height * 0.04, height * 0.045, '#fef08a');
 }
 
-/** The end card: a heading and one column for each player. */
-function drawResults(ctx: CanvasRenderingContext2D, results: readonly ResultLine[]): void {
+/**
+ * The end card: a heading, one column for each player, and the round's set under the columns.
+ * The moves and the set have the room that the card left free, under the accuracy and under
+ * the columns, so the rest of the card stays where it was.
+ */
+function drawResults(ctx: CanvasRenderingContext2D, card: EndCard): void {
   const { height, width } = ctx.canvas;
+  const results = card.players;
   ctx.fillStyle = RESULT_VEIL;
   ctx.fillRect(0, 0, width, height);
   text(ctx, RESULTS_HEADING, width / 2, height * 0.17, height * 0.1, '#ffffff');
+  if (card.cueSet) text(ctx, card.cueSet, width / 2, height * 0.88, height * 0.04, SMALL_PRINT);
 
   const columnWidth = Math.min(width * 0.36, (width * 0.84) / results.length);
   const gap = width * 0.04;
@@ -106,7 +128,8 @@ function drawResults(ctx: CanvasRenderingContext2D, results: readonly ResultLine
     text(ctx, result.title, centre, height * 0.37, height * 0.042, result.color);
     text(ctx, '★'.repeat(result.stars) + '☆'.repeat(5 - result.stars), centre, height * 0.47, height * 0.07, '#fde047');
     text(ctx, result.score.toLocaleString(), centre, height * 0.6, height * 0.1, '#ffffff');
-    text(ctx, `${result.accuracyPercent}% accuracy`, centre, height * 0.72, height * 0.04, '#cbd5e1');
+    text(ctx, `${result.accuracyPercent}% accuracy`, centre, height * 0.72, height * 0.04, SMALL_PRINT);
+    if (result.moves) text(ctx, result.moves, centre, height * 0.772, height * 0.03, SMALL_PRINT);
   });
 }
 

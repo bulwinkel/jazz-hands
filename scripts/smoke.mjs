@@ -20,7 +20,10 @@
 // The game needs a dev server, for example: npx vite --port 5174 --strictPort
 //
 // Example: a simulated player on level 3, one player, starting 45 s into the song:
-//   node scripts/smoke.mjs "http://localhost:5174/?input=bot&autostart=1&players=1&p0=3&start=45"
+//   node scripts/smoke.mjs "http://localhost:5174/?input=bot&autostart=1&players=1&p0=3&start=45&set=1"
+//
+// The game picks a cue set at random for each round unless the URL names one. Give `set=1`, or
+// a `seed=`, when a check needs the same chart on every run.
 //
 // Prints the phases the game went through, the final `window.__dance` state and any errors of
 // the page and its workers.

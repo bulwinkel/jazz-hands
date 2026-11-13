@@ -41,6 +41,7 @@ function newPlayer(): PlayerRun {
     grid,
     reachSamples: [],
     cues: [],
+    moves: { point: 0, circle: 0 },
     states: [],
     observations: [],
     faceCues: [],
@@ -102,7 +103,18 @@ function playFaceCues(cues: FaceCue[], faceAt: (timeSec: number) => TrackedFace 
 function report(players: PlayerRun[], stats = newTrackingStats(0), faceDelegate: string | null = null) {
   const context: RunContext = {
     song: { id: 'synthetic', title: 'Test', length: 'short', startSec: 0, endSec: 2 },
-    settings: { playerCount: 1, input: 'bot', seed: 1, cueSet: 1, inputLatencyMs: 100, avOffsetMs: 0, audioOutputLatencyMs: 20, recording: false },
+    settings: {
+      playerCount: 1,
+      input: 'bot',
+      seed: 1,
+      cueSet: 1,
+      cueSetRandom: true,
+      moveShare: 0.35,
+      inputLatencyMs: 100,
+      avOffsetMs: 0,
+      audioOutputLatencyMs: 20,
+      recording: false,
+    },
     trackerMode: 'hands-full',
     trackerDelegate: 'GPU',
     trackerFaceDelegate: faceDelegate,
@@ -201,8 +213,13 @@ describe('run report', () => {
     expect(run.tracking).toMatchObject({ framesPerSec: 20, drawnPerSec: 60 });
   });
 
-  it('names the chart seed and the cue set it came from', () => {
-    expect(report([]).settings).toMatchObject({ seed: 1, cueSet: 1 });
+  it('names the chart seed, the cue set it came from, whether that set was random, and the share of moves', () => {
+    expect(report([]).settings).toMatchObject({ seed: 1, cueSet: 1, cueSetRandom: true, moveShare: 0.35 });
+  });
+
+  it("counts each player's moves by name", () => {
+    const player: PlayerRun = { ...newPlayer(), moves: { point: 2, circle: 1 } };
+    expect(report([player]).players[0].moves).toEqual({ point: 2, circle: 1 });
   });
 
   it('divides the frames by the time played, without the pauses', () => {

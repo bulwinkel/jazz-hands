@@ -159,7 +159,9 @@ function frameAspect(path) {
 // --- One run of the game ---
 
 async function recordRun(thread, label) {
-  const params = new URLSearchParams({ input: 'camera', autostart: '1', framelog: '1', previews: '0', hands: '0', players, thread });
+  // Both runs play cue set 1. The game picks a set at random by default, and with --faces the
+  // face models run only around the face cues of the set's chart.
+  const params = new URLSearchParams({ input: 'camera', autostart: '1', framelog: '1', previews: '0', hands: '0', set: '1', players, thread });
   if (tracker) params.set('tracker', tracker);
   if (faces) for (const player of ['0', '1']) params.set(`faces${player}`, '1');
   const url = `${gameUrl}?${params}`;

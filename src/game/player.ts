@@ -3,6 +3,8 @@ import { LEVELS } from './config';
 import { defaultGrid } from './geometry';
 import type { FaceCueState } from './faceJudgment';
 import type { CueState } from './judgment';
+import { noMoves } from './moves';
+import type { MoveName } from './moves';
 import { freshScore } from './scoring';
 import type { Settings } from './settings';
 import type { Cue, FaceCue, Level, PlayerIndex, Point, Rect, Score } from './types';
@@ -20,6 +22,8 @@ export interface PlayerRun {
   /** Hand positions seen during the reach fit. */
   reachSamples: Point[];
   cues: Cue[];
+  /** How many moves of each name `cues` holds. For the run report. */
+  moves: Record<MoveName, number>;
   /** Judging state of each cue, parallel to `cues`. */
   states: CueState[];
   /** What the tracker showed around each cue, parallel to `cues`. For the run report. */
@@ -49,6 +53,7 @@ export function createPlayers(settings: Settings): PlayerRun[] {
     grid: defaultGrid(index, settings.playerCount),
     reachSamples: [],
     cues: [],
+    moves: noMoves(),
     states: [],
     observations: [],
     faceCues: [],

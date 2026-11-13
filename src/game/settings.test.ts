@@ -23,7 +23,6 @@ describe('kept settings', () => {
       previews: false,
       handControl: false,
       record: true,
-      cueStyle: 'grow',
       cueSet: 4,
     };
     expect(parseSettings(kept, '').settings).toEqual(kept);
@@ -66,6 +65,12 @@ describe('kept settings', () => {
     expect(options.settings).toMatchObject({ playerCount: 2, levels: [2, 3], shapes: [false, false], length: 'full' });
     expect(options.settings.inputLatencyMs).toBe(140);
     expect(options.tracker).toBeUndefined();
+  });
+
+  it('ignore the cue style that older versions kept, and its URL parameter', () => {
+    const { settings } = parseSettings({ cueStyle: 'grow' }, '?cues=shrink');
+    expect(settings).toEqual(defaultSettings());
+    expect(settings).not.toHaveProperty('cueStyle');
   });
 
   it('ignore invalid values field by field', () => {
@@ -118,14 +123,6 @@ describe('URL parameters', () => {
     expect(parseSettings({ record: true }, '?record=0').settings.record).toBe(false);
   });
 
-  it('keep the shrink cue style until a player picks another', () => {
-    expect(parseSettings(null, '').settings.cueStyle).toBe('shrink');
-    expect(parseSettings({ cueStyle: 'huge' }, '').settings.cueStyle).toBe('shrink');
-    expect(parseSettings(null, '?cues=grow').settings.cueStyle).toBe('grow');
-    expect(parseSettings({ cueStyle: 'grow' }, '?cues=shrink').settings.cueStyle).toBe('shrink');
-    expect(parseSettings({ cueStyle: 'grow' }, '?cues=other').settings.cueStyle).toBe('grow');
-  });
-
   it('track on the default thread unless the URL names one', () => {
     expect(parseSettings(null, '').thread).toBe(DEFAULT_TRACKING_THREAD);
     expect(parseSettings(null, '?thread=main').thread).toBe('main');
@@ -138,14 +135,32 @@ describe('URL parameters', () => {
     expect(parseSettings(null, '?framelog=1').frameLog).toBe(true);
   });
 
-  it('keep cue set 1 until a player picks another, and take a set from 1 to 5', () => {
-    expect(parseSettings(null, '').settings.cueSet).toBe(1);
-    expect(parseSettings({ cueSet: 6 }, '').settings.cueSet).toBe(1);
-    expect(parseSettings({ cueSet: '2' }, '').settings.cueSet).toBe(1);
-    expect(parseSettings(null, '?set=3').settings.cueSet).toBe(3);
-    expect(parseSettings({ cueSet: 5 }, '?set=1').settings.cueSet).toBe(1);
-    expect(parseSettings({ cueSet: 5 }, '?set=0').settings.cueSet).toBe(5);
-    expect(parseSettings({ cueSet: 2 }, '?set=2.5').settings.cueSet).toBe(2);
+  it('pick the cue set at random until a player picks a set', () => {
+    expect(parseSettings(null, '').settings.cueSet).toBe('random');
+  });
+
+  it('keep a kept cue set from 1 to 6, or random, and ignore any other value', () => {
+    const kept = (cueSet: unknown) => parseSettings({ cueSet }, '').settings.cueSet;
+    expect([1, 4, 6, 'random'].map(kept)).toEqual([1, 4, 6, 'random']);
+    expect([0, 7, 2.5, '2', 'Random', null].map(kept)).toEqual(Array(6).fill('random'));
+  });
+
+  it('take a cue set from 1 to 6, or random, from the URL, and ignore any other value', () => {
+    const fromUrl = (query: string) => parseSettings({ cueSet: 5 }, query).settings.cueSet;
+    expect(['?set=1', '?set=3', '?set=6', '?set=random'].map(fromUrl)).toEqual([1, 3, 6, 'random']);
+    expect(parseSettings({ cueSet: 'random' }, '?set=2').settings.cueSet).toBe(2);
+    const ignored = ['', '?set=', '?set=0', '?set=7', '?set=2.5', '?set=Random', '?set=any'];
+    expect(ignored.map(fromUrl)).toEqual(Array(ignored.length).fill(5));
+  });
+
+  it('give a share of moves only when the URL names one, from 0 to 1', () => {
+    expect(parseSettings(null, '').moves).toBeUndefined();
+    expect(parseSettings(null, '?seed=42').moves).toBeUndefined();
+    expect(parseSettings(null, '?moves=0.35').moves).toBe(0.35);
+    expect(parseSettings(null, '?seed=42&moves=1').moves).toBe(1);
+    expect(parseSettings(null, '?moves=2').moves).toBe(1);
+    expect(parseSettings(null, '?moves=-1').moves).toBe(0);
+    expect(parseSettings(null, '?moves=lots').moves).toBeUndefined();
   });
 
   it('give a chart seed only when the URL names one, so the cue set picks it otherwise', () => {

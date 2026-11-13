@@ -133,6 +133,16 @@ export const SONGS: readonly SongEntry[] = [
     title: 'Peace, Be Still',
     cover: '/songs/peace-be-still.jpg',
   },
+  {
+    manifest: '/songs/zaqueo.json',
+    title: 'Zaqueo',
+    cover: '/songs/zaqueo.jpg',
+  },
+  {
+    manifest: '/songs/for-such-a-time-as-this.json',
+    title: 'For Such a Time as This',
+    cover: '/songs/for-such-a-time-as-this.jpg',
+  },
 ];
 
 /** The part of a song that plays in the menu while the song is chosen. */
@@ -153,27 +163,32 @@ export const PREVIEW = {
 } as const;
 
 /**
- * The chart is the same every run unless the URL gives another seed.
- * This seed was picked from 400 candidates: its charts for both songs, at levels 3 and 4,
- * come closest to the shares of slides and doubles that the level rules ask for.
- * A random seed can be off by 15 points, which makes a level feel unlike its rules.
+ * The seed that the candidate seeds of the cue sets count from, and the seed of the tests.
+ * Before cue sets, every round played the chart from this seed. It was picked from 400
+ * candidates: its charts for both songs, at levels 3 and 4, come closest to the shares of
+ * slides and doubles that the level rules ask for. A random seed can be off by 15 points,
+ * which makes a level feel unlike its rules.
  */
 export const DEFAULT_SEED = 20261315;
 
 /**
- * Cue sets give one song other charts at the same difficulty. Set 1 is the chart from
- * DEFAULT_SEED. Every other set tries a few candidate seeds and keeps the one whose charts come
- * closest to the typical mix of the level on this song: its slides, doubles, fast slides,
- * off-beat taps and number of cues. See cueSet.ts.
+ * Cue sets give one song other charts at the same difficulty, and differ by their share of
+ * moves. Every set tries a few candidate seeds and keeps the one whose charts come closest to
+ * the typical mix of the level on this song: its slides, doubles, fast slides, off-beat taps
+ * and number of cues. See cueSet.ts.
  */
 export const CUE_SETS = {
-  /** The sets are numbered from 1 to this count. */
-  count: 5,
   /**
-   * Seeds that each set from 2 on tries. The candidates of all these sets together are the
-   * pool that gives the typical mix, so a round start makes (count − 1) × candidates charts
-   * per player: about 0.1 s for two players and the longest song. More candidates find a
-   * closer match, and take longer.
+   * The share of phrases in busy music that hold a move, for each set: set k plays with entry
+   * k − 1. The sets are numbered from 1 to the length of this list. Two sets for each share
+   * let players compare two charts of each kind and rate the shares.
+   */
+  moveShares: [0, 0, 0.35, 0.35, 0.7, 0.7],
+  /**
+   * Seeds that each set tries. The candidates of all sets together are the pool that gives
+   * the typical mix, so a round start makes (sets × candidates) charts per player: about
+   * 0.15 s for two players and the longest song. More candidates find a closer match, and
+   * take longer.
    */
   candidates: 24,
   /**
@@ -337,6 +352,20 @@ export const CHART = {
   shapePhraseSec: 4,
 } as const;
 
+/**
+ * Disco moves: named patterns of cues that take the place of the random cues for part of a
+ * phrase. The moves themselves are in moves.ts.
+ */
+export const MOVES = {
+  /** A phrase is this many bars. A move starts on the first beat of a phrase and ends inside it. */
+  phraseBars: 4,
+  /**
+   * At a level with slides, where the phrase has room for a form of 8 intervals: the share of
+   * phrases whose move is made of slides. The other phrases get the move as taps.
+   */
+  slideFormShare: 0.5,
+} as const;
+
 /** Face cues, for a player who switches faces on. They do not depend on the level. */
 export const FACES = {
   /**
@@ -419,11 +448,9 @@ export const TIMING = {
   staleFrameMs: 500,
 } as const;
 
-/** An outline of the shrink cue style starts this many times larger than its cell. See cueStyle.ts. */
-export const SHRINK_START_SCALE = 2.2;
 /**
- * A block of the grow cue style starts at this share of its cell. Small, but large enough to
- * see. See cueStyle.ts.
+ * The timing mark of a cue, a block, starts at this share of its cell. Small, but large
+ * enough to see. See cueMark.ts.
  */
 export const GROW_START_SCALE = 0.15;
 
@@ -460,7 +487,7 @@ export const RECORDING = {
 
 /** Notes at the top of the screen. */
 export const TOAST = {
-  /** A short note, such as the name of the cue style after the V key, stays this long. */
+  /** A short note stays this long, when the code that shows it gives no time of its own. */
   shortMs: 1600,
   /** A note to read from the dance spot, such as "hand control stopped", stays this long. */
   longMs: 6000,
