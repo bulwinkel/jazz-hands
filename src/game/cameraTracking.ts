@@ -91,6 +91,16 @@ export class PageTracking implements CameraTracking {
   }
 }
 
+/** A camera frame offered to the worker: what it takes to send the frame now or a moment later. */
+interface CameraOffer {
+  video: HTMLVideoElement;
+  /** The page's time when the frame came. It stays the frame's time, also when the frame goes later. */
+  timeMs: number;
+  faceRegions: () => FaceRegions;
+  onFrame: (frame: TrackingFrame) => void;
+  onError: (error: unknown) => void;
+}
+
 /**
  * Trackers in tracking workers, one worker per tracker. Each camera frame goes to the worker of
  * the tracker in use as a VideoFrame, which costs the page a fraction of a millisecond, and the
@@ -100,7 +110,7 @@ export class WorkerTracking implements CameraTracking {
   readonly thread = 'worker';
   private readonly trackers: TrackerSwitch<WorkerTracker>;
   /** One rule for every tracker: at most one frame is out, whichever worker it is in. */
-  private readonly handOver = new FrameHandOver<WorkerTracker>();
+  private readonly handOver = new FrameHandOver<WorkerTracker, CameraOffer>();
 
   /** Throws when this browser cannot make the worker. */
   constructor(mode: TrackerMode, faces: boolean) {
@@ -125,22 +135,8 @@ export class WorkerTracking implements CameraTracking {
     onFrame: (frame: TrackingFrame) => void,
     onError: (error: unknown) => void,
   ): void {
-    const tracker = this.trackers.current;
-    const number = this.handOver.send(tracker);
-    if (number === null) return; // The worker is busy: this camera frame is dropped.
     // The frame's time is the page's: the worker's clock has another origin.
-    const timeMs = performance.now();
-    try {
-      const regions = faceRegions();
-      const picture = new VideoFrame(video);
-      tracker.track(picture, timeMs, regions).then(
-        (frame) => this.answer(number, onError, () => onFrame({ ...frame, timeMs })),
-        (error: unknown) => this.answer(number, onError, () => onError(error)),
-      );
-    } catch (error) {
-      this.handOver.settle(number, tracker);
-      throw error;
-    }
+    this.send({ video, timeMs: performance.now(), faceRegions, onFrame, onError });
   }
 
   dispose(): void {
@@ -148,16 +144,43 @@ export class WorkerTracking implements CameraTracking {
     this.trackers.dispose();
   }
 
-  /**
-   * Passes an answer of the worker on, when it still counts. An error in the game's handling
-   * of a frame stops tracking, the same as on the main thread.
-   */
-  private answer(number: number, onError: (error: unknown) => void, pass: () => void): void {
-    if (!this.handOver.settle(number, this.trackers.current)) return;
+  /** Sends a camera frame to the tracker in use. While the worker is busy, the hand-over holds it. */
+  private send(offer: CameraOffer): void {
+    const tracker = this.trackers.current;
+    const number = this.handOver.offer(tracker, offer);
+    if (number === null) return;
     try {
-      pass();
+      const regions = offer.faceRegions();
+      // The video still shows the offered frame: the frame after it would have been offered in its place.
+      const picture = new VideoFrame(offer.video);
+      tracker.track(picture, offer.timeMs, regions).then(
+        (frame) => this.answer(number, offer, () => offer.onFrame({ ...frame, timeMs: offer.timeMs })),
+        (error: unknown) => this.answer(number, offer, () => offer.onError(error)),
+      );
     } catch (error) {
-      onError(error);
+      this.handOver.settle(number, tracker);
+      throw error;
+    }
+  }
+
+  /**
+   * Passes an answer of the worker on, when it still counts, and sends the frame that came
+   * meanwhile. An error in the game's handling of a frame stops tracking, as on the main thread.
+   */
+  private answer(number: number, offer: CameraOffer, pass: () => void): void {
+    const { counts, next } = this.handOver.settle(number, this.trackers.current);
+    if (counts) {
+      try {
+        pass();
+      } catch (error) {
+        offer.onError(error);
+      }
+    }
+    if (!next) return;
+    try {
+      this.send(next);
+    } catch (error) {
+      next.onError(error);
     }
   }
 }

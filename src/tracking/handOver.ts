@@ -1,17 +1,23 @@
 /**
- * The rule for handing camera frames to the tracking worker.
+ * The rule for handing camera frames to a tracking worker.
  *
- * - At most one frame is out at a time. A camera frame that comes while one is out is dropped,
- *   never queued: a queue would only add delay, and the game wants the newest hands.
+ * - At most one frame is out at a time.
+ * - A camera frame that comes while one is out is held, and a newer one takes its place: only
+ *   the newest frame ever waits, so nothing queues behind it and no delay builds up. When the
+ *   answer comes, the held frame goes out at once. Without it, the worker would sit idle until
+ *   the next camera frame: with two hands tracked, that cost a third of the tracked frames.
  * - An answer counts only when the tracker that made it is still the tracker in use. After a
  *   switch, the game gets frames from the new tracker only, as it does on the main thread.
- * - After `close`, no frame goes out and no answer counts.
+ * - After `close`, no frame goes out, none is held, and no answer counts.
  *
- * `Tracker` is whatever identifies a tracker. The rule only compares trackers.
+ * `Tracker` is whatever identifies a tracker; the rule only compares trackers. `Frame` is
+ * whatever the caller needs to send a camera frame later.
  */
-export class FrameHandOver<Tracker> {
+export class FrameHandOver<Tracker, Frame> {
   /** The frame that is out: its number, and the tracker it went to. */
   private out?: { number: number; tracker: Tracker };
+  /** The newest camera frame that came while one was out. */
+  private held?: Frame;
   private lastNumber = 0;
   private closed = false;
 
@@ -21,12 +27,16 @@ export class FrameHandOver<Tracker> {
   }
 
   /**
-   * Lets a camera frame go to `tracker`. Returns the frame's number, which its answer must
-   * give back. Returns null when the frame must be dropped: one is out already, or the
-   * hand-over is closed.
+   * A camera frame came for `tracker`. Returns the number to send it under now, which its
+   * answer must give back. Returns null when it must not go now: it is held while a frame is
+   * out, and dropped after `close`.
    */
-  send(tracker: Tracker): number | null {
-    if (this.closed || this.out) return null;
+  offer(tracker: Tracker, frame: Frame): number | null {
+    if (this.closed) return null;
+    if (this.out) {
+      this.held = frame;
+      return null;
+    }
     this.lastNumber++;
     this.out = { number: this.lastNumber, tracker };
     return this.lastNumber;
@@ -34,19 +44,22 @@ export class FrameHandOver<Tracker> {
 
   /**
    * The answer to frame `number` came: a result or a failure. It frees the way for the next
-   * frame. Returns true when the game must get the answer: the hand-over is open, and the
-   * tracker of the frame is `inUse`.
+   * frame. `counts` is true when the game must get the answer: the hand-over is open, and the
+   * tracker of the frame is `inUse`. `next` is the held frame, to offer at once.
    */
-  settle(number: number, inUse: Tracker): boolean {
-    if (this.out?.number !== number) return false;
+  settle(number: number, inUse: Tracker): { counts: boolean; next?: Frame } {
+    if (this.out?.number !== number) return { counts: false };
     const { tracker } = this.out;
     this.out = undefined;
-    return !this.closed && tracker === inUse;
+    const next = this.held;
+    this.held = undefined;
+    return { counts: !this.closed && tracker === inUse, next };
   }
 
-  /** No frame goes out after this, and no answer counts. */
+  /** No frame goes out after this, none is held, and no answer counts. */
   close(): void {
     this.closed = true;
     this.out = undefined;
+    this.held = undefined;
   }
 }

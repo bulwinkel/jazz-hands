@@ -1,94 +1,107 @@
 import { describe, expect, it } from 'vitest';
 import { FrameHandOver } from './handOver';
 
+/** Camera frames by their number, for the test to follow. */
+const handOver = () => new FrameHandOver<string, number>();
+
 describe('handing camera frames to the worker', () => {
   it('sends a frame when none is out', () => {
-    const handOver = new FrameHandOver<string>();
-    expect(handOver.send('hands-full')).toBe(1);
-    expect(handOver.busy).toBe(true);
+    const frames = handOver();
+    expect(frames.offer('hands-full', 1)).toBe(1);
+    expect(frames.busy).toBe(true);
   });
 
-  it('drops every frame that comes while one is out', () => {
-    const handOver = new FrameHandOver<string>();
-    handOver.send('hands-full');
-    expect(handOver.send('hands-full')).toBeNull();
-    expect(handOver.send('hands-full')).toBeNull();
+  it('holds a frame that comes while one is out, and sends nothing more', () => {
+    const frames = handOver();
+    frames.offer('hands-full', 1);
+    expect(frames.offer('hands-full', 2)).toBeNull();
+    expect(frames.busy).toBe(true);
   });
 
-  it('never queues a dropped frame: after the answer, only the next new frame goes out', () => {
-    const handOver = new FrameHandOver<string>();
-    const first = handOver.send('hands-full') as number;
-    handOver.send('hands-full');
-    handOver.send('hands-full');
-    handOver.settle(first, 'hands-full');
-    expect(handOver.busy).toBe(false);
-    expect(handOver.send('hands-full')).toBe(first + 1);
+  it('holds only the newest frame: an older held frame is dropped, never queued', () => {
+    const frames = handOver();
+    const first = frames.offer('hands-full', 1) as number;
+    frames.offer('hands-full', 2);
+    frames.offer('hands-full', 3);
+    frames.offer('hands-full', 4);
+    expect(frames.settle(first, 'hands-full').next).toBe(4);
   });
 
-  it('passes on the answer from the tracker in use', () => {
-    const handOver = new FrameHandOver<string>();
-    const frame = handOver.send('hands-full') as number;
-    expect(handOver.settle(frame, 'hands-full')).toBe(true);
+  it('frees the way for the held frame once the answer is in', () => {
+    const frames = handOver();
+    const first = frames.offer('hands-full', 1) as number;
+    frames.offer('hands-full', 2);
+    const { next } = frames.settle(first, 'hands-full');
+    expect(frames.busy).toBe(false);
+    expect(frames.offer('hands-full', next as number)).toBe(first + 1);
+  });
+
+  it('has no next frame when none came while one was out', () => {
+    const frames = handOver();
+    const first = frames.offer('hands-full', 1) as number;
+    expect(frames.settle(first, 'hands-full')).toEqual({ counts: true, next: undefined });
   });
 
   it('passes on a failure the same way as a result', () => {
     // The caller settles a failure like a result, and reports it only when it counts.
-    const handOver = new FrameHandOver<string>();
-    const frame = handOver.send('hands-split') as number;
-    expect(handOver.settle(frame, 'hands-split')).toBe(true);
-    expect(handOver.busy).toBe(false);
+    const frames = handOver();
+    const number = frames.offer('hands-split', 1) as number;
+    expect(frames.settle(number, 'hands-split').counts).toBe(true);
+    expect(frames.busy).toBe(false);
   });
 });
 
 describe('the latest tracker wins', () => {
   it('drops the answer of a tracker that was switched away while its frame was out', () => {
-    const handOver = new FrameHandOver<string>();
-    const frame = handOver.send('hands-full') as number;
-    expect(handOver.settle(frame, 'hands-split')).toBe(false);
+    const frames = handOver();
+    const number = frames.offer('hands-full', 1) as number;
+    expect(frames.settle(number, 'hands-split').counts).toBe(false);
   });
 
-  it('frees the way for the new tracker once the old answer is in', () => {
-    const handOver = new FrameHandOver<string>();
-    const old = handOver.send('hands-full') as number;
-    expect(handOver.send('hands-split')).toBeNull();
-    handOver.settle(old, 'hands-split');
-    const next = handOver.send('hands-split') as number;
-    expect(handOver.settle(next, 'hands-split')).toBe(true);
+  it('still hands over the held frame, for the new tracker', () => {
+    const frames = handOver();
+    const old = frames.offer('hands-full', 1) as number;
+    frames.offer('hands-split', 2);
+    const { next } = frames.settle(old, 'hands-split');
+    const number = frames.offer('hands-split', next as number) as number;
+    expect(frames.settle(number, 'hands-split').counts).toBe(true);
   });
 
   it('compares trackers, not modes: a new tracker of the same mode is another tracker', () => {
     const withoutFaces = { mode: 'hands-full' };
     const withFaces = { mode: 'hands-full' };
-    const handOver = new FrameHandOver<object>();
-    const frame = handOver.send(withoutFaces) as number;
-    expect(handOver.settle(frame, withFaces)).toBe(false);
+    const frames = new FrameHandOver<object, number>();
+    const number = frames.offer(withoutFaces, 1) as number;
+    expect(frames.settle(number, withFaces).counts).toBe(false);
   });
 });
 
 describe('closing the hand-over', () => {
-  it('drops the answer of the frame that was out', () => {
-    const handOver = new FrameHandOver<string>();
-    const frame = handOver.send('hands-full') as number;
-    handOver.close();
-    expect(handOver.settle(frame, 'hands-full')).toBe(false);
+  it('drops the answer of the frame that was out, and the held frame', () => {
+    const frames = handOver();
+    const number = frames.offer('hands-full', 1) as number;
+    frames.offer('hands-full', 2);
+    frames.close();
+    expect(frames.settle(number, 'hands-full')).toEqual({ counts: false });
   });
 
-  it('sends no frame after it is closed', () => {
-    const handOver = new FrameHandOver<string>();
-    handOver.close();
-    expect(handOver.send('hands-full')).toBeNull();
-    expect(handOver.busy).toBe(false);
+  it('sends and holds no frame after it is closed', () => {
+    const frames = handOver();
+    frames.close();
+    expect(frames.offer('hands-full', 1)).toBeNull();
+    expect(frames.busy).toBe(false);
   });
 });
 
 describe('answers that do not belong to the frame that is out', () => {
   it('ignores a second answer to the same frame', () => {
-    const handOver = new FrameHandOver<string>();
-    const first = handOver.send('hands-full') as number;
-    handOver.settle(first, 'hands-full');
-    const second = handOver.send('hands-full') as number;
-    expect(handOver.settle(first, 'hands-full')).toBe(false);
-    expect(handOver.busy).toBe(true);
-    expect(handOver.settle(second, 'hands-full')).toBe(true);
+    const frames = handOver();
+    const first = frames.offer('hands-full', 1) as number;
+    frames.settle(first, 'hands-full');
+    const second = frames.offer('hands-full', 2) as number;
+    frames.offer('hands-full', 3);
+    expect(frames.settle(first, 'hands-full')).toEqual({ counts: false });
+    expect(frames.busy).toBe(true);
+    expect(frames.settle(second, 'hands-full')).toEqual({ counts: true, next: 3 });
   });
 });
