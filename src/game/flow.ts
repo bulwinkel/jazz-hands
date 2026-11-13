@@ -885,13 +885,16 @@ export class DanceGame {
       },
       this.videoAspect(),
     );
-    this.recordings.drawFrame({
-      video: this.inputs.input?.video,
-      overlay: this.ui.canvas,
-      frame: this.renderer.framePixels,
-      message: this.ui.message,
-      results: this.phase === 'results' ? resultLines(this.players) : undefined,
-    });
+    // The scene of the game view is built only while a recording needs it.
+    if (this.recordings.active) {
+      this.recordings.drawFrame({
+        video: this.inputs.input?.video,
+        overlay: this.ui.canvas,
+        frame: this.renderer.framePixels,
+        message: this.ui.message,
+        results: this.phase === 'results' ? resultLines(this.players) : undefined,
+      });
+    }
     this.updateDebug();
     this.expose();
     this.animationId = requestAnimationFrame(this.render);
