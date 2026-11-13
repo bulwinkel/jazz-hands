@@ -121,7 +121,7 @@ A song with no picture shows its title on a plain cover. To give it a picture:
 
 ### Songs that needed a correction by hand
 
-Four songs did not come out right from the tool alone. These command options make their manifests again.
+Five songs did not come out right from the tool alone. These command options make their manifests again.
 
 | Song | Command options | Why |
 | --- | --- | --- |
@@ -130,6 +130,7 @@ Four songs did not come out right from the tool alone. These command options mak
 
 | All Aboard | `--first-downbeat 2` | The tool chose beat 3 with low confidence, from the level rises alone. The chords and the bass change on beat 2, and with bars from beat 2 the kick falls on beats 1 and 3 and the snare on 2 and 4. |
 | Nebuchadnezzar's Dream | `--first-downbeat 1` | The tool chose beat 0 with low confidence, because the music starts there. The chords and the bass change on beat 1, and with bars from beat 1 the kick falls on beat 1 and on the "and" of 3, as in the other songs of this style. |
+| Hey-Ho, Jonah | `--first-downbeat 2` | The tool chose beat 1 with low confidence, from three level rises alone. The kick and the clap are equally strong on every beat, so they do not show the bar. The chords and the bass change most on beat 2 and least on beat 1. |
 
 Signs in the report that a song needs this:
 

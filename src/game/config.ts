@@ -89,6 +89,26 @@ export const SONGS: readonly SongEntry[] = [
     title: 'The Valley Waits',
     cover: '/songs/the-valley-waits.jpg',
   },
+  {
+    manifest: '/songs/part-the-sea.json',
+    title: 'Part the Sea',
+    cover: '/songs/part-the-sea.jpg',
+  },
+  {
+    manifest: '/songs/hey-ho-jonah.json',
+    title: 'Hey-Ho, Jonah',
+    cover: '/songs/hey-ho-jonah.jpg',
+  },
+  {
+    manifest: '/songs/josephs-coat-of-many-colors.json',
+    title: "Joseph's Coat of Many Colors",
+    cover: '/songs/josephs-coat-of-many-colors.jpg',
+  },
+  {
+    manifest: '/songs/jericho-fell.json',
+    title: 'Jericho Fell',
+    cover: '/songs/jericho-fell.jpg',
+  },
 ];
 
 /** The part of a song that plays in the menu while the song is chosen. */
