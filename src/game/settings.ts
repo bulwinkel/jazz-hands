@@ -1,4 +1,4 @@
-import type { TrackerMode } from '../tracking/types';
+import type { TrackerMode, TrackingThread } from '../tracking/types';
 import { DEFAULT_SEED, SONGS, TIMING } from './config';
 import { isCueStyle } from './cueStyle';
 import { clamp } from './numbers';
@@ -36,6 +36,8 @@ export interface Options {
   input: InputSource;
   /** Tracker named in the URL. Unset means the default for the player count. */
   tracker?: TrackerMode;
+  /** Where the camera's trackers run. The worker keeps the drawing smooth; `main` is for tests. */
+  thread: TrackingThread;
   /** Start the song this far in and drop earlier cues. */
   startSec: number;
   /** Skip the menu. */
@@ -116,7 +118,7 @@ function readStored(stored: unknown): Settings {
  *   players=1|2   p0, p1=1..5   shapes0, shapes1=1|0   faces0, faces1=1|0
  *   length=short|full   song=<index from 0>   previews=1|0   hands=1|0   record=1|0
  *   cues=shrink|grow
- *   tracker=hands-full|hands-split|pose   input=camera|mouse|bot
+ *   tracker=hands-full|hands-split|pose   input=camera|mouse|bot   thread=worker|main
  *   start=<seconds>   autostart=1   seed=<integer>   botAccuracy=<0..1>
  */
 export function parseSettings(stored: unknown, query: string): Options {
@@ -150,6 +152,7 @@ export function parseSettings(stored: unknown, query: string): Options {
     settings,
     input: input === 'mouse' || input === 'bot' ? input : 'camera',
     tracker: isTrackerMode(tracker) ? tracker : undefined,
+    thread: params.get('thread') === 'main' ? 'main' : 'worker',
     startSec: finiteOr(numberParam('start'), 0, 0, 86400),
     autostart: params.get('autostart') === '1',
     seed: seed !== undefined && Number.isInteger(seed) ? seed : DEFAULT_SEED,

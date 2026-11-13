@@ -25,7 +25,7 @@ export function nextTracker(mode: TrackerMode): TrackerMode {
  * What the game may read of the open input: its camera picture and its names. Opening,
  * switching and closing go through the host.
  */
-export type OpenInput = Pick<GameInput, 'video' | 'mode' | 'delegate' | 'faceDelegate'>;
+export type OpenInput = Pick<GameInput, 'video' | 'mode' | 'delegate' | 'faceDelegate' | 'thread'>;
 
 /** What the host tells the game. */
 export interface InputHooks {

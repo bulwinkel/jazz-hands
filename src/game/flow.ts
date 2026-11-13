@@ -479,6 +479,7 @@ export class DanceGame {
       trackerMode: this.inputs.input?.mode ?? this.inputs.trackerMode(),
       trackerDelegate: this.inputs.input?.delegate ?? '',
       trackerFaceDelegate: this.inputs.input?.faceDelegate ?? null,
+      trackerThread: this.inputs.input?.thread ?? null,
       players: this.players,
       stats: this.trackingStats,
       nowMs: performance.now(),
@@ -883,7 +884,8 @@ export class DanceGame {
 
   private trackerDebugLine(): string {
     const { input } = this.inputs;
-    const line = `${input?.mode ?? this.inputs.trackerMode()} · ${input?.delegate ?? '—'}`;
+    const where = input?.thread ? ` · ${input.thread} thread` : '';
+    const line = `${input?.mode ?? this.inputs.trackerMode()} · ${input?.delegate ?? '—'}${where}`;
     return input?.faceDelegate ? `${line} · faces ${input.faceDelegate}` : line;
   }
 

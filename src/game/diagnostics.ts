@@ -241,6 +241,8 @@ export interface RunReport {
     delegate: string;
     /** What the face models run on. Null when no face model was loaded. */
     faceDelegate: string | null;
+    /** Where the trackers ran: 'worker' or 'main'. Null for a test input, which does no tracking. */
+    thread: string | null;
     frames: number;
     framesPerSec: number;
     inferenceMs: { mean: number | null; p95: number | null };
@@ -352,6 +354,8 @@ export interface RunContext {
   trackerDelegate: string;
   /** Null when no face model was loaded. */
   trackerFaceDelegate: string | null;
+  /** Null for a test input. */
+  trackerThread: string | null;
   players: readonly PlayerRun[];
   stats: TrackingStats;
   nowMs: number;
@@ -370,6 +374,7 @@ export function buildRunReport(context: RunContext): RunReport {
       mode: context.trackerMode,
       delegate: context.trackerDelegate,
       faceDelegate: context.trackerFaceDelegate,
+      thread: context.trackerThread,
       frames: stats.frames,
       framesPerSec: playSec > 0 ? round1(stats.frames / playSec) : 0,
       inferenceMs: { mean: mean(stats.inferenceMs), p95: percentile(stats.inferenceMs, 0.95) },

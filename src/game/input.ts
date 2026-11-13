@@ -1,13 +1,15 @@
-import { createTracker, startCamera } from '../tracking';
+import { startCamera } from '../tracking';
 import type {
   FaceRegions,
   GestureName,
   PlayerTracking,
-  Tracker,
   TrackerMode,
   TrackingFrame,
+  TrackingThread,
 } from '../tracking/types';
 import { botPlayer } from './bot';
+import { cameraTracking, PageTracking } from './cameraTracking';
+import type { CameraTracking } from './cameraTracking';
 import { containRect } from './geometry';
 import { clamp01 } from './numbers';
 import type { PlayerRun } from './player';
@@ -32,6 +34,8 @@ export interface GameInput {
   readonly delegate: string;
   /** What the face models run on. Unset for an input that loads no face model. */
   readonly faceDelegate?: string;
+  /** Where the trackers run. Unset for a test input, which does no tracking. */
+  readonly thread?: TrackingThread;
   init(): Promise<void>;
   start(
     view: () => InputView,
@@ -43,38 +47,44 @@ export interface GameInput {
   dispose(): void;
 }
 
-/** The real input: the webcam, tracked by MediaPipe. */
+/** The real input: the webcam, tracked by MediaPipe on the main thread or in the tracking worker. */
 export class CameraInput implements GameInput {
   video?: HTMLVideoElement;
-  private tracker: Tracker;
-  /** Trackers that are loaded, by mode. The menu and the rounds switch between them often. */
-  private readonly loaded = new Map<TrackerMode, Tracker>();
+  /** The trackers. They move to the main thread when the worker fails to start. */
+  private tracking: CameraTracking;
+  /** The first tracker, to load once more on the main thread when the worker fails to start. */
+  private readonly firstTracker: { mode: TrackerMode; faces: boolean };
   /** Stops the camera while it still starts, when the input is disposed. */
   private readonly cameraStart = new AbortController();
-  /** Counts the calls of `setMode`, so a load that ends late can tell that a newer call came. */
-  private modeCalls = 0;
   private running = false;
   private disposed = false;
   private videoCallbackId = 0;
   private animationId = 0;
   private lastVideoTime = -1;
 
-  /** With `faces`, the first tracker loads the face models with the hand models. */
-  constructor(mode: TrackerMode, faces: boolean) {
-    this.tracker = createTracker(mode, { faces });
-    this.loaded.set(mode, this.tracker);
+  /**
+   * With `faces`, the first tracker loads the face models with the hand models.
+   * With `worker`, the trackers run in the tracking worker when it starts.
+   */
+  constructor(mode: TrackerMode, faces: boolean, thread: TrackingThread = 'main') {
+    this.firstTracker = { mode, faces };
+    this.tracking = cameraTracking(mode, faces, thread);
+  }
+
+  get thread(): TrackingThread {
+    return this.tracking.thread;
   }
 
   get mode(): string {
-    return this.tracker.mode;
+    return this.tracking.current.mode;
   }
 
   get delegate(): string {
-    return this.tracker.delegate;
+    return this.tracking.current.delegate;
   }
 
   get faceDelegate(): string | undefined {
-    const { faceDelegate } = this.tracker;
+    const { faceDelegate } = this.tracking.current;
     return faceDelegate === 'uninitialized' ? undefined : faceDelegate;
   }
 
@@ -86,7 +96,7 @@ export class CameraInput implements GameInput {
       if (this.disposed) this.stopCamera();
     });
     // Wait for both, so a model failure never leaves the camera running.
-    const [camera, models] = await Promise.allSettled([cameraStarted, this.tracker.init()]);
+    const [camera, models] = await Promise.allSettled([cameraStarted, this.loadFirstTracker()]);
     if (camera.status === 'rejected') {
       this.dispose();
       throw new Error(`Camera failed: ${String(camera.reason)}. Allow camera access in Chrome.`);
@@ -97,18 +107,41 @@ export class CameraInput implements GameInput {
     }
   }
 
+  /**
+   * Loads the first tracker. When the worker fails to start, the trackers move to the main
+   * thread, as they ran before the worker existed.
+   */
+  private async loadFirstTracker(): Promise<void> {
+    try {
+      await this.tracking.init();
+    } catch (error) {
+      if (this.tracking.thread === 'main' || this.disposed) throw error;
+      console.warn('The tracking worker failed to start. Tracking runs on the main thread.', error);
+      this.tracking.dispose();
+      this.tracking = new PageTracking(this.firstTracker.mode, this.firstTracker.faces);
+      await this.tracking.init();
+    }
+  }
+
   start(view: () => InputView, onFrame: (frame: TrackingFrame) => void, onError: (error: unknown) => void): void {
     const video = this.video;
     if (!video) throw new Error('The camera is not ready.');
     this.running = true;
 
+    const fail = (error: unknown): void => {
+      if (!this.running) return;
+      this.running = false;
+      onError(error);
+    };
+    const deliver = (frame: TrackingFrame): void => {
+      if (this.running) onFrame(frame);
+    };
     const track = (): void => {
       if (!this.running) return;
       try {
-        onFrame(this.tracker.process(video, performance.now(), view().faceRegions));
+        this.tracking.track(video, () => view().faceRegions, deliver, fail);
       } catch (error) {
-        this.running = false;
-        onError(error);
+        fail(error);
       }
     };
 
@@ -133,44 +166,9 @@ export class CameraInput implements GameInput {
     this.animationId = requestAnimationFrame(onAnimationFrame);
   }
 
-  /**
-   * Switches the tracker. A mode loads once and is then kept, so switching back is instant.
-   * The switch happens only after the new tracker has loaded, so tracking never stops on a failure.
-   *
-   * With `faces`, the tracker must have the face models. The menu loads its tracker before
-   * anyone has chosen faces, so a mode that was loaded without them loads once more, with them.
-   * A tracker with the face models also serves a round without faces: it reads a face only
-   * where the game asks for one.
-   *
-   * A load can end after a newer call has switched to another tracker. The loaded tracker then
-   * stays in the cache, and the newer choice stays on.
-   */
-  async setMode(mode: TrackerMode, faces = false): Promise<void> {
-    const call = ++this.modeCalls;
-    const loaded = this.loaded.get(mode);
-    const isUsable = loaded !== undefined && (!faces || loaded.faceDelegate !== 'uninitialized');
-    if (isUsable) {
-      this.tracker = loaded;
-      return;
-    }
-
-    const next = createTracker(mode, { faces });
-    try {
-      await next.init();
-    } catch (error) {
-      next.dispose();
-      throw error;
-    }
-    if (this.disposed) {
-      next.dispose(); // The input was closed while this tracker loaded.
-      return;
-    }
-    const replaced = this.loaded.get(mode);
-    this.loaded.set(mode, next);
-    // A tracker that only adds the face models to the one in use takes its place in any case:
-    // it serves the same mode, and the one without faces is let go.
-    if (call === this.modeCalls || this.tracker === replaced) this.tracker = next;
-    if (replaced && replaced !== this.tracker) replaced.dispose();
+  /** Switches the tracker. See `TrackerSwitch.setMode`. */
+  setMode(mode: TrackerMode, faces = false): Promise<void> {
+    return this.tracking.setMode(mode, faces);
   }
 
   dispose(): void {
@@ -179,7 +177,7 @@ export class CameraInput implements GameInput {
     this.cameraStart.abort();
     if (this.videoCallbackId) this.video?.cancelVideoFrameCallback(this.videoCallbackId);
     cancelAnimationFrame(this.animationId);
-    for (const tracker of this.loaded.values()) tracker.dispose();
+    this.tracking.dispose();
     this.stopCamera();
   }
 
@@ -299,12 +297,17 @@ export class SimulatedInput implements GameInput {
   };
 }
 
-/** The input the options ask for. A camera starts with `trackerMode`, with or without the face models. */
+/**
+ * The input the options ask for. A camera starts with `trackerMode`, with or without the face
+ * models, on the thread the options ask for.
+ */
 export function createInput(
   options: Options,
   trackerMode: TrackerMode,
   faces: boolean,
   surface: HTMLElement,
 ): GameInput {
-  return options.input === 'camera' ? new CameraInput(trackerMode, faces) : new SimulatedInput(options, surface);
+  return options.input === 'camera'
+    ? new CameraInput(trackerMode, faces, options.thread)
+    : new SimulatedInput(options, surface);
 }

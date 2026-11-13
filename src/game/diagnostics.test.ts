@@ -105,6 +105,7 @@ function report(players: PlayerRun[], stats = newTrackingStats(0), faceDelegate:
     trackerMode: 'hands-full',
     trackerDelegate: 'GPU',
     trackerFaceDelegate: faceDelegate,
+    trackerThread: null,
     players,
     stats,
     nowMs: 2000,

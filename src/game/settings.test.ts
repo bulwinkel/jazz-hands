@@ -124,6 +124,13 @@ describe('URL parameters', () => {
     expect(parseSettings({ cueStyle: 'grow' }, '?cues=other').settings.cueStyle).toBe('grow');
   });
 
+  it('track in the worker unless the URL asks for the main thread', () => {
+    expect(parseSettings(null, '').thread).toBe('worker');
+    expect(parseSettings(null, '?thread=main').thread).toBe('main');
+    expect(parseSettings(null, '?thread=worker').thread).toBe('worker');
+    expect(parseSettings(null, '?thread=other').thread).toBe('worker');
+  });
+
   it('set the one-off options', () => {
     const options = parseSettings(null, '?tracker=pose&input=bot&start=185&seed=42&botAccuracy=0.5&autostart=1');
     expect(options).toMatchObject({
