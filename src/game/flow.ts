@@ -23,7 +23,7 @@ import { closingSongTime, frameSongTime, newCueState } from './judgment';
 import { fetchManifest, playEndSec, playStartSec } from './manifest';
 import { createPlayers, summariseChart } from './player';
 import type { ChartSummary, PlayerRun } from './player';
-import { pausePlay, resumePlay } from './playTime';
+import { inCurrentStretch, pausePlay, resumePlay } from './playTime';
 import { MenuPreview } from './preview';
 import type { PreviewState } from './preview';
 import { GameRenderer } from './render';
@@ -571,12 +571,23 @@ export class DanceGame {
       this.collectReach(frame);
     } else if (this.phase === 'ready' || (this.phase === 'results' && !this.ui.player.isOpen)) {
       this.trackHandsUp(frame, previous);
-    } else if (this.phase === 'play' && !this.paused && this.audio?.context.state === 'running') {
+    } else if (this.isFrameOfPlay(frame)) {
       this.countFrame(frame);
       const { inputLatencyMs } = this.options.settings;
       this.judge(frameSongTime(this.songTime(), performance.now(), frame.timeMs, inputLatencyMs), frame);
     }
   };
+
+  /**
+   * True when a frame counts for play and for judging. A frame taken before the current stretch
+   * of play began, at the start of play or at the last resume, does not: its age would count
+   * the pause as play. A tracking worker can deliver such a frame after the stretch began. It
+   * still moves the hand rings.
+   */
+  private isFrameOfPlay(frame: TrackingFrame): boolean {
+    if (this.phase !== 'play' || this.paused || this.audio?.context.state !== 'running') return false;
+    return inCurrentStretch(this.trackingStats.play, frame.timeMs);
+  }
 
   /** Keeps where each face was last found. A face cue is drawn there, on the player's own face. */
   private rememberFaces(frame: TrackingFrame): void {
