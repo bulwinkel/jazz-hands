@@ -28,8 +28,9 @@ export interface CameraTracking {
   setMode(mode: TrackerMode, faces: boolean): Promise<void>;
   /**
    * Tracks the video's current frame and gives the result to `onFrame`. On the main thread
-   * this happens at once, and a failure throws. From the worker the result comes later, a
-   * failure goes to `onError`, and a frame that comes while the worker is busy is dropped.
+   * this happens at once, and a failure throws. From the worker the result comes later, and a
+   * failure goes to `onError`. A frame that comes while the worker is busy waits until the
+   * worker answers, unless a newer frame takes its place (see `FrameHandOver`).
    * `faceRegions` is read only for a frame that is tracked.
    */
   track(
