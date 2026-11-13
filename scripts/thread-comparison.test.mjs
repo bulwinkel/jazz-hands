@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compareRuns, frameDistance, numberFrames, pairHands, shiftCheck } from './thread-comparison.mjs';
+import { compareRuns, frameDistance, numberFrames, pairHands, shiftCheck, streamOffset } from './thread-comparison.mjs';
 
 const FPS = 30;
 const ASPECT = 16 / 9;
@@ -24,12 +24,25 @@ describe('numbering logged frames by camera frame', () => {
   it('finds the camera frame through the stream time jitter', () => {
     const jitters = [0.12, 0.25, 0.18, 0.07, 0.2];
     const frames = jitters.map((jitter, n) => frame(n + 10, [], { jitter }));
-    expect([...numberFrames(frames, FPS).keys()]).toEqual([10, 11, 12, 13, 14]);
+    expect([...numberFrames(frames, FPS, streamOffset(FPS, frames)).keys()]).toEqual([10, 11, 12, 13, 14]);
   });
 
   it('leaves out frames with no stream time', () => {
     const frames = [frame(1, []), { ...frame(2, []), videoTimeSec: null }];
-    expect([...numberFrames(frames, FPS).keys()]).toEqual([1]);
+    expect([...numberFrames(frames, FPS, 0).keys()]).toEqual([1]);
+  });
+
+  it('numbers two runs alike when their stream times sit on both sides of a whole frame', () => {
+    // One run sees its frames a hair before each whole frame, the other a hair after it.
+    const early = [-0.02, -0.03, -0.01, -0.02];
+    const late = [0.02, 0.01, 0.03, 0.02];
+    const runA = early.map((jitter, n) => frame(n + 10, [movingHand(n + 10)], { jitter }));
+    const runB = late.map((jitter, n) => frame(n + 10, [movingHand(n + 10)], { jitter }));
+    const offset = streamOffset(FPS, runA, runB);
+    expect([...numberFrames(runA, FPS, offset).keys()]).toEqual([...numberFrames(runB, FPS, offset).keys()]);
+    const result = compareRuns(runA, runB, { fps: FPS, aspect: ASPECT });
+    expect(result.matchedFrames).toBe(4);
+    expect(result.palmDistance.max).toBe(0);
   });
 });
 

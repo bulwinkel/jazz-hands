@@ -2,7 +2,7 @@
 // tracked, and how far their hands differ on those frames. Pure functions, for
 // scripts/compare-threads.mjs and its tests.
 
-/** The middle value of a list of numbers. Null for an empty list. */
+/** The value below which `share` of the numbers lie: 0.5 gives the median. Null for an empty list. */
 function quantile(values, share) {
   if (!values.length) return null;
   const sorted = [...values].sort((a, b) => a - b);
@@ -12,23 +12,38 @@ function quantile(values, share) {
 const round = (value, decimals = 4) => (value === null ? null : Number(value.toFixed(decimals)));
 const shareOf = (count, total) => (total ? round(count / total, 3) : null);
 
+const hasStreamTime = (frame) => typeof frame.videoTimeSec === 'number';
+
+/**
+ * The steady part of the camera stream's frame times, as a fraction of a frame, in -0.5..0.5.
+ * Chrome's file camera gives frame k a stream time of about (k + offset) / fps, with a little
+ * jitter. The offset is the circular mean of the fractional parts: a plain median breaks when
+ * the parts lie near a whole frame, at 0.98 and 0.02 alike. It comes from all the runs given,
+ * because one shared value numbers the same camera frame alike in every run.
+ */
+export function streamOffset(fps, ...runs) {
+  let cos = 0;
+  let sin = 0;
+  for (const frame of runs.flat().filter(hasStreamTime)) {
+    const angle = 2 * Math.PI * (frame.videoTimeSec * fps);
+    cos += Math.cos(angle);
+    sin += Math.sin(angle);
+  }
+  return cos === 0 && sin === 0 ? 0 : Math.atan2(sin, cos) / (2 * Math.PI);
+}
+
 /**
  * Numbers each logged frame by the camera frame it came from: frames since the camera stream
- * started. Chrome's file camera gives frame k a stream time of about k / fps plus a small,
- * steady offset with some jitter. The offset is the median of the fractional parts, so
- * rounding after it lands on k. A constant whole-frame offset is the same in both runs.
+ * started. `offset` is the `streamOffset` of the runs that are compared.
  *
  * Returns a Map from frame number to logged frame. Frames with no stream time are left out.
  */
-export function numberFrames(frames, fps) {
-  const timed = frames.filter((frame) => typeof frame.videoTimeSec === 'number');
-  const positions = timed.map((frame) => frame.videoTimeSec * fps);
-  const offset = quantile(positions.map((position) => position - Math.floor(position)), 0.5) ?? 0;
+export function numberFrames(frames, fps, offset) {
   const numbered = new Map();
-  timed.forEach((frame, i) => {
-    const number = Math.round(positions[i] - offset);
+  for (const frame of frames.filter(hasStreamTime)) {
+    const number = Math.round(frame.videoTimeSec * fps - offset);
     if (!numbered.has(number)) numbered.set(number, frame);
-  });
+  }
   return numbered;
 }
 
@@ -59,8 +74,9 @@ export function pairHands(handsA, handsB, aspect) {
  * `shift` compares frame n of run A with frame n + shift of run B, to check the frame matching.
  */
 export function compareRuns(framesA, framesB, { fps, aspect, shift = 0 }) {
-  const numberedA = numberFrames(framesA, fps);
-  const numberedB = numberFrames(framesB, fps);
+  const offset = streamOffset(fps, framesA, framesB);
+  const numberedA = numberFrames(framesA, fps, offset);
+  const numberedB = numberFrames(framesB, fps, offset);
   let matchedFrames = 0;
   let otherMode = 0;
   let playerSlots = 0;
