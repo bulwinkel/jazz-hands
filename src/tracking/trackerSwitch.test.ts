@@ -7,6 +7,8 @@ import type { SwitchableTracker } from './trackerSwitch';
 interface FakeTracker extends SwitchableTracker {
   finishLoad: () => void;
   failLoad: (error: Error) => void;
+  /** Breaks the tracker after its load, as a worker that was ended. */
+  breakDown: () => void;
   dispose: ReturnType<typeof vi.fn<() => void>>;
 }
 
@@ -14,6 +16,7 @@ function fakeTrackers() {
   const created: FakeTracker[] = [];
   const create = (mode: TrackerMode, faces: boolean): FakeTracker => {
     let loaded = false;
+    let broken = false;
     let finish: () => void = () => {};
     let fail: (error: Error) => void = () => {};
     const load = new Promise<void>((resolve, reject) => {
@@ -25,12 +28,18 @@ function fakeTrackers() {
     });
     const tracker: FakeTracker = {
       mode,
+      get broken() {
+        return broken;
+      },
       get faceDelegate() {
         return faces && loaded ? 'GPU' : 'uninitialized';
       },
       init: () => load,
       finishLoad: () => finish(),
       failLoad: (error) => fail(error),
+      breakDown: () => {
+        broken = true;
+      },
       dispose: vi.fn<() => void>(),
     };
     created.push(tracker);
@@ -65,6 +74,23 @@ describe('switching trackers', () => {
     await trackers.setMode('hands-full');
     expect(trackers.current).toBe(created[0]);
     expect(created).toHaveLength(2);
+  });
+
+  it('loads a broken tracker anew, in place of reusing it', async () => {
+    const { create, created } = fakeTrackers();
+    const trackers = new TrackerSwitch(create, 'hands-full', false);
+    created[0].finishLoad();
+    await trackers.current.init();
+    const switching = trackers.setMode('pose');
+    created[1].finishLoad();
+    await switching;
+    created[0].breakDown();
+    const back = trackers.setMode('hands-full');
+    expect(created).toHaveLength(3);
+    created[2].finishLoad();
+    await back;
+    expect(trackers.current).toBe(created[2]);
+    expect(created[0].dispose).toHaveBeenCalled();
   });
 
   it('keeps the tracker in use when a new one fails to load, and frees the failed one', async () => {

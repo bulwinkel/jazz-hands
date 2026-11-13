@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { WORKER_LIMITS } from './config';
 import type { TrackingFrame } from './types';
 import { WorkerTracker } from './workerTracker';
 import type { WorkerAnswer, WorkerRequest } from './workerProtocol';
@@ -50,7 +51,10 @@ beforeEach(() => {
   FakeWorker.made = [];
   vi.stubGlobal('Worker', FakeWorker);
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 describe('a tracker in a worker', () => {
   it('starts a module worker of its own, as the WASM loader needs', () => {
@@ -174,5 +178,49 @@ describe('a worker that breaks', () => {
     const loading = tracker.init();
     FakeWorker.last.breakDown('');
     await expect(loading).rejects.toThrow('The tracking worker failed: it did not start.');
+  });
+});
+
+describe('the limits of a worker', () => {
+  it('ends a worker whose load passes the load limit, and fails the load', async () => {
+    vi.useFakeTimers();
+    const tracker = new WorkerTracker('hands-split', true);
+    const loading = tracker.init();
+    vi.advanceTimersByTime(WORKER_LIMITS.loadMs);
+    await expect(loading).rejects.toThrow(`did not load its tracker within ${WORKER_LIMITS.loadMs / 1000} s`);
+    expect(FakeWorker.last.terminated).toBe(true);
+    expect(tracker.broken).toBe(true);
+  });
+
+  it('ends a worker that holds a frame past the frame limit, and fails every later frame', async () => {
+    vi.useFakeTimers();
+    const tracker = new WorkerTracker('hands-full', false);
+    const tracking = tracker.track(picture(), 100);
+    vi.advanceTimersByTime(WORKER_LIMITS.frameMs);
+    await expect(tracking).rejects.toThrow(`did not answer a camera frame within ${WORKER_LIMITS.frameMs / 1000} s`);
+    expect(FakeWorker.last.terminated).toBe(true);
+    await expect(tracker.track(picture(), 133)).rejects.toThrow('did not answer a camera frame');
+  });
+
+  it('leaves a worker alone that answers in time', async () => {
+    vi.useFakeTimers();
+    const tracker = new WorkerTracker('hands-full', false);
+    const tracking = tracker.track(picture(), 100);
+    FakeWorker.last.answer({ type: 'tracked', frame: 1, result: result(100) });
+    await tracking;
+    vi.advanceTimersByTime(WORKER_LIMITS.frameMs * 2);
+    expect(FakeWorker.last.terminated).toBe(false);
+    expect(tracker.broken).toBe(false);
+  });
+
+  it('reads as broken, with uninitialized delegates, once its worker failed', async () => {
+    const tracker = new WorkerTracker('hands-full', false);
+    const loading = tracker.init();
+    FakeWorker.last.answer({ type: 'loaded', delegate: 'GPU', faceDelegate: 'uninitialized' });
+    await loading;
+    FakeWorker.last.breakDown('lost');
+    expect(tracker.broken).toBe(true);
+    expect(tracker.delegate).toBe('uninitialized');
+    expect(FakeWorker.last.terminated).toBe(true);
   });
 });

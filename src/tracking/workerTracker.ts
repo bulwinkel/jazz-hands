@@ -1,12 +1,14 @@
+import { WORKER_LIMITS } from './config';
 import type { FaceRegions, TrackerDelegate, TrackerMode, TrackingFrame } from './types';
 import type { LoadedTracker, WorkerAnswer, WorkerRequest } from './workerProtocol';
 
 const DISPOSED = 'Tracker is disposed.';
 
-/** A request that waits for its answer. */
+/** A request that waits for its answer, and the timer that gives up on it. */
 interface Waiting<T> {
   resolve: (value: T) => void;
   reject: (error: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
 }
 
 /**
@@ -20,8 +22,9 @@ interface Waiting<T> {
  * limit, and ending the worker frees its contexts at once.
  *
  * It sends every frame it is given: which frames go is the caller's choice (see
- * `FrameHandOver`). When the worker breaks, every request that waits fails, and so does every
- * later request.
+ * `FrameHandOver`). When the worker breaks, or passes a limit of `WORKER_LIMITS`, the page ends
+ * it: every request that waits fails, every later request fails, and the delegates read
+ * 'uninitialized' again.
  */
 export class WorkerTracker {
   readonly mode: TrackerMode;
@@ -32,8 +35,8 @@ export class WorkerTracker {
   private loaded?: LoadedTracker;
   private readonly frames = new Map<number, Waiting<TrackingFrame>>();
   private frameCount = 0;
-  /** Set when the worker broke or was ended. Every request after that fails with it. */
-  private broken?: Error;
+  /** Why the worker was ended. Every request after that fails with it. */
+  private ended?: Error;
 
   /** Starts the worker. Throws when this browser cannot make one. */
   constructor(mode: TrackerMode, faces: boolean) {
@@ -45,15 +48,20 @@ export class WorkerTracker {
     this.worker.addEventListener('error', (event: ErrorEvent) => {
       // Handled here: without this, the page would also report the error as uncaught.
       event.preventDefault();
-      this.breakDown(new Error(`The tracking worker failed: ${event.message || 'it did not start.'}`));
+      this.end(new Error(`The tracking worker failed: ${event.message || 'it did not start.'}`));
     });
     this.worker.addEventListener('messageerror', () => {
-      this.breakDown(new Error('The tracking worker sent a message the page cannot read.'));
+      this.end(new Error('The tracking worker sent a message the page cannot read.'));
     });
   }
 
   get delegate(): TrackerDelegate {
     return this.loaded?.delegate ?? 'uninitialized';
+  }
+
+  /** True once the worker was ended: by a failure, a limit, or a dispose. */
+  get broken(): boolean {
+    return this.ended !== undefined;
   }
 
   /** What the face models run on. 'uninitialized' for a tracker created without faces. */
@@ -69,18 +77,20 @@ export class WorkerTracker {
 
   /** Tracks one camera frame. `picture` moves to the worker, which closes it. */
   track(picture: VideoFrame, timeMs: number, faceRegions?: FaceRegions): Promise<TrackingFrame> {
-    if (this.broken) {
+    if (this.ended) {
       picture.close();
-      return Promise.reject(this.broken);
+      return Promise.reject(this.ended);
     }
     this.frameCount++;
     const frame = this.frameCount;
     return new Promise((resolve, reject) => {
-      this.frames.set(frame, { resolve, reject });
+      const timer = this.giveUpAfter(WORKER_LIMITS.frameMs, 'answer a camera frame');
+      this.frames.set(frame, { resolve, reject, timer });
       try {
         this.post({ type: 'track', frame, picture, timeMs, faceRegions }, [picture]);
       } catch (error) {
         // The frame never reached the worker, so it is still the page's to close.
+        clearTimeout(timer);
         this.frames.delete(frame);
         picture.close();
         reject(error);
@@ -90,19 +100,17 @@ export class WorkerTracker {
 
   /** Ends the worker. Its models and their WebGL contexts go at once. What still waits fails as disposed. */
   dispose(): void {
-    this.loaded = undefined;
-    this.breakDown(new Error(DISPOSED));
-    this.worker.terminate();
+    this.end(new Error(DISPOSED));
   }
 
   private async loadInWorker(): Promise<void> {
-    if (this.broken) throw this.broken;
+    if (this.ended) throw this.ended;
     const loaded = await new Promise<LoadedTracker>((resolve, reject) => {
-      this.load = { resolve, reject };
+      this.load = { resolve, reject, timer: this.giveUpAfter(WORKER_LIMITS.loadMs, 'load its tracker') };
       this.post({ type: 'load', mode: this.mode, faces: this.faces });
     });
     // The tracker can be disposed between the answer and this line.
-    if (this.broken) throw this.broken;
+    if (this.ended) throw this.ended;
     this.loaded = loaded;
   }
 
@@ -114,21 +122,39 @@ export class WorkerTracker {
     if (answer.type === 'loaded' || answer.type === 'loadFailed') {
       const waiting = this.load;
       this.load = undefined;
+      if (waiting) clearTimeout(waiting.timer);
       if (answer.type === 'loaded') waiting?.resolve({ delegate: answer.delegate, faceDelegate: answer.faceDelegate });
       else waiting?.reject(new Error(answer.error));
       return;
     }
     const waiting = this.frames.get(answer.frame);
     this.frames.delete(answer.frame);
+    if (waiting) clearTimeout(waiting.timer);
     if (answer.type === 'tracked') waiting?.resolve(answer.result);
     else waiting?.reject(new Error(answer.error));
   }
 
-  private breakDown(error: Error): void {
-    this.broken ??= error;
-    this.load?.reject(this.broken);
+  /** A timer that ends the worker when a request waits longer than `limitMs`. */
+  private giveUpAfter(limitMs: number, task: string): ReturnType<typeof setTimeout> {
+    return setTimeout(() => {
+      this.end(new Error(`A tracking worker did not ${task} within ${limitMs / 1000} s.`));
+    }, limitMs);
+  }
+
+  /**
+   * Ends the worker: what waits fails with `error`, and so does every later request. The
+   * delegates read 'uninitialized' again, so the tracker switch loads this mode anew.
+   */
+  private end(error: Error): void {
+    this.ended ??= error;
+    this.loaded = undefined;
+    const waiting = [...(this.load ? [this.load] : []), ...this.frames.values()];
     this.load = undefined;
-    for (const waiting of this.frames.values()) waiting.reject(this.broken);
     this.frames.clear();
+    for (const request of waiting) {
+      clearTimeout(request.timer);
+      request.reject(this.ended);
+    }
+    this.worker.terminate();
   }
 }

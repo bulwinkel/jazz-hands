@@ -3,6 +3,8 @@ import type { TrackerDelegate, TrackerMode } from './types';
 /** What the switch needs of a tracker. A tracker on the page and one in the worker both have it. */
 export interface SwitchableTracker {
   readonly mode: TrackerMode;
+  /** True once the tracker can track no more, as a tracker in a worker that was ended. */
+  readonly broken?: boolean;
   /** 'uninitialized' while the tracker has no face models. */
   readonly faceDelegate: TrackerDelegate;
   init(): Promise<void>;
@@ -95,7 +97,10 @@ export class TrackerSwitch<Tracker extends SwitchableTracker> {
   }
 }
 
-/** True when `tracker` serves a call for its mode: it has the face models if the call needs them. */
+/**
+ * True when `tracker` serves a call for its mode: it still works, and it has the face models
+ * if the call needs them. A broken tracker is loaded anew.
+ */
 function serves(tracker: SwitchableTracker, faces: boolean): boolean {
-  return !faces || tracker.faceDelegate !== 'uninitialized';
+  return !tracker.broken && (!faces || tracker.faceDelegate !== 'uninitialized');
 }

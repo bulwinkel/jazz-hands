@@ -24,3 +24,23 @@ export const FACE_THRESHOLDS = Object.freeze({
  * face from their own last turn, unless it is older than this.
  */
 export const FACE_MAX_AGE_MS = 100;
+
+/**
+ * How long a tracking worker may take before the page ends it. A worker that hangs sends no
+ * error event, so without these limits tracking would stop for good and every cue would miss.
+ * When a limit passes, the page ends that worker, fails what waits, and takes the failure path.
+ */
+export const WORKER_LIMITS = Object.freeze({
+  /**
+   * One tracker's load: its model files, the WASM runtime, and the GPU programs. It took 0.1 to
+   * 1 s on this machine with a warm cache. A cold cache, a slow disk and a slow GPU can make it
+   * many times longer, and a load that passes the limit loses its worker for nothing.
+   */
+  loadMs: 30_000,
+  /**
+   * One camera frame, from its hand-over to its answer. It takes 15 to 50 ms. The first frame of
+   * a tracker builds GPU programs and took up to 0.4 s. A worker this far behind is not slow
+   * but stuck. Judging waits no longer than this for a frame either.
+   */
+  frameMs: 5_000,
+});
