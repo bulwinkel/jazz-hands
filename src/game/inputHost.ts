@@ -21,6 +21,12 @@ export function nextTracker(mode: TrackerMode): TrackerMode {
   return TRACKER_CYCLE[(TRACKER_CYCLE.indexOf(mode) + 1) % TRACKER_CYCLE.length];
 }
 
+/**
+ * What the game may read of the open input: its camera picture and its names. Opening,
+ * switching and closing go through the host.
+ */
+export type OpenInput = Pick<GameInput, 'video' | 'mode' | 'delegate' | 'faceDelegate'>;
+
 /** What the host tells the game. */
 export interface InputHooks {
   /** What the input needs to know about the game, read on every frame. */
@@ -62,7 +68,7 @@ export class InputHost {
   }
 
   /** The open input. Unset while none is open. */
-  get input(): GameInput | undefined {
+  get input(): OpenInput | undefined {
     return this.current;
   }
 
