@@ -208,15 +208,19 @@ export class GameUI {
       `<div class="eyebrow">YOU MADE THE MUSIC MOVE</div>
       <h1>${RESULTS_HEADING}</h1>
       <div class="result-players"></div>
-      ${team}
-      <p class="replay-prompt">Hands up to play again 🙌</p>
-      <p class="replay-hint">Raise a hand above your head and hold</p>
-      <div class="result-actions">
-        <button id="replay" class="primary" data-hand="replay" data-hand-hold="${HAND_MENU.slowHoldSec}">Play again · Space</button>
-        <button id="menu" data-hand="menu" data-hand-hold="${HAND_MENU.slowHoldSec}">Menu · Esc</button>
-        <button id="refit-results" data-hand="refit-results" data-hand-hold="${HAND_MENU.slowHoldSec}">↺ Recalibrate · C</button>
+      <div class="results-lower">
+        <div class="results-next">
+          ${team}
+          <p class="replay-prompt">Hands up to play again 🙌</p>
+          <p class="replay-hint">Raise a hand above your head and hold</p>
+          <div class="result-actions">
+            <button id="replay" class="primary" data-hand="replay" data-hand-hold="${HAND_MENU.slowHoldSec}">Play again · Space</button>
+            <button id="menu" data-hand="menu" data-hand-hold="${HAND_MENU.slowHoldSec}">Menu · Esc</button>
+            <button id="refit-results" data-hand="refit-results" data-hand-hold="${HAND_MENU.slowHoldSec}">↺ Recalibrate · C</button>
+          </div>
+        </div>
+        ${RECORDINGS_HTML}
       </div>
-      ${RECORDINGS_HTML}
       <div class="diagnostics" hidden>
         <button id="copy-diagnostics">Copy diagnostics</button>
         <span id="diagnostics-status" role="status"></span>

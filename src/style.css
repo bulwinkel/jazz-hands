@@ -724,6 +724,16 @@ canvas {
   font-size: 22px;
   padding: 12px 28px;
 }
+/* The lower part of the results: the team score, the prompt to play again and the buttons,
+   and beside them the recording of the round, when there is one. Side by side, the recording
+   takes no height of its own: a recorded round shows the results as large as a round with no
+   recording, and its stars stay large enough for a hand. */
+.results-lower {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+}
 /* Dev server only: the diagnostics row under the result buttons. */
 .diagnostics {
   display: flex;
@@ -741,23 +751,50 @@ canvas {
 }
 
 /* --- The recording of the round on the results: the placeholder while its videos are made,
-   then its preview and its download links --- */
+   then its preview and its download links. The links and the rule sit beside the preview, so
+   the block is no taller than the preview. --- */
 
 .recordings {
-  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
   font-size: 17px;
   color: var(--text-soft);
+}
+.recording-files {
+  width: 236px;
+}
+/* The preview, and the placeholder before it, at three quarters of their design size, with
+   all they hold. So the lower part of the results stays within the design width, and the
+   buttons stay in from the side of the screen, where the camera tracks a hand well. The
+   results show at a larger scale than they did with the recording under everything, so on
+   screen the preview is still as large as it was then. */
+.preview-slot {
+  zoom: 0.75;
+}
+/* A narrow window limits the results by its width. There the recording goes under the
+   buttons again, with the preview at its full size: the content gets taller but no wider, so
+   it shows at about the same scale, and the buttons stay in the middle. */
+@media (max-aspect-ratio: 13/10) {
+  .results-lower {
+    flex-direction: column;
+    gap: 16px;
+  }
+  .preview-slot {
+    zoom: 1;
+  }
 }
 /* The links and the rule show only when the videos are ready. Until then they keep their
    room, so the page does not move when they show. */
 .recordings:not([data-stage="ready"]) .recording-files {
   visibility: hidden;
 }
-/* One row of links. Empty, it keeps the height of a link: its line, padding and border. */
+/* The links, one under the other. Empty, the list keeps the height of a link: its line,
+   padding and border. */
 .recording-links {
   display: flex;
-  justify-content: center;
-  gap: 12px;
+  flex-direction: column;
+  gap: 8px;
   min-height: calc(22px + 2 * 7px + 2 * 2px);
   line-height: 22px;
 }
@@ -785,7 +822,7 @@ canvas {
   display: block;
   width: 320px;
   aspect-ratio: 16 / 9;
-  margin: 0 auto 12px;
+  margin: 0;
   padding: 0;
   border: 3px solid var(--border);
   border-radius: 14px;
