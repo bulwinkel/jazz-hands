@@ -245,6 +245,11 @@ RISE_DECISIVE_RATIO = 1.5
 # The chords point to a beat only when they change there this many times as much as on each
 # beat next to it.
 CHORD_DECISIVE_RATIO = 1.25
+# Many songs change chords at the half bar too. The chords tell the bar start from the beat half a
+# bar away only when it changes this many times as much. Closer than that, they point to both
+# beats, as the drums do. Jericho Fell reads 1.06 there, a tie. Hey-Ho, Jonah reads 1.17 and starts
+# its bars on the larger change, so the ratio must stay below that.
+CHORD_HALF_BAR_RATIO = 1.1
 CHROMA_HOP = 512
 # Chroma is read this far inside each beat, away from the note changes at its edges.
 CHROMA_INSET_SEC = 0.04
@@ -1589,8 +1594,8 @@ class BarClue:
 
     name: str
     weight: float
-    # The beats, 0 to 3, that this clue says may start a bar: one beat, or for the drums two beats
-    # half a bar apart. Empty when the clue does not decide.
+    # The beats, 0 to 3, that this clue says may start a bar: one beat, or two beats half a bar
+    # apart when the clue cannot tell them apart. Empty when the clue does not decide.
     beats: tuple[int, ...]
     # The numbers behind the clue, for the report. Each line of it is one line of the report.
     detail: str
@@ -1734,17 +1739,36 @@ def harmony_change(harmony: tuple[np.ndarray, np.ndarray], beats: np.ndarray) ->
 def chords_clue(change: np.ndarray) -> BarClue:
     """Chords and bass notes change on bar starts.
 
-    `change` holds the mean change of chords and bass on each beat of the bar, 0 to 3. Many songs
-    change chords at the half bar too, so the beat half a bar from the bar start can change almost
-    as much: the bar start is the one with the larger change. The beats next to a bar start seldom
-    bring a new chord, so the chords decide only when the best beat clearly beats both neighbours.
+    `change` holds the mean change of chords and bass on each beat of the bar, 0 to 3. The beats
+    next to a bar start seldom bring a new chord, so the chords decide only when the best beat
+    clearly beats both neighbours. Many songs change chords at the half bar too, so the beat half a
+    bar from the bar start can change almost as much. The bar start is the one with the larger
+    change, when it is clearly larger. When the two are close, the chords point to both, and leave
+    the choice between them to the other clues.
     """
+    half = BEATS_PER_BAR // 2
     best = int(np.argmax(change))
+    partner = (best + half) % BEATS_PER_BAR
     neighbours = max(change[(best - 1) % BEATS_PER_BAR], change[(best + 1) % BEATS_PER_BAR])
-    decides = change[best] > 0 and change[best] >= CHORD_DECISIVE_RATIO * neighbours
-    detail = 'chord and bass change, on   ' + '   '.join(
-        f'beat {beat}: {score:.2f}' for beat, score in enumerate(change))
-    return BarClue('chord changes', CHORDS_WEIGHT, (best,) if decides else (), detail)
+    neighbour_ratio = change[best] / max(float(neighbours), 1e-9)
+    half_bar_ratio = change[best] / max(float(change[partner]), 1e-9)
+    best_text = f'Beat {best} changes {neighbour_ratio:.2f} times as much as the beats next to it'
+    half_bar_text = f'{half_bar_ratio:.2f} times as much as beat {partner}, half a bar away'
+    if change[best] <= 0:
+        beats, reason = (), 'The chords and the bass do not change.'
+    elif neighbour_ratio < CHORD_DECISIVE_RATIO:
+        beats, reason = (), f'{best_text} (it must be {CHORD_DECISIVE_RATIO:g}): no clear chord change.'
+    elif half_bar_ratio < CHORD_HALF_BAR_RATIO:
+        beats = tuple(sorted((best, partner)))
+        reason = (f'{best_text}, but only {half_bar_text} (it must be {CHORD_HALF_BAR_RATIO:g}): '
+                  f'a tie, so the chords point to both.')
+    else:
+        beats, reason = (best,), f'{best_text}, and {half_bar_text}.'
+    detail = '\n'.join([
+        'chord and bass change, on   ' + '   '.join(f'beat {beat}: {score:.2f}' for beat, score in enumerate(change)),
+        reason,
+    ])
+    return BarClue('chord changes', CHORDS_WEIGHT, beats, detail)
 
 
 def drums_clue(kick: np.ndarray, snare: np.ndarray) -> BarClue:
@@ -1796,42 +1820,56 @@ def choose_bar_start(clues: list[BarClue]) -> BarChoice:
     Each clue that decides adds its weight to each beat it points to, and the beat with the most
     weight wins. A tie goes to the earlier beat. So the drums can narrow the choice to two beats
     and the chords pick one of them, and the song start decides only what the music leaves open.
-    Confidence is high when the clues for the winner weigh CERTAIN_WEIGHT and only a minor clue
-    is against it. It is low when a strong clue is against the winner or another beat has as much
-    weight. Otherwise it is medium.
+    Confidence is high when the clues for the winner weigh CERTAIN_WEIGHT, only a minor clue is
+    against it, and the music tells it from the beat half a bar away. It is low when a strong clue
+    is against the winner or another beat has as much weight. Otherwise it is medium.
     """
     votes = np.zeros(BEATS_PER_BAR)
     for clue in clues:
         for beat in clue.beats:
             votes[beat] += clue.weight
     winner = int(np.argmax(votes))
+    partner = (winner + BEATS_PER_BAR // 2) % BEATS_PER_BAR
     tied = [beat for beat in range(BEATS_PER_BAR) if beat != winner and np.isclose(votes[beat], votes[winner])]
 
     agreeing = [clue for clue in clues if winner in clue.beats]
     against = [clue for clue in clues if clue.beats and winner not in clue.beats]
     undecided = [clue for clue in clues if not clue.beats]
     strong_against = [clue for clue in against if clue.weight >= STRONG_WEIGHT]
+    # The clues that tell the winner from the beat half a bar away. When the music points to both,
+    # only the song start can, and it is a habit of the songs, not a sound.
+    apart = [clue for clue in clues if (winner in clue.beats) != (partner in clue.beats)]
+    music = [clue for clue in clues if clue.weight >= MINOR_WEIGHT]
+    half_bar_open = (not tied and any(winner in clue.beats for clue in music)
+                     and all(clue.weight < MINOR_WEIGHT for clue in apart))
+
+    def names(group: list[BarClue]) -> str:
+        """Returns the names of the clues in a group, as text, with the two beats of a pair."""
+        return ', '.join(clue.name + (f' ({clue.verdict})' if len(clue.beats) > 1 else '')
+                         for clue in group) or 'none'
 
     if strong_against:
         confidence, doubt = 'low', 'Strong bar-start clues disagree.'
     elif tied:
         others = ' or '.join(str(beat) for beat in tied)
-        confidence, doubt = 'low', f'The clues do not tell beat {winner} from beat {others}.'
+        half_bar = ', half a bar away' if tied == [partner] else ''
+        confidence, doubt = 'low', f'The clues do not tell beat {winner} from beat {others}{half_bar}.'
+    elif half_bar_open:
+        confidence, doubt = 'medium', f'The music does not tell beat {winner} from beat {partner}, half a bar away.'
     elif (sum(clue.weight for clue in agreeing) >= CERTAIN_WEIGHT
           and all(clue.weight < MINOR_WEIGHT for clue in against)):
         confidence, doubt = 'high', ''
     else:
         confidence, doubt = 'medium', 'The bar start is not certain.'
 
-    def names(group: list[BarClue]) -> str:
-        """Returns the names of the clues in a group, as text."""
-        return ', '.join(clue.name for clue in group) or 'none'
-
     statement = f'For beat {winner}: {names(agreeing)}. Against: {names(against)}. Undecided: {names(undecided)}.'
     if tied:
         listed = ' and '.join(str(beat) for beat in tied)
         statement += (f' Beat {listed} has as much weight.' if len(tied) == 1
                       else f' Beats {listed} have as much weight.')
+    elif half_bar_open:
+        statement += (f' The music gives beat {partner}, half a bar away, as much weight: '
+                      f'only the {names(apart)} picks beat {winner}.')
     return BarChoice(first_downbeat=winner, confidence=confidence, votes=tuple(float(vote) for vote in votes),
                      statement=statement, doubt=doubt)
 

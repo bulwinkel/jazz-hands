@@ -25,7 +25,7 @@ def rises(*beats: int) -> BarClue:
 
 
 def chords(*beats: int) -> BarClue:
-    """Returns a chord clue for the given beat, or an undecided one."""
+    """Returns a chord clue for the given beat or pair of beats, or an undecided one."""
     return BarClue('chord changes', CHORDS_WEIGHT, beats, '')
 
 
@@ -120,6 +120,25 @@ class ChordsClueTest(unittest.TestCase):
     def test_no_change_decides_nothing(self) -> None:
         self.assertEqual(chords_clue(np.zeros(4)).beats, ())
 
+    def test_near_tie_at_the_half_bar_points_to_the_pair(self) -> None:
+        # Two chords per bar: beat 2 changes only 1.02 times as much as beat 0.
+        clue = chords_clue(np.array([0.50, 0.20, 0.51, 0.20]))
+        self.assertEqual(clue.beats, (0, 2))
+        self.assertEqual(clue.verdict, 'beat 0 or 2')
+        self.assertIn('only 1.02 times as much as beat 0, half a bar away (it must be 1.1): a tie, '
+                      'so the chords point to both.', clue.detail)
+
+    def test_exact_tie_at_the_half_bar_points_to_the_pair(self) -> None:
+        # The largest change comes first in the bar, but beat 3 has the same evidence as beat 1.
+        self.assertEqual(chords_clue(np.array([0.1, 2.0, 0.1, 2.0])).beats, (1, 3))
+
+    def test_half_bar_ratio_decides_between_one_beat_and_the_pair(self) -> None:
+        # Jericho Fell: beat 0 changes 1.06 times as much as beat 2, a tie.
+        self.assertEqual(chords_clue(np.array([1.228, 0.738, 1.164, 0.868])).beats, (0, 2))
+        # 1.09 times is a tie, 1.11 times is not.
+        self.assertEqual(chords_clue(np.array([1.09, 0.5, 1.0, 0.5])).beats, (0, 2))
+        self.assertEqual(chords_clue(np.array([1.11, 0.5, 1.0, 0.5])).beats, (0,))
+
 
 class ChooseBarStartTest(unittest.TestCase):
     """The clues vote with their weights. Confidence tells how far they agree."""
@@ -184,6 +203,42 @@ class ChooseBarStartTest(unittest.TestCase):
         self.assertEqual(choice.first_downbeat, 0)
         self.assertEqual(choice.confidence, 'medium')
         self.assertIn('Undecided: level rises, chord changes, drums.', choice.statement)
+
+    def test_half_bar_tie_in_the_chords_is_not_certain(self) -> None:
+        # The old rule took beat 2 with high confidence on a 2% lead of the chords. Now the chords and
+        # the drums point to beats 0 and 2 alike, and only the song start picks one.
+        choice = choose_bar_start([start_clue(), rises(), chords_clue(np.array([0.50, 0.20, 0.51, 0.20])),
+                                   drums(0, 2)])
+        self.assertEqual(choice.first_downbeat, 0)
+        self.assertEqual(choice.confidence, 'medium')
+        self.assertEqual(choice.votes, (4.5, 0.0, 4.0, 0.0))
+        self.assertEqual(choice.doubt, 'The music does not tell beat 0 from beat 2, half a bar away.')
+        self.assertIn('For beat 0: song start, chord changes (beat 0 or 2), drums (beat 0 or 2).', choice.statement)
+        self.assertIn('The music gives beat 2, half a bar away, as much weight: only the song start picks beat 0.',
+                      choice.statement)
+
+    def test_exact_half_bar_tie_is_reported_as_a_tie(self) -> None:
+        # The old rule took beat 1 with high confidence, and a song with bars from beat 3 was marked two
+        # beats early.
+        choice = choose_bar_start([start_clue(), rises(), chords_clue(np.array([0.1, 2.0, 0.1, 2.0])),
+                                   drums(1, 3)])
+        self.assertEqual(choice.first_downbeat, 1)
+        self.assertEqual(choice.confidence, 'low')
+        self.assertEqual(choice.doubt, 'The clues do not tell beat 1 from beat 3, half a bar away.')
+        self.assertIn('Beat 3 has as much weight.', choice.statement)
+
+    def test_rises_pick_from_the_chords_pair(self) -> None:
+        # The rises tell the two beats apart, so the choice can be certain.
+        choice = choose_bar_start([start_clue(), rises(2), chords(0, 2), drums(0, 2)])
+        self.assertEqual(choice.first_downbeat, 2)
+        self.assertEqual(choice.confidence, 'high')
+
+    def test_chords_pair_alone_leaves_the_song_start_to_pick(self) -> None:
+        # Jericho Fell: the kick hits every beat and the rises do not decide.
+        choice = choose_bar_start([start_clue(), rises(), chords(0, 2), drums()])
+        self.assertEqual(choice.first_downbeat, 0)
+        self.assertEqual(choice.confidence, 'medium')
+        self.assertIn('beat 0 from beat 2, half a bar away', choice.doubt)
 
     def test_rises_with_the_drums_are_certain(self) -> None:
         # Job, Hold On: the chords are undecided.
