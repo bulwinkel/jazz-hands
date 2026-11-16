@@ -36,13 +36,13 @@ export function pickFormat(isSupported: (mimeType: string) => boolean): VideoFor
 const twoDigits = (value: number): string => String(value).padStart(2, '0');
 
 /**
- * For example `kitchen-disco-todo-bueno-2026-11-12-204107-game.mp4`, with the local date and
+ * For example `jazz-hands-todo-bueno-2026-11-12-204107-game.mp4`, with the local date and
  * time. The seconds keep two rounds of one minute apart.
  */
 export function videoFileName(songId: string, at: Date, kind: VideoKind, extension: string): string {
   const date = `${at.getFullYear()}-${twoDigits(at.getMonth() + 1)}-${twoDigits(at.getDate())}`;
   const time = `${twoDigits(at.getHours())}${twoDigits(at.getMinutes())}${twoDigits(at.getSeconds())}`;
-  return `kitchen-disco-${songId}-${date}-${time}-${kind}.${extension}`;
+  return `jazz-hands-${songId}-${date}-${time}-${kind}.${extension}`;
 }
 
 /** A picture size of the given shape and about the given height. Video encoders need even numbers. */

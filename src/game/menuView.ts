@@ -26,7 +26,7 @@ const CHEVRON_RIGHT = chevron('8.5,5 15.5,12 8.5,19');
 /** The menu's content. It scales with the window as one piece. */
 export const MENU_HTML = `
   <div class="eyebrow">MOVE TOGETHER · PLAY TOGETHER</div>
-  <h1>Kitchen Disco<span>✦</span></h1>
+  <h1>Jazz Hands<span>✦</span></h1>
   <p class="subtitle">Reach for the beat. Make a little magic.</p>
   <fieldset class="songs">
     <legend>♫ <span id="song-title"></span><small id="song-count"></small></legend>

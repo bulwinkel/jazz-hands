@@ -23,15 +23,15 @@ describe('video format', () => {
 describe('video file name', () => {
   it('holds the song, the local date and time, and the kind of video', () => {
     const at = new Date(2026, 10, 12, 20, 41, 7);
-    expect(videoFileName('todo-bueno', at, 'game', 'mp4')).toBe('kitchen-disco-todo-bueno-2026-11-12-204107-game.mp4');
+    expect(videoFileName('todo-bueno', at, 'game', 'mp4')).toBe('jazz-hands-todo-bueno-2026-11-12-204107-game.mp4');
     expect(videoFileName('todo-bueno', at, 'camera', 'webm')).toBe(
-      'kitchen-disco-todo-bueno-2026-11-12-204107-camera.webm',
+      'jazz-hands-todo-bueno-2026-11-12-204107-camera.webm',
     );
   });
 
   it('writes one-digit months, days, hours, minutes and seconds with two digits', () => {
     const at = new Date(2027, 0, 3, 7, 5, 9);
-    expect(videoFileName('song', at, 'game', 'mp4')).toBe('kitchen-disco-song-2027-01-03-070509-game.mp4');
+    expect(videoFileName('song', at, 'game', 'mp4')).toBe('jazz-hands-song-2027-01-03-070509-game.mp4');
   });
 });
 
