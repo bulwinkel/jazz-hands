@@ -39,6 +39,7 @@ import { inCurrentStretch, pausePlay, resumePlay } from './playTime';
 import { MenuPreview } from './preview';
 import type { PreviewState } from './preview';
 import { GameRenderer } from './render';
+import { canBeginCountdown } from './roundGates';
 import type { Feedback } from './render';
 import { endCard } from './recordingScene';
 import { judgePlayers } from './roundJudging';
@@ -557,9 +558,12 @@ export class DanceGame {
     if (this.phase === 'play') this.beginCountdown();
   }
 
-  /** Starts, or restarts, the song from its 3-2-1 countdown. Keeps the fitted grids. */
+  /**
+   * Starts, or restarts, the song from its 3-2-1 countdown. Keeps the grids. Waits while a new
+   * tracker loads (see `canBeginCountdown`).
+   */
   private beginCountdown = (): void => {
-    if (this.phase !== 'ready' && this.phase !== 'results' && this.phase !== 'play') return;
+    if (!canBeginCountdown(this.phase, this.switchingTracker)) return;
     this.resetRound();
     for (const player of this.players) {
       player.score = freshScore();
@@ -573,8 +577,10 @@ export class DanceGame {
   };
 
   /**
-   * Stops what runs of a round before it starts again, from its fit or from its countdown:
-   * the recording, the song, a pause, the flashes of cues, and the panel.
+   * Stops what runs of a round before it starts again, from its calibration or from its
+   * countdown: the recording, the song, a pause, the flashes of cues, the panel, and the
+   * "Click to start" button of a round whose sound stopped. Should the sound still be blocked
+   * when play begins again, `updatePlay` shows that button again.
    */
   private resetRound(): void {
     const session = this.session;
@@ -585,6 +591,7 @@ export class DanceGame {
     this.paused = false;
     this.feedback = [];
     this.ui.hidePanel();
+    this.ui.resumeButton.hidden = true;
   }
 
   /** Tells the recordings that a round begins. It is recorded when the players turned recording on. */
@@ -850,7 +857,8 @@ export class DanceGame {
       return;
     }
     const [first, ...others] = step.calibrate;
-    if (!first) return;
+    // While a new tracker loads, the hold waits at its end, as the C key does.
+    if (!first || this.switchingTracker) return;
     this.calibrateOne(first.index);
     this.calibrationQueue = others.map((player) => player.index);
   }
