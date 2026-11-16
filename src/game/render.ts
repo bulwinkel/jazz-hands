@@ -7,6 +7,7 @@ import { cellRect, containRect } from './geometry';
 import type { CueState } from './judgment';
 import { clamp, clamp01 } from './numbers';
 import type { PlayerRun } from './player';
+import { canvasFont, signOffset } from './signInk';
 import type { Manifest, Phase, PlayerIndex, Point, Rating, Rect } from './types';
 
 /** A short flash that tells a player how a cue went. */
@@ -84,6 +85,8 @@ export class GameRenderer {
     if (!ctx) throw new Error('Canvas 2D is unavailable.');
     this.canvas = canvas;
     this.ctx = ctx;
+    // Measure every sign now. The first sign of a round then costs no time in its frame.
+    for (const sign of [...Object.values(GESTURE_EMOJI), ...Object.values(FACE_EMOJI)]) signOffset(sign);
   }
 
   draw(view: RenderView, videoAspect: number): void {
@@ -223,7 +226,7 @@ export class GameRenderer {
   /** The hand shape to make, in the middle of a cue cell. */
   private drawGesture(rect: Rect, gesture: GestureName): void {
     const centre = centreOf(rect);
-    this.text(GESTURE_EMOJI[gesture] ?? '✋', centre.x, centre.y, Math.min(rect.width, rect.height) * 0.5);
+    this.sign(GESTURE_EMOJI[gesture] ?? '✋', centre.x, centre.y, Math.min(rect.width, rect.height) * 0.5);
   }
 
   // --- Face cues ---
@@ -247,7 +250,7 @@ export class GameRenderer {
 
     ctx.save();
     ctx.globalAlpha = FACE_EMOJI_ALPHA;
-    this.text(FACE_EMOJI[state.cue.expression], centre.x, centre.y, emojiSize);
+    this.sign(FACE_EMOJI[state.cue.expression], centre.x, centre.y, emojiSize);
     ctx.restore();
 
     this.ring(centre, radius, color, 4);
@@ -289,7 +292,7 @@ export class GameRenderer {
     ctx.beginPath();
     ctx.arc(centre.x, centre.y, radius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * player.hold);
     ctx.stroke();
-    this.text('✋', centre.x, centre.y, radius * 1.25);
+    this.sign('✋', centre.x, centre.y, radius * 1.25);
   }
 
   private drawHud(player: PlayerRun, phase: Phase, color: string): void {
@@ -324,7 +327,7 @@ export class GameRenderer {
       ctx.restore();
       // With hand shapes on, show the shape the tracker reads, so a player can correct it.
       const emoji = player.shapes ? GESTURE_EMOJI[hand.gesture] : undefined;
-      if (emoji) this.text(emoji, x + this.textSize, y, this.textSize * 0.7);
+      if (emoji) this.sign(emoji, x + this.textSize, y, this.textSize * 0.7);
     }
   }
 
@@ -427,9 +430,18 @@ export class GameRenderer {
     ctx.stroke();
   }
 
+  /**
+   * A hand shape or a face, with the middle of its picture on the point. Text is centred by
+   * the numbers of its font, and those do not fit the picture of every sign in every browser.
+   */
+  private sign(content: string, x: number, y: number, size: number): void {
+    const { dx, dy } = signOffset(content);
+    this.text(content, x - dx * size, y - dy * size, size);
+  }
+
   private text(content: string, x: number, y: number, size: number, color: string = WHITE): void {
     const ctx = this.ctx;
-    ctx.font = `800 ${size}px system-ui, sans-serif`;
+    ctx.font = canvasFont(size);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.shadowColor = '#080c20';
