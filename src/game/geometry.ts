@@ -13,7 +13,10 @@ export function playSpan(player: PlayerIndex, playerCount: PlayerCount): { left:
   return { left: player * 0.5 + margin, right: (player + 1) * 0.5 - margin };
 }
 
-/** The standard grid: before a calibration, and after a calibration that saw too few hand positions. */
+/**
+ * The standard grid: before a player's first calibration that counts, and on screen while a
+ * calibration has too few hand positions to fit a grid to.
+ */
 export function defaultGrid(player: PlayerIndex, playerCount: PlayerCount): Rect {
   const span = playSpan(player, playerCount);
   const width = playerCount === 1 ? GRID.soloWidth : GRID.duoWidth;

@@ -391,7 +391,7 @@ export const FACES = {
 export const GRID = {
   /** A hand counts as inside a cell this far beyond its edge, as a share of the cell size. */
   cellMargin: 0.12,
-  /** The standard grid, before a calibration, as shares of the frame. */
+  /** The standard grid, before a player's first calibration that counts, as shares of the frame. */
   duoWidth: 0.42,
   soloWidth: 0.56,
   defaultTop: 0.1,
