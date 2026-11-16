@@ -3,12 +3,17 @@ import type { LevelRules } from './config';
 import { isBarStart, leadInEndSec, medianBeatInterval, tailStartSec } from './manifest';
 import { moveForm, moveSteps, noMoves, phraseBeats, planPhrases } from './moves';
 import type { MoveName, MoveStep, MoveTag, PhrasePlan } from './moves';
+import { rollPattern, shapeAtStep, shapePattern } from './shapePatterns';
+import type { PatternRolls } from './shapePatterns';
 import type { GestureName } from '../tracking/types';
 import type { Cue, Level, Manifest, SlideStep } from './types';
 
 export interface ChartOptions {
   level: Level;
-  /** Ask for a hand shape on some single-cell taps. */
+  /**
+   * The hand shapes switch: ask for a hand shape on some single taps, and at a level with
+   * `shapesOnDoublesAndSlides` on some taps for two hands and some slides too.
+   */
   shapes: boolean;
   seed: number;
   /** Where play ends, in song seconds. The last bar before it has no cues. */
@@ -319,8 +324,15 @@ interface RunningMove {
   endBeat: number;
 }
 
-/** The rolls of one beat. */
-type BeatRolls = ReturnType<typeof rollBeat>;
+/**
+ * The rolls of one beat: the rolls of `rollBeat`, and the rolls of a pattern of hand shapes.
+ * The pattern rolls on a stream of its own, so the cells and times of a chart stay as they
+ * were before patterns.
+ */
+type BeatRolls = ReturnType<typeof rollBeat> & { pattern: PatternRolls };
+
+/** The patterns of hand shapes roll on a stream of their own. See `BeatRolls`. */
+const PATTERN_SEED_STREAM = 0x5a1f7;
 
 /** Takes the rolls of one beat in a fixed order, so the same seed always gives the same chart. */
 function rollBeat(random: () => number) {
@@ -343,6 +355,7 @@ function rollBeat(random: () => number) {
 export function chartEntries(manifest: Manifest, options: ChartOptions): ChartEntry[] {
   const frame = chartFrame(manifest, options);
   const random = seededRandom(options.seed ^ 0xa519);
+  const patternRandom = seededRandom(options.seed ^ PATTERN_SEED_STREAM);
   const state: ChartState = {
     entries: [],
     hands: new HandBudget(),
@@ -355,7 +368,7 @@ export function chartEntries(manifest: Manifest, options: ChartOptions): ChartEn
   for (let beat = 0; beat < manifest.beats.length; beat++) {
     // Every beat takes the same rolls, used or not. One beat's choices then never shift
     // another beat's, and all levels read the same sequence.
-    const roll = rollBeat(random);
+    const roll: BeatRolls = { ...rollBeat(random), pattern: rollPattern(patternRandom) };
     // Skip beats that hold no cue, the later beats of a slide, and a beat that would come too
     // soon after the previous cue where the music changes intensity.
     if (!frame.isCueBeat(beat) || beat - state.previousBeat < frame.strideAt(beat)) continue;
@@ -466,7 +479,7 @@ function addBeatCues(frame: ChartFrame, state: ChartState, beat: number, roll: B
     addSlide(frame, state, beat, roll);
     return;
   }
-  const cue = choice === 'double' ? doubleCue(frame, beat, roll) : singleCue(frame, state, beat, roll);
+  const cue = choice === 'double' ? doubleCue(frame, state, beat, roll) : singleCue(frame, state, beat, roll);
   const phraseShape = frame.phraseShape?.[beat];
   if (phraseShape) cue.shapes = cue.cells.map(() => phraseShape);
   addCue(state, { cue, role: 'beat' });
@@ -529,37 +542,67 @@ const SLIDE_STEPS: readonly SlideStep[] = [1, 2, 3];
 
 /**
  * Adds a slide: three taps in a line, from the beat's master cell through the middle cell to a
- * cell two steps away, one tap on each of its three cue beats. A cell asks for no shape from the
- * shapes switch. A level with a shape on every cue gives each cell the phrase shape of its beat.
- * No off-beat tap follows any of the cells.
+ * cell two steps away, one tap on each of its three cue beats. With the shapes switch, a level
+ * with `shapesOnDoublesAndSlides` may give the slide a pattern: the cells step through it, one
+ * shape each (A B A or A B C). A level with a shape on every cue gives each cell the phrase
+ * shape of its beat. No off-beat tap follows any of the cells.
  */
 function addSlide(frame: ChartFrame, state: ChartState, beat: number, roll: BeatRolls): void {
   const from = frame.master[beat];
   const targets = slideTargets(from);
   const to = targets[Math.floor(roll.slideTarget * targets.length)];
   const cells = [from, middleCell(from, to), to];
+  // The rest before a shape counts from the cue before the slide, so decide before its cells.
+  const startSec = frame.manifest.beats[beat];
+  const pattern = switchShapesFit(frame, state, startSec, roll) ? shapePattern(roll.pattern) : null;
 
   slideBeats(frame, beat).forEach((cellBeat, k) => {
     const cue = tapOn(frame, cellBeat, cells[k]);
     cue.slideStep = SLIDE_STEPS[k];
+    if (pattern) cue.shapes = [shapeAtStep(pattern, k)];
     if (frame.phraseShape) cue.shapes = [frame.phraseShape[cellBeat]];
     addCue(state, { cue, role: k === 0 ? 'beat' : 'slide' });
   });
   state.previousWasOffbeat = false;
 }
 
-/** A tap for two hands at once, from the beat's master cell. */
-function doubleCue(frame: ChartFrame, beat: number, roll: BeatRolls): Cue {
+/**
+ * A tap for two hands at once, from the beat's master cell. With the shapes switch, a level with
+ * `shapesOnDoublesAndSlides` may ask for two different shapes: the first two of a pattern.
+ */
+function doubleCue(frame: ChartFrame, state: ChartState, beat: number, roll: BeatRolls): Cue {
   const timeSec = frame.manifest.beats[beat];
   const cells = doubleCells(frame.master[beat], roll.side, roll.partnerRow);
-  return { timeSec, beatIndex: beat, cells };
+  const cue: Cue = { timeSec, beatIndex: beat, cells };
+  if (switchShapesFit(frame, state, timeSec, roll)) {
+    const pattern = shapePattern(roll.pattern);
+    cue.shapes = [shapeAtStep(pattern, 0), shapeAtStep(pattern, 1)];
+  }
+  return cue;
+}
+
+/**
+ * True when the shapes switch gives a tap for two hands or a slide its shapes, at a level that
+ * has them. The same roll and the same rest as for a single tap decide: see `switchGivesShape`.
+ */
+function switchShapesFit(frame: ChartFrame, state: ChartState, timeSec: number, roll: BeatRolls): boolean {
+  return frame.rules.shapesOnDoublesAndSlides && switchGivesShape(frame, state, timeSec, roll);
+}
+
+/**
+ * True when the shapes switch asks for a shape on a cue due at `timeSec`: on the share
+ * `CHART.gestureChance` of the rolls, when the hand has time to make the shape after the
+ * previous cue.
+ */
+function switchGivesShape(frame: ChartFrame, state: ChartState, timeSec: number, roll: BeatRolls): boolean {
+  const rested = timeSec - state.previousSec >= CHART.gestureGapSec - EPSILON;
+  return frame.options.shapes && rested && roll.gesture < CHART.gestureChance;
 }
 
 /** A tap on the beat's master cell. With shapes on, some ask for a shape, when the hand has time to make it. */
 function singleCue(frame: ChartFrame, state: ChartState, beat: number, roll: BeatRolls): Cue {
   const cue = tapOn(frame, beat, frame.master[beat]);
-  const rested = cue.timeSec - state.previousSec >= CHART.gestureGapSec - EPSILON;
-  if (frame.options.shapes && rested && roll.gesture < CHART.gestureChance) {
+  if (switchGivesShape(frame, state, cue.timeSec, roll)) {
     cue.shapes = [CHART.gesturePool[Math.floor(roll.shape * CHART.gesturePool.length)]];
   }
   return cue;

@@ -27,6 +27,8 @@ const ALL_LEVELS: Level[] = [1, 2, 3, 4, 5];
 const SONG_MANIFESTS = SONGS.map((song) => validateManifest(JSON.parse(readFileSync(`public${song.manifest}`, 'utf8'))));
 /** Levels where hand shapes come from the player's switch, not from the level itself. */
 const SWITCH_LEVELS: Level[] = [1, 2, 3, 4];
+/** Levels where the shapes switch asks for a shape on single taps only. */
+const SINGLE_SHAPE_LEVELS: Level[] = [1, 2, 3];
 const column = (cell: number): number => cell % 3;
 const row = (cell: number): number => Math.floor(cell / 3);
 const isDouble = (cue: Cue): boolean => cue.cells.length === 2;
@@ -476,8 +478,8 @@ describe('hand shapes', () => {
     }
   });
 
-  it('appear at every level with a switch when it is on, only on single taps outside slides, from the pool', () => {
-    for (const level of SWITCH_LEVELS) {
+  it('appear at levels 1 to 3 when the switch is on, only on single taps outside slides, from the pool', () => {
+    for (const level of SINGLE_SHAPE_LEVELS) {
       const shaped = chart(synthetic(100, 600), level, 7, { shapes: true }).filter((cue) => cue.shapes);
       expect(shaped.length).toBeGreaterThan(20);
       for (const cue of shaped) {
@@ -491,13 +493,16 @@ describe('hand shapes', () => {
   it.each([60, 100, 109, 128, 180])(
     'at %i BPM, never follow the previous cue faster than a hand can change shape',
     (bpm) => {
-      // The gap counts from the previous cue, so it also covers a tap after the end of a slide.
-      const cues = chart(synthetic(bpm, 600), 3, 7, { shapes: true });
-      expect(cues.some((cue) => cue.shapes)).toBe(true);
-      cues.forEach((cue, i) => {
-        if (!cue.shapes || i === 0) return;
-        expect(cue.timeSec - cues[i - 1].timeSec).toBeGreaterThanOrEqual(CHART.gestureGapSec - 1e-8);
-      });
+      // The gap counts from the previous cue, so it also covers a tap after the end of a slide,
+      // a tap after an off-beat tap at level 4, and each cell of a slide with a pattern.
+      for (const level of [3, 4] as Level[]) {
+        const cues = chart(synthetic(bpm, 600), level, 7, { shapes: true });
+        expect(cues.some((cue) => cue.shapes)).toBe(true);
+        cues.forEach((cue, i) => {
+          if (!cue.shapes || i === 0) return;
+          expect(cue.timeSec - cues[i - 1].timeSec).toBeGreaterThanOrEqual(CHART.gestureGapSec - 1e-8);
+        });
+      }
     },
   );
 
@@ -507,6 +512,65 @@ describe('hand shapes', () => {
     const cues = chart(synthetic(100, 600), 3, 7, { shapes: true });
     const afterSlides = cues.filter((cue, i) => i > 0 && cue.shapes && cues[i - 1].slideStep === 3);
     expect(afterSlides.length).toBeGreaterThan(0);
+  });
+});
+
+describe('hand shapes at level 4 with the switch on', () => {
+  const song = synthetic(100, 1800);
+  const cues = chart(song, 4, 7, { shapes: true });
+  const doubles = cues.filter(isDouble);
+  const slideStarts = cues.flatMap((cue, i) => (startsSlide(cue) ? [i] : []));
+
+  it('give a tap for two hands two different shapes from the pool, on about the share of single taps', () => {
+    const shaped = doubles.filter((cue) => cue.shapes);
+    expect(shaped.length / doubles.length).toBeCloseTo(CHART.gestureChance, 1);
+    for (const cue of shaped) {
+      expect(cue.shapes).toHaveLength(2);
+      expect(cue.shapes?.[0]).not.toBe(cue.shapes?.[1]);
+      for (const shape of cue.shapes ?? []) expect(CHART.gesturePool).toContain(shape);
+    }
+  });
+
+  it('give a slide a pattern over its three cells, A B A or A B C, or no shape at all', () => {
+    let pairs = 0;
+    let triples = 0;
+    for (const i of slideStarts) {
+      const shapes = cues.slice(i, i + 3).map((cue) => cue.shapes?.[0]);
+      if (shapes[0] === undefined) {
+        expect(shapes).toEqual([undefined, undefined, undefined]);
+        continue;
+      }
+      expect(shapes[1]).not.toBe(shapes[0]);
+      expect(shapes[2]).not.toBe(shapes[1]);
+      if (shapes[2] === shapes[0]) pairs++;
+      else triples++;
+    }
+    expect((pairs + triples) / slideStarts.length).toBeCloseTo(CHART.gestureChance, 1);
+    expect(pairs).toBeGreaterThan(triples);
+    expect(triples).toBeGreaterThan(0);
+  });
+
+  it('give a single tap the shape that level 3 gives it on the same beat', () => {
+    // Both levels read the same rolls. At 100 BPM every cue beat leaves a hand time to change
+    // shape, so a single tap that follows a cue beat gets the same answer at both levels.
+    const levelThree = new Map(chart(song, 3, 7, { shapes: true }).map((cue) => [cue.beatIndex, cue]));
+    let compared = 0;
+    let shaped = 0;
+    cues.forEach((cue, i) => {
+      const other = levelThree.get(cue.beatIndex);
+      const single = (tap: Cue | undefined): boolean => tap !== undefined && tap.cells.length === 1 && !inSlide(tap);
+      if (!single(cue) || !single(other) || i === 0 || isOffbeat(cues[i - 1])) return;
+      compared++;
+      if (cue.shapes) shaped++;
+      expect(cue.shapes).toEqual(other?.shapes);
+    });
+    expect(compared).toBeGreaterThan(300);
+    expect(shaped).toBeGreaterThan(100);
+  });
+
+  it('give no shape to an off-beat tap', () => {
+    expect(cues.filter(isOffbeat).length).toBeGreaterThan(100);
+    for (const cue of cues.filter(isOffbeat)) expect(cue.shapes).toBeUndefined();
   });
 });
 
@@ -858,11 +922,28 @@ describe('slides on every song', () => {
     for (const { entries } of chartsAt(level)) expect(cuesBeyondTwoHands(entries.map((entry) => entry.cue))).toEqual([]);
   });
 
-  it.each([3, 4] as Level[])('at level %i, ask for no shape from the shapes switch on a cell of a slide', (level) => {
-    for (const { entries } of chartsAt(level)) {
+  it('at level 3, ask for no shape from the shapes switch on a cell of a slide', () => {
+    for (const { entries } of chartsAt(3)) {
       const slideCells = entries.map((entry) => entry.cue).filter(inSlide);
       for (const cue of slideCells) expect(cue.shapes).toBeUndefined();
     }
+  });
+
+  it('at level 4, ask for a shape on all three cells of a slide or on none, a new shape on each cell', () => {
+    let shaped = 0;
+    for (const { entries } of chartsAt(4)) {
+      for (const i of slideStarts(entries)) {
+        const shapes = entries.slice(i, i + 3).map((entry) => entry.cue.shapes?.[0]);
+        if (shapes[0] === undefined) {
+          expect(shapes).toEqual([undefined, undefined, undefined]);
+          continue;
+        }
+        shaped++;
+        expect(shapes[1]).not.toBe(shapes[0]);
+        expect(shapes[2]).not.toBe(shapes[1]);
+      }
+    }
+    expect(shaped).toBeGreaterThan(100);
   });
 
   it('give each cell of a slide the phrase shape of its own beat at level 5', () => {

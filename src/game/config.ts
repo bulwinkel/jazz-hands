@@ -229,6 +229,12 @@ export interface LevelRules {
    * A double is never followed by one: it leaves no hand free.
    */
   offbeatChance: number;
+  /**
+   * With the hand shapes switch on, the roll that gives a single tap a shape also gives shapes
+   * to a tap for two hands and to a slide: two different shapes for the two hands, and a
+   * pattern over the three cells of a slide. See shapePatterns.ts.
+   */
+  shapesOnDoublesAndSlides: boolean;
   /** Every cue asks for a hand shape. One shape lasts a few seconds, then it changes. */
   shapeOnEveryCue: boolean;
   /** How long a cue is on screen before it is due. */
@@ -246,6 +252,7 @@ export const LEVELS: Record<Level, LevelRules> = {
     doublesOnBarStartsOnly: false,
     slideChance: 0,
     offbeatChance: 0,
+    shapesOnDoublesAndSlides: false,
     shapeOnEveryCue: false,
     approachSec: 1.4,
     perfectMs: [-150, 200],
@@ -259,6 +266,7 @@ export const LEVELS: Record<Level, LevelRules> = {
     doublesOnBarStartsOnly: true,
     slideChance: 0,
     offbeatChance: 0,
+    shapesOnDoublesAndSlides: false,
     shapeOnEveryCue: false,
     approachSec: 1,
     perfectMs: [-120, 160],
@@ -275,6 +283,7 @@ export const LEVELS: Record<Level, LevelRules> = {
     // length and every candidate seed of the cue sets.
     slideChance: 0.28,
     offbeatChance: 0,
+    shapesOnDoublesAndSlides: false,
     shapeOnEveryCue: false,
     approachSec: 1,
     perfectMs: [-120, 160],
@@ -289,6 +298,7 @@ export const LEVELS: Record<Level, LevelRules> = {
     // Tuned as level 3: 76862 slides against 77647 with the fast, normal and slow slides of 0.3.
     slideChance: 0.35,
     offbeatChance: 0.6,
+    shapesOnDoublesAndSlides: true,
     shapeOnEveryCue: false,
     approachSec: 1,
     perfectMs: [-120, 160],
@@ -303,6 +313,8 @@ export const LEVELS: Record<Level, LevelRules> = {
     // The slides of level 4: a shape does not change the chart.
     slideChance: 0.35,
     offbeatChance: 0.6,
+    // As level 4. The shape on every cue then takes the place of these shapes.
+    shapesOnDoublesAndSlides: true,
     shapeOnEveryCue: true,
     approachSec: 1,
     perfectMs: [-120, 160],
@@ -336,6 +348,11 @@ export const CHART = {
    */
   handRestSec: 0.45,
   gesturePool: ['fist', 'open', 'point', 'peace'] satisfies GestureName[],
+  /**
+   * A pattern of hand shapes is a pair (A B A B) with this chance, else a triple (A B C A B C).
+   * A pair is the usual one: it is easier to read and to remember. See shapePatterns.ts.
+   */
+  patternPairShare: 0.7,
   /**
    * At a level with a shape on every cue, one shape lasts at least this long, and changes on
    * a bar start. A player holds the shape through a run of cues and changes it with the music.
