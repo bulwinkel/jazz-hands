@@ -301,6 +301,7 @@ The run report names:
 | --- | --- |
 | `players[].faceCues.asked` | The face cues that the round played. 0 when it dropped them before play. |
 | `players[].faceCues.droppedBeforePlay` | True when the round dropped the player's face cues, because the tracker had not found the face in 10 frames before play. |
+| `players[].faceCues.droppedCount` | The face cues that the chart had when the round dropped them. 0 when the round played them. |
 | `players[].faceCues.unseen` | The face cues that gave no result, because no frame in their window had the face. |
 | `players[].faceCues.cues[].unseen` | True for a face cue that gave no result. Its `result` is then empty. |
 
@@ -402,7 +403,8 @@ the save fails, the row shows **Not saved**.
 | `runReport` | The file name of the round's run report. Null when the rating came before the dev server saved the report. |
 | `song`, `length`, `playerCount` | The song id, `short` or `full`, and 1 or 2. |
 | `cueSet`, `seed`, `cueSetRandom`, `moveShare` | The set, its chart seed, true when the game picked the set, and its share of moves. |
-| `player`, `level`, `shapes`, `faces` | The player (0 is the left player, or the only player), the level, and the switches. |
+| `player`, `level`, `shapes`, `faces` | The player (0 is the left player, or the only player), the level, and the switches. `faces` stays on when the round drops the face cues. |
+| `facesDropped` | True when the round dropped the player's face cues before play, because the tracker had not found the face. Records from before 2026-11-17 do not have it, and `npm run ratings` reads them as before. |
 | `chart` | What the played part of the player's chart held: the shares of `slides` and `doubles`, the `offbeats` taps for each cue that the shares count, the number of `cues`, and the `moves` by name. A slide counts once in `slides` and three times in `cues`. Records from before 2026-11-16 also hold a share of fast slides, and `npm run ratings` reads them as before. See `chartMix` in `src/game/cueSet.ts`. |
 | `result` | `score`, `accuracy` from 0 to 1, `perfect`, `good` and `miss`. |
 | `rating` | 1 to 5. |

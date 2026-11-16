@@ -229,6 +229,8 @@ export interface PlayerReport {
      * the face in enough frames before play. False with faces off.
      */
     droppedBeforePlay: boolean;
+    /** The face cues of the chart that the round dropped before play: all of them when `droppedBeforePlay`, else 0. */
+    droppedCount: number;
     /** The face cues that gave no result, because no tracking frame in their window had the face. */
     unseen: number;
     /** One entry for each expression the cues asked for. Read these to set `FACES.thresholds`. */
@@ -294,6 +296,7 @@ function faceCuesReport(player: PlayerRun): PlayerReport['faceCues'] {
     asked: faceCues.length,
     hit: faceStates.filter((state) => isHit(state.result)).length,
     droppedBeforePlay: player.faceCuesDropped,
+    droppedCount: player.faceCuesDropped ? player.chartFaceCues.length : 0,
     unseen: faceStates.filter((state) => state.unseen === true).length,
     expressions,
     cues: faceCues.map((cue, i) => ({

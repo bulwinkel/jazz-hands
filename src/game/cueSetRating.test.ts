@@ -20,6 +20,7 @@ const PLAYER: RatingPlayer = {
   level: 4,
   shapes: true,
   faces: false,
+  faceCuesDropped: false,
   mix: { slides: 0.212121212, doubles: 0.0833333, offbeats: 0.3, cues: 100 },
   moves: { point: 3, circle: 1 },
   score: { score: 13456.6, combo: 4, maxCombo: 31, perfect: 80, good: 12, miss: 8, total: 100 },
@@ -44,6 +45,7 @@ describe('a rating record', () => {
       level: 4,
       shapes: true,
       faces: false,
+      facesDropped: false,
       chart: { slides: 0.2121, doubles: 0.0833, offbeats: 0.3, cues: 100, moves: { point: 3, circle: 1 } },
       result: { score: 13457, accuracy: 0.86, perfect: 80, good: 12, miss: 8 },
       rating: 4,
@@ -55,6 +57,11 @@ describe('a rating record', () => {
     const second = ratingRecord(ROUND, PLAYER, 5, SAVED_AT);
     const changed = ratingRecord(ROUND, PLAYER, 3, new Date('2026-11-13T08:31:09Z'));
     expect(new Set([first.roundId, second.roundId, changed.roundId])).toEqual(new Set([ROUND.id]));
+  });
+
+  it('keeps the Faces switch on, and says when the round dropped the face cues', () => {
+    const dropped = ratingRecord(ROUND, { ...PLAYER, faces: true, faceCuesDropped: true }, 4, SAVED_AT);
+    expect(dropped).toMatchObject({ faces: true, facesDropped: true });
   });
 
   it('names no run report while the dev server has not saved it yet', () => {

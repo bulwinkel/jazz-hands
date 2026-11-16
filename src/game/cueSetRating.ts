@@ -70,7 +70,10 @@ export function ratedRoundOf(round: EndedRound, random: () => number): RatedRoun
 }
 
 /** What a record needs of the player who rates. */
-export type RatingPlayer = Pick<PlayerRun, 'index' | 'level' | 'shapes' | 'faces' | 'mix' | 'moves' | 'score'>;
+export type RatingPlayer = Pick<
+  PlayerRun,
+  'index' | 'level' | 'shapes' | 'faces' | 'faceCuesDropped' | 'mix' | 'moves' | 'score'
+>;
 
 /** One line of the ratings file. */
 export interface RatingRecord {
@@ -89,7 +92,14 @@ export interface RatingRecord {
   player: PlayerIndex;
   level: Level;
   shapes: boolean;
+  /** The Faces switch. It stays on when the round drops the face cues: see `facesDropped`. */
   faces: boolean;
+  /**
+   * True when the round dropped this player's face cues before play, because the tracker had
+   * not found the face. The player then danced with no face cues. Records saved before
+   * 2026-11-17 do not have it.
+   */
+  facesDropped: boolean;
   /** What the part of the chart that the round played held. See `ChartMix` in cueSet.ts. */
   chart: ChartMix & { moves: Record<MoveName, number> };
   result: { score: number; accuracy: number; perfect: number; good: number; miss: number };
@@ -136,6 +146,7 @@ export function ratingRecord(
     level: player.level,
     shapes: player.shapes,
     faces: player.faces,
+    facesDropped: player.faceCuesDropped,
     chart: chartPart(player),
     result: resultPart(player.score),
     rating,

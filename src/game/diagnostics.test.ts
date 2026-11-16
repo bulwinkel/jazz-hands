@@ -373,7 +373,15 @@ describe('face cues in the run report', () => {
   it('is empty for a player with faces off', () => {
     const { faces, faceCues } = report([playOneCue(tap(), () => [hand(4)])]).players[0];
     expect(faces).toBe(false);
-    expect(faceCues).toEqual({ asked: 0, hit: 0, droppedBeforePlay: false, unseen: 0, expressions: {}, cues: [] });
+    expect(faceCues).toEqual({
+      asked: 0,
+      hit: 0,
+      droppedBeforePlay: false,
+      droppedCount: 0,
+      unseen: 0,
+      expressions: {},
+      cues: [],
+    });
   });
 
   it('counts the face cues that gave no result because the camera did not see the face, and marks each', () => {
@@ -396,10 +404,17 @@ describe('face cues in the run report', () => {
     expect(faceCues.cues[0]).toMatchObject({ result: 'miss', unseen: false });
   });
 
-  it('says when the round dropped the face cues before play', () => {
-    const dropped: PlayerRun = { ...newPlayer(), faces: true, faceCuesDropped: true };
+  it('says when the round dropped the face cues before play, and how many the chart had', () => {
+    const chartFaceCues = [faceCue('smile', 1), faceCue('pucker', 3), faceCue('smile', 5)];
+    const dropped: PlayerRun = { ...newPlayer(), faces: true, chartFaceCues, faceCuesDropped: true };
     const { faceCues } = report([dropped]).players[0];
-    expect(faceCues).toMatchObject({ asked: 0, droppedBeforePlay: true, unseen: 0 });
+    expect(faceCues).toMatchObject({ asked: 0, droppedBeforePlay: true, droppedCount: 3, unseen: 0 });
+  });
+
+  it('counts no dropped face cues for a round that played them', () => {
+    const player = playFaceCues([faceCue('smile', 1)], () => face('smile', 0.9));
+    const { faceCues } = report([{ ...player, chartFaceCues: player.faceCues }]).players[0];
+    expect(faceCues).toMatchObject({ droppedBeforePlay: false, droppedCount: 0 });
   });
 
   it('names what the face models ran on, or null when none was loaded', () => {
