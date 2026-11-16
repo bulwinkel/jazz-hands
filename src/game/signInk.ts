@@ -16,9 +16,9 @@ export interface InkOffset {
 
 const NO_OFFSET: InkOffset = Object.freeze({ dx: 0, dy: 0 });
 /** The font size of the measurement, in pixels. */
-const MEASURE_SIZE = 96;
+export const MEASURE_SIZE = 96;
 /** The side of the hidden canvas. It has room for a sign that sits far from the point. */
-const MEASURE_SIDE = MEASURE_SIZE * 3;
+export const MEASURE_SIDE = MEASURE_SIZE * 3;
 /** A pixel counts as painted above this alpha, of 255. The soft edge of a sign does not count. */
 const PAINT_ALPHA = 32;
 

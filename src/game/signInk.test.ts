@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { canvasFont, inkCentre, signOffset } from './signInk';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { GameRenderer } from './render';
+import { canvasFont, inkCentre, MEASURE_SIDE, MEASURE_SIZE, signOffset } from './signInk';
 
 const SIDE = 10;
 
@@ -39,9 +40,62 @@ describe('inkCentre', () => {
   });
 });
 
+/**
+ * The hidden canvas of a page whose browser paints every sign off-centre: its pixels cover
+ * x 150 to 199 and y 100 to 139 of the 288 px square. The middle of that box is 31 px right
+ * of the middle of the square, and 24 px above it.
+ */
+function offCentrePage(): Pick<Document, 'createElement'> {
+  const rgba = new Uint8ClampedArray(MEASURE_SIDE * MEASURE_SIDE * 4);
+  for (let y = 100; y <= 139; y++) {
+    for (let x = 150; x <= 199; x++) rgba[(y * MEASURE_SIDE + x) * 4 + 3] = 255;
+  }
+  const ctx = { fillText: () => {}, getImageData: () => ({ data: rgba }) };
+  const canvas = { width: 0, height: 0, getContext: () => ctx };
+  return { createElement: () => canvas } as unknown as Pick<Document, 'createElement'>;
+}
+
+/** The offset that `offCentrePage` gives, as a share of the font size. */
+const OFF_CENTRE = { dx: 31 / MEASURE_SIZE, dy: -24 / MEASURE_SIZE };
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe('signOffset', () => {
   it('is zero where there is no page to measure on', () => {
-    expect(signOffset('☝️')).toEqual({ dx: 0, dy: 0 });
+    // A sign of its own: the offsets are kept per sign, and the renderer below measures ☝️.
+    expect(signOffset('☝️ unmeasured')).toEqual({ dx: 0, dy: 0 });
+  });
+
+  it('measures how far the painted picture of a sign is from the point', () => {
+    vi.stubGlobal('document', offCentrePage());
+    const offset = signOffset('✌️ measured');
+    expect(offset.dx).toBeCloseTo(OFF_CENTRE.dx);
+    expect(offset.dy).toBeCloseTo(OFF_CENTRE.dy);
+  });
+});
+
+describe('a sign drawn by the renderer', () => {
+  /** A renderer on a canvas that only notes where each text is drawn. */
+  function recordingRenderer(): { sign: (content: string, x: number, y: number, size: number) => void; drawn: number[][] } {
+    const drawn: number[][] = [];
+    const ctx = { fillText: (_: string, x: number, y: number) => drawn.push([x, y]) };
+    const canvas = { getContext: () => ctx } as unknown as HTMLCanvasElement;
+    const renderer = new GameRenderer(canvas);
+    // `sign` is private to the renderer. The test calls it directly: it is the one place that
+    // turns the measured offset into a position on the canvas.
+    const { sign } = renderer as unknown as { sign: (content: string, x: number, y: number, size: number) => void };
+    return { sign: sign.bind(renderer), drawn };
+  }
+
+  it.each([40, 120])('moves the sign against its offset, at %i px', (size) => {
+    vi.stubGlobal('document', offCentrePage());
+    const { sign, drawn } = recordingRenderer();
+    sign('☝️ drawn', 500, 300, size);
+    const [x, y] = drawn.at(-1) ?? [];
+    expect(x).toBeCloseTo(500 - OFF_CENTRE.dx * size);
+    expect(y).toBeCloseTo(300 - OFF_CENTRE.dy * size);
   });
 });
 
