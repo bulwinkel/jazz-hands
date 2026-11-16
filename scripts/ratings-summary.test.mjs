@@ -38,13 +38,21 @@ describe('reading a ratings file', () => {
     expect(skipped).toBe(0);
   });
 
-  it('reads the records of older versions, whose chart holds other parts', () => {
-    // Until 2026-11-16 the chart also held a share of fast slides. The summary does not read
-    // the chart, so a record with any chart counts.
-    const older = record({ chart: { ...record({}).chart, olderShare: 0.05 } });
-    const { records, skipped } = readRatings(lines([older, record({ chart: {} })]));
-    expect(records).toHaveLength(2);
+  it('reads a record saved before 2026-11-16, whose chart also holds a share of fast slides', () => {
+    const olderChart = {
+      slides: 0.2,
+      doubles: 0.1,
+      fastSlides: 0.05,
+      offbeats: 0.2,
+      cues: 90,
+      moves: { point: 2, circle: 1 },
+    };
+    const older = record({ chart: olderChart, level: 4, cueSet: 5, rating: 5 });
+    const { records, skipped } = readRatings(lines([older]));
     expect(skipped).toBe(0);
+    const text = summaryText(records, skipped);
+    expect(text).toContain('Ratings: 1');
+    expect(text).toContain('By level and set\nLevel  Set  Ratings  Mean\n-----  ---  -------  ----\n4      5    1        5.00');
   });
 
   it('leaves out empty lines, and does not count them', () => {
