@@ -1036,7 +1036,7 @@ body[data-phase="countdown"] #message h1 {
   color: #161629;
   font-size: 32px;
 }
-/* The buttons of a round, bottom right: Restart, then Pause in the corner. */
+/* The buttons of a round, bottom right: Menu, Restart, then Pause in the corner. */
 #round-buttons {
   position: absolute;
   bottom: 18px;

@@ -67,7 +67,7 @@ Each player also has two switches:
 | --- | --- |
 | Space | Start the round. In a round: pause. On the results: play again. |
 | Enter | Start the round, in the menu. |
-| Esc | Go back to the menu. |
+| Esc | Go back to the menu. The **Menu** button at the bottom right does the same. |
 | F | Full screen. |
 | ← and → | Step through the songs, in the menu. |
 | R | Start the round again. The **Restart** button beside **Pause** does the same. |

@@ -151,6 +151,7 @@ export class DanceGame {
 
     this.ui.pauseButton.addEventListener('click', () => void this.togglePause());
     this.ui.restartButton.addEventListener('click', () => this.restartRound());
+    this.ui.menuButton.addEventListener('click', () => this.showMenu());
     this.ui.resumeButton.addEventListener('click', () => void this.unlockAudio());
     this.ui.refitButton.addEventListener('click', (event) => this.refit(isHandClick(event)));
     this.ui.fullscreenButton.addEventListener('click', () => this.toggleFullscreen());
@@ -174,6 +175,8 @@ export class DanceGame {
     this.ui.player.close();
     this.ui.pauseButton.hidden = phase !== 'play';
     this.ui.restartButton.hidden = phase !== 'play';
+    // The menu and the results have their own ways out. Every other phase needs one for a touch.
+    this.ui.menuButton.hidden = phase === 'menu' || phase === 'results';
     // The recalibrate button shows in the ready check: there the players see whether the grids
     // fit. It keeps away from the hands-up cells, which are in other places with two players.
     this.ui.refitButton.hidden = phase !== 'ready';
