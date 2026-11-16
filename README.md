@@ -51,8 +51,8 @@ Each player has a level of their own, so a child and an adult can play one round
 | --- | --- | --- |
 | 1 | Slow | One cell at a time, with time between the cues |
 | 2 | Every beat | A cue on every beat, and two cells at once on some bar starts |
-| 3 | Two hands + slides | More cues for two hands, and slides from one cell to another |
-| 4 | Fast hands | Fast slides, and taps between the beats |
+| 3 | Two hands + slides | More cues for two hands, and slides: three cells in a line, one after another |
+| 4 | Fast hands | Taps between the beats |
 | 5 | All signs | Level 4 with a hand shape on every cue |
 
 Each player also has two switches:
@@ -122,6 +122,7 @@ The MediaPipe runtime and models come from Google, under their own licences.
 The sections below describe each part of the game in detail.
 
 - [How a cue shows](#how-a-cue-shows)
+- [Slides](#slides)
 - [Cue sets](#cue-sets)
 - [Rate the cue set](#rate-the-cue-set)
 - [Moves](#moves)
@@ -140,6 +141,65 @@ full block has the player's colour.
 
 A fist held on a menu item shows its progress with the same block, so the menu teaches how a
 round reads.
+
+## Slides
+
+A slide is three taps in a line, at levels 3 to 5. Its cells fill one after another, one on
+each of three cue beats in a row.
+
+- The cells are the start cell, the middle cell and the end cell of a row, a column or a
+  diagonal. The start cell and the end cell are two steps apart.
+- Each cell shows as a tap: its block fills the cell on its own beat. No line or arrow joins
+  the cells. The cell that is due next is bright, and the later cells are faint.
+- Each cell is judged and scored as a tap of its own. A slide gives 3 cues and 3 results: a
+  missed middle cell gives one Miss, and the start cell and the end cell keep their own results.
+- A cell of a slide asks for no hand shape from the shapes switch. At level 5 each cell asks
+  for the shape of its own beat.
+
+### When a chart makes a slide
+
+On a cue beat where the music is busy (intensity 0.5 or more, `CHART.busyIntensity`), one roll
+starts a slide with the chance `slideChance` of the level, when a slide fits there.
+
+| Level | `slideChance` |
+| --- | --- |
+| 1 and 2 | 0: no slides |
+| 3 | 0.28 |
+| 4 and 5 | 0.35 |
+
+A slide fits on a cue beat only when all of these are true:
+
+- The cell of the beat is not the centre cell. No line of three starts in the centre.
+- The next two cue beats follow, one stride apart: one beat for each cell.
+- The cue before it is not an off-beat tap.
+- Its end cell comes before the first beat of the next planned move, and that beat stays free.
+
+Nothing else comes inside a slide: no off-beat tap, and no other cue on its beats. The next cue
+comes on the cue beat after the end cell at the earliest.
+
+So a chart has a smaller share of slides than the chance. In a Short round, the typical mix of
+a song (see [Cue sets](#cue-sets)) has a share of slides of 0.25 at level 3 and 0.19 at levels
+4 and 5: the median over the 20 songs. At levels 4 and 5 a slide never follows an off-beat tap.
+
+### How a tap is judged
+
+A tap asks for a hand in its cell on its beat. A hand counts in a cell up to 12% of the cell
+size beyond its edge (`GRID.cellMargin`). Each cell has two windows around its beat (`perfectMs`
+and `goodMs` in `LEVELS`):
+
+| Level | Perfect | Good |
+| --- | --- | --- |
+| 1 | 150 ms early to 200 ms late | 350 ms early to 450 ms late |
+| 2 to 5 | 120 ms early to 160 ms late | 280 ms early to 350 ms late |
+
+- A cell is Perfect when a tracking frame inside its Perfect window shows a hand in it. A hand
+  that comes early and stays in the cell is correct play.
+- A tap is Perfect as soon as all its cells are Perfect. Otherwise it ends when the Good window
+  closes: Good when each cell had a hand in the Good window, else a Miss.
+- A tap for two hands needs a hand in each of its two cells. A tap with a hand shape needs the
+  shape too. When the tracker cannot read hand shapes, only the place of the hand counts.
+- A Perfect scores 100 points and a Good 50, times a combo bonus from 1 to 2. A Miss scores 0
+  and ends the combo.
 
 ## Cue sets
 
@@ -174,7 +234,8 @@ players compare two charts of each kind and rate which share they like (see
 A set gives other cues at the same difficulty. Each set, set 1 too, tries 24 candidate
 charts for the song, the levels and the length, and keeps the one that plays most like the
 level usually does: closest to the typical mix. The mix is what makes a chart harder: its
-shares of slides, two-hand cues and fast slides, its off-beat taps, and its number of cues.
+shares of slides and two-hand cues, its off-beat taps, and its number of cues. The shares count
+the cues that a roll of a cue beat chose in busy music: a slide counts once, by its start cell.
 Off-beat taps and the number of cues count half each, because both say how busy a chart is.
 The typical mix is the median over the 144 candidate charts of the six sets together, so
 every set aims at the same mix.
@@ -183,14 +244,15 @@ The choice measures the charts without moves. A move takes the place of cues on 
 beats, and the rest of the chart is what makes it easy or hard. The round then plays the
 chosen chart with the set's share of moves.
 
-On the 18 songs at levels 3 and 4, the sets are a median of 1 point from the typical shares
-of slides and two-hand cues, and at most 8 (set 5 of Hey-Ho, Jonah at level 4). At level 4
-the sets of one song differ by a median of 4 points in fast slides, 6 points in off-beat taps
-and 5% in their cues. A set does not match where the cues are, which hand shapes they ask
-for, or how the slides split between normal and slow.
+On the 20 songs, in a Short round at levels 3 and 4, the sets are a median of 0.6 points from
+the typical shares of slides and two-hand cues, and at most 5.3 (the two-hand cues of set 4 of
+Blessed on the Hillside at level 4). At level 4 the sets of one song differ by a median of 4.4
+points in off-beat taps and 2.7% in their cues. A set does not match where the cues are, or
+which hand shapes they ask for.
 
 The typical mix is not the level rules: at levels 4 and 5 a slide never follows an off-beat
-tap, so their charts have about a third fewer slides than the rules say.
+tap, so their charts have about half the share of slides that the rules say. See
+[Slides](#slides).
 
 `set=random` or `set=1` to `set=6` in the URL gives the choice of the switch. A `seed=` in
 the URL replaces the set, for tests, and plays without moves: the results then show no set.
@@ -205,6 +267,7 @@ The run report names:
 | `settings.cueSetRandom` | True when the game picked the set at random. |
 | `settings.moveShare` | The share of moves of the round. |
 | `players[].moves` | Each player's moves, counted by name. |
+| `players[].cues[].slideStep` | The place of the cue in a slide: 1 for the start cell, 2 for the middle cell, 3 for the end cell. Other cues have no `slideStep`. |
 
 ## Rate the cue set
 
@@ -237,7 +300,7 @@ the save fails, the row shows **Not saved**.
 | `song`, `length`, `playerCount` | The song id, `short` or `full`, and 1 or 2. |
 | `cueSet`, `seed`, `cueSetRandom`, `moveShare` | The set, its chart seed, true when the game picked the set, and its share of moves. |
 | `player`, `level`, `shapes`, `faces` | The player (0 is the left player, or the only player), the level, and the switches. |
-| `chart` | What the played part of the player's chart held: the shares of `slides`, `doubles` and `fastSlides`, the `offbeats` taps for each cue that the shares count, the number of `cues`, and the `moves` by name. See `chartMix` in `src/game/cueSet.ts`. |
+| `chart` | What the played part of the player's chart held: the shares of `slides` and `doubles`, the `offbeats` taps for each cue that the shares count, the number of `cues`, and the `moves` by name. A slide counts once in `slides` and three times in `cues`. Records from before 2026-11-16 also hold a share of fast slides, and `npm run ratings` reads them as before. See `chartMix` in `src/game/cueSet.ts`. |
 | `result` | `score`, `accuracy` from 0 to 1, `perfect`, `good` and `miss`. |
 | `rating` | 1 to 5. |
 
@@ -256,35 +319,34 @@ cues for part of a phrase of 4 bars.
 | Point | Bottom-left to top-right and back, twice, then bottom-right to top-left and back, twice. Half of the points start on the other diagonal. |
 | Circle | Every outer cell in turn from a corner, clockwise or anticlockwise. |
 
-Each move has three forms. A tap takes one cue interval. A slide takes two: it ends on the
-next cue beat, and that beat holds no new cue.
+Each move has two forms. Each step is a tap, and takes one cue interval.
 
 | Form | Point | Circle | Cue intervals |
 | --- | --- | --- | --- |
 | Taps | 8 taps on the two diagonals | 8 taps on the outer cells | 8 |
 | Short taps | 4 taps: up each diagonal once | 4 taps on the corners | 4 |
-| Slides | 4 normal slides, up and down each diagonal | 4 normal slides from corner to corner | 8 |
 
 - A move starts on the first beat of a phrase where the music is busy, and ends inside the
   phrase.
 - A level gets the form that its pace has room for. With room for 8 intervals it gets the
-  taps, and levels 3 to 5 get the slides in half of these phrases. With room for 4 intervals
-  it gets the short taps. With less room it gets no move.
+  taps. With room for 4 intervals it gets the short taps. With less room it gets no move.
 - The phrases, the moves, the diagonals, the corners and the directions do not depend on the
   level. Two players on different levels dance the same move in the same phrase, each at the
   pace of their own level.
 - A phrase never gets the same move as the phrase before it.
-- Inside a move there are no off-beat taps, no taps for the other hand and no shapes from the
-  shapes switch. Level 5 keeps its shape on every cue.
+- Inside a move there are no off-beat taps, no slides and no shapes from the shapes switch.
+  Level 5 keeps its shape on every cue.
 - The cues before a move keep its first beat free: no slide runs into it, and no off-beat tap
   comes just before it.
 - A move ends early when the music gets calmer inside its phrase, or when the last bar of the
   round comes: the cues get further apart, and the rest of the steps does not fit.
 - A round that starts inside the song starts no move before its first cue.
 
-At levels 1 and 2 a move keeps the number of cues. At levels 3 to 5 it has fewer cues than
-the chart it replaces: no off-beat taps, and 4 slides in 8 intervals. With a share of 0.7, a
-Short round at level 4 has up to about a quarter fewer cues.
+At levels 1 and 2 a move keeps the number of cues, and at level 3 it changes it by at most
+1.2%. At levels 4 and 5 a move has fewer cues than the chart it replaces: it has no off-beat
+taps. On the 20 songs, sets 5 and 6 (a share of 0.7) give a Short round at level 4 a median of
+11% fewer cues than the same chart with no moves, and at most 27% fewer (set 5 of Peace, Be
+Still).
 
 Add a move in `src/game/moves.ts`: a name, and a function that gives the cells of each form.
 The tuning values are `MOVES` in `src/game/config.ts`.
