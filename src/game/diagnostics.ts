@@ -225,8 +225,8 @@ export interface PlayerReport {
     asked: number;
     hit: number;
     /**
-     * True when the round dropped this player's face cues before play: the camera had not seen
-     * the face on the ready screen, the results or the countdown. False with faces off.
+     * True when the round dropped this player's face cues before play: the tracker had not found
+     * the face in enough frames before play. False with faces off.
      */
     droppedBeforePlay: boolean;
     /** The face cues that gave no result, because no tracking frame in their window had the face. */

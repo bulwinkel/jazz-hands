@@ -12,9 +12,10 @@
 //   --url          A running dev server or `vite preview` of the game. Default as above.
 //   --players      1 or 2. Default 2.
 //   --tracker      hands-full, hands-split or pose. Default: the game's choice for the players.
-//   --faces        Turn on face cues for every player, so that the face models run too: before
-//                  play, and in play around the face cues. A run whose recording shows no face
-//                  before play drops its face cues, and then runs no face model in play.
+//   --faces        Turn on face cues for every player, so that the face models run too: in the
+//                  countdown, and in play around the face cues. A run whose tracker finds a face
+//                  in fewer than 10 frames before play drops its face cues, and then runs no face
+//                  model in play.
 //   --seconds      How long each run records, from the page load. Default 45. The round starts
 //                  at once, without the menu or a calibration; Space is pressed on the ready screen.
 //   --fps          The rate Chrome plays the file at. Default: from a .y4m header, else 30.

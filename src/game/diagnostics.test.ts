@@ -53,7 +53,7 @@ function newPlayer(): PlayerRun {
     faceStates: [],
     faceObservations: [],
     faceSeenAt: null,
-    faceSeenSinceScreen: false,
+    faceSightings: 0,
     score: freshScore(),
     holdStartMs: null,
     hold: 0,

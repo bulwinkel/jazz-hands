@@ -11,7 +11,7 @@ import type { RatedRound, SetRating } from './cueSetRating';
 import { buildRunReport, newFaceObservation, newObservation, newTrackingStats } from './diagnostics';
 import type { RunReport, TrackingStats } from './diagnostics';
 import { generateFaceCues } from './faceChart';
-import { decideFaceCues, facesOffText, looksForFaceBeforePlay, restartFaceCheck } from './faceCheck';
+import { countFaceSighting, decideFaceCues, facesOffText, looksForFaceBeforePlay, restartFaceCheck } from './faceCheck';
 import { needsFace, newFaceCueState } from './faceJudgment';
 import { fitMomentAt, planFit } from './fitTiming';
 import type { FitPlan } from './fitTiming';
@@ -120,6 +120,11 @@ export class DanceGame {
    * and the results make it false again: the next play decides again. See faceCheck.ts.
    */
   private faceCuesDecided = false;
+  /**
+   * When the ready screen or the results last opened, in page time. Only a camera frame taken
+   * at this time or later counts as a sighting for the face check.
+   */
+  private faceCheckSinceMs = 0;
   /**
    * Each player's pointer: which item their hands are on, and how far their fist hold has come.
    * In the menu and the results, and in the video player.
@@ -461,16 +466,18 @@ export class DanceGame {
 
   /**
    * The ready screen or the results opened. The face cues of the next play are open again,
-   * and the camera must see each face again, from now: a calibration moves the face region.
+   * and the tracker must find each face again, from now: a calibration moves the face region.
    */
   private beginFaceCheck(): void {
     this.faceCuesDecided = false;
+    this.faceCheckSinceMs = performance.now();
     restartFaceCheck(this.players);
   }
 
   /**
-   * Play begins after a ready screen or the results: a player whose face the camera has not
-   * seen since that screen opened gets no face cues in this round. A note says so.
+   * Play begins after a ready screen or the results: a player whose face the tracker has not
+   * found in enough frames since that screen opened gets no face cues in this round. A note
+   * says so.
    */
   private checkFacesBeforePlay(): void {
     const dropped = decideFaceCues(this.players);
@@ -765,14 +772,14 @@ export class DanceGame {
 
   /**
    * Keeps where each face was last found. A face cue is drawn there, on the player's own face.
-   * Also notes that the camera saw the face, for the face check before play.
+   * Before play, also counts the sighting for the face check.
    */
   private rememberFaces(frame: TrackingFrame): void {
     for (const player of this.players) {
       const face = frame.players[player.index].face;
       if (!face) continue;
       player.faceSeenAt = { x: face.x, y: face.y };
-      player.faceSeenSinceScreen = true;
+      if (!this.faceCuesDecided) countFaceSighting(player, frame.timeMs, this.faceCheckSinceMs);
     }
   }
 
@@ -1222,7 +1229,9 @@ export class DanceGame {
   /** True while the game needs a player's face from the tracker. */
   private needsFaceNow(player: PlayerRun): boolean {
     if (this.phase !== 'play') {
-      return looksForFaceBeforePlay(this.phase, player, this.faceCuesDecided);
+      const startHeld = this.players.some((candidate) => candidate.holdStartMs !== null);
+      const moment = { phase: this.phase, decided: this.faceCuesDecided, startHeld };
+      return looksForFaceBeforePlay(moment, player);
     }
     const inputLatencySec = this.options.settings.inputLatencyMs / 1000;
     return needsFace(player.faceCues, player.level, this.songTime(), inputLatencySec);

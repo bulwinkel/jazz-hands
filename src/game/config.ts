@@ -380,6 +380,12 @@ export const FACES = {
   regionAboveCells: 0.5,
   /** The box ends this share of the grid height below the grid top. */
   regionHeight: 0.6,
+  /**
+   * Before play, the tracker must find a player's face in this many frames, or the round drops
+   * that player's face cues. One frame can be luck: on an iPad the tracker found a face in 1
+   * frame of 162, and every face cue then gave no result.
+   */
+  sightingsToKeep: 10,
 } as const;
 
 export const GRID = {
