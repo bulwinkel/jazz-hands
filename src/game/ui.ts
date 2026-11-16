@@ -33,7 +33,6 @@ const SHELL_HTML = `
   <div id="toast" hidden role="status"></div>
   <div id="player" hidden></div>
   <button id="fullscreen" hidden>⛶ Full screen</button>
-  <button id="refit" hidden data-hand="refit" data-hand-hold="${HAND_MENU.slowHoldSec}">↺ Recalibrate · C</button>
   <pre id="debug" hidden></pre>`;
 
 /**
@@ -100,8 +99,6 @@ export class GameUI {
   /** Goes back to the menu, as the Esc key does. It shows from the start of a round to its end. */
   readonly menuButton: HTMLButtonElement;
   readonly resumeButton: HTMLButtonElement;
-  /** Starts the reach fit again. It shows in the ready check, where a hand can choose it too. */
-  readonly refitButton: HTMLButtonElement;
   /** Makes the page full screen. A touch presses it: a tablet has no F key. */
   readonly fullscreenButton: HTMLButtonElement;
   /** Plays a recorded round. It lies over the panel and under the hand rings. */
@@ -149,7 +146,6 @@ export class GameUI {
     this.restartButton = find(root, '#restart');
     this.menuButton = find(root, '#to-menu');
     this.resumeButton = find(root, '#resume');
-    this.refitButton = find(root, '#refit');
     this.fullscreenButton = find(root, '#fullscreen');
 
     this.player = new VideoPlayer(find(root, '#player'));
@@ -203,11 +199,8 @@ export class GameUI {
     this.menu?.stepSong(direction);
   }
 
-  /**
-   * Shows the menu. It edits `settings` in place and calls `onChange` after each edit.
-   * `onStart` hears whether a pointing hand pressed Start, and not a mouse or a key.
-   */
-  showMenu(settings: Settings, onStart: (byHand: boolean) => void, onChange: () => void): void {
+  /** Shows the menu. It edits `settings` in place and calls `onChange` after each edit. */
+  showMenu(settings: Settings, onStart: () => void, onChange: () => void): void {
     this.openPanel('menu', MENU_HTML, MENU_SWITCHES_HTML);
     this.menu = buildMenu(this.panel, settings, { onStart, onChange });
   }
@@ -229,7 +222,7 @@ export class GameUI {
         <div class="results-next">
           ${team}
           <p class="replay-prompt">Hands up to play again 🙌</p>
-          <p class="replay-hint">Raise a hand above your head and hold</p>
+          <p class="replay-hint">Raise a hand high to your right and hold</p>
           <div class="result-actions">
             <button id="replay" class="primary" data-hand="replay" data-hand-hold="${HAND_MENU.slowHoldSec}">Play again · Space</button>
             <button id="menu" data-hand="menu" data-hand-hold="${HAND_MENU.slowHoldSec}">Menu · Esc</button>
@@ -254,10 +247,7 @@ export class GameUI {
 
   // --- Choosing items by hand ---
 
-  /**
-   * The items a hand can choose now, with where they are on screen: those of the open panel,
-   * and the recalibrate button while it shows.
-   */
+  /** The items a hand can choose now, with where they are on screen: those of the open panel. */
   handTargets(): HandTarget[] {
     return this.handElements().map((element) => {
       const { left, top, width, height } = element.getBoundingClientRect();
@@ -283,8 +273,7 @@ export class GameUI {
   private handElements(): HTMLElement[] {
     // The open video player covers everything else, so only its own buttons count.
     if (this.player.isOpen) return this.player.handElements();
-    const onPanel = this.panel.hidden ? [] : [...this.panel.querySelectorAll<HTMLElement>('[data-hand]')];
-    return this.refitButton.hidden ? onPanel : [...onPanel, this.refitButton];
+    return this.panel.hidden ? [] : [...this.panel.querySelectorAll<HTMLElement>('[data-hand]')];
   }
 
   /** Chooses an item as a click would. The click is not trusted, so a handler can tell it from a real one. */

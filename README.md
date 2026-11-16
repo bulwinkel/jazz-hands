@@ -41,10 +41,12 @@ Open `http://localhost:5173` in Chrome and allow the camera.
    works too.
 2. Choose **Let's dance**, then walk back to your spot. Two players stand side by side: each
    one gets one half of the screen.
-3. Draw the biggest circles you can with both arms. The game grows each grid around its
-   player's hands.
-4. Hold a hand in the glowing cell to start the round.
-5. Dance. A block grows in a cell and fills it on the beat: have a hand in the cell then.
+3. Hold a hand in the Start cell ✋ to start the round. It is the top-right cell of your grid.
+   With two players, both hold.
+4. Dance. A block grows in a cell and fills it on the beat: have a hand in the cell then.
+
+Does your grid not fit your reach? Before you start, hold a hand in the Calibrate cell 📏, the
+top-left cell of your grid. See [Calibrate](#calibrate).
 
 Each player has a level of their own, so a child and an adult can play one round together.
 
@@ -71,7 +73,7 @@ Each player also has two switches:
 | F | Full screen. |
 | ← and → | Step through the songs, in the menu. |
 | R | Start the round again. The **Restart** button beside **Pause** does the same. |
-| C | Recalibrate: fit the grids again. |
+| C | Calibrate every player. The **Recalibrate** button of the results does the same. |
 | M | Change the hand tracker. |
 | D | Show the tracking numbers. |
 | `[` and `]` | Camera delay, 10 ms less or more. |
@@ -122,6 +124,7 @@ The MediaPipe runtime and models come from Google, under their own licences.
 
 The sections below describe each part of the game in detail.
 
+- [Calibrate](#calibrate)
 - [How a cue shows](#how-a-cue-shows)
 - [Slides](#slides)
 - [Cue sets](#cue-sets)
@@ -130,6 +133,49 @@ The sections below describe each part of the game in detail.
 - [Record a round](#record-a-round)
 - [Tracking thread](#tracking-thread)
 - [Add a song](#add-a-song)
+
+## Calibrate
+
+A calibration fits a player's grid to their reach. The player draws the biggest circles they
+can with both arms, and the game grows the grid around their hands. A child then gets a
+smaller, lower grid than an adult.
+
+A calibration is optional. After **Let's dance**, the game goes straight to the ready screen.
+Each player starts on the grid of their last calibration, or on the standard grid.
+
+The ready screen shows two cells in each player's grid:
+
+| Cell | Place | A hand held in it |
+| --- | --- | --- |
+| Start ✋ | Top right | Starts the round after 1 s. With two players, both hold. Space also starts. |
+| Calibrate 📏 | Top left | Calibrates this player after 1.5 s. |
+
+- The Calibrate cell is the second choice: its outline is thin and dashed, and its sign and
+  word are fainter.
+- A hand in the Start cell does not count for the Calibrate cell, and the reverse.
+- A calibration from the Calibrate cell waits 1 s for the hand to leave the cell. Then the
+  player draws circles for 6 s. Then the ready screen shows again.
+- Only the player who held calibrates. The grid of the other player does not change. With two
+  players, the screen names the player: "P1: draw the biggest circles you can with both arms!"
+- When both players hold their Calibrate cells, the first hold that completes calibrates first.
+  The hold of the other player goes on, and that player calibrates next. A hold that ends
+  during a calibration does not start again until the ready screen shows.
+- The results show only the Start cell. A hand held in it for 1.5 s plays again.
+
+The C key and the **Recalibrate** button of the results calibrate every player. After the C key
+or a click, the players first have 8 s to walk back to their spots. After a fist on the button,
+the calibration waits 1 s for that hand to leave the button.
+
+The game keeps the grid of each player's last calibration in memory, for that player and that
+number of players, until the page reloads. A new round from the menu starts on that grid.
+**Play again** and **R** keep the grids of the round. A calibration that sees fewer than 20 hand
+positions gives the standard grid, and the game then keeps no grid for that player.
+
+The run report names:
+
+| Field | What it holds |
+| --- | --- |
+| `players[].calibrated` | True when the player's grid came from a calibration, in this round or kept from an earlier round. False for the standard grid. |
 
 ## How a cue shows
 
@@ -366,7 +412,7 @@ Turn on **Recording** in the top right corner of the menu. Each round then gives
 
 Both carry the song. A video runs from the countdown to 4 seconds after the results show.
 With large offsets it runs longer, until the end of the song has reached it.
-A pause is left out. A round that stops part-way (restart, recalibrate, menu) gives no video.
+A pause is left out. A round that stops part-way (restart, calibrate, menu) gives no video.
 The game delays the sound of each video to fit its picture, but it cannot make the sound earlier.
 When the picture offset and the camera delay, with the speakers' delay, add up to less than
 zero, that video's sound is late by that amount.

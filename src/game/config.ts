@@ -385,14 +385,14 @@ export const FACES = {
 export const GRID = {
   /** A hand counts as inside a cell this far beyond its edge, as a share of the cell size. */
   cellMargin: 0.12,
-  /** Grid before the reach fit, as shares of the frame. */
+  /** The standard grid, before a calibration, as shares of the frame. */
   duoWidth: 0.42,
   soloWidth: 0.56,
   defaultTop: 0.1,
   defaultHeight: 0.8,
   /** The reach fit ignores the outermost 2% of hand positions on each side. */
   fitPercentiles: [0.02, 0.98],
-  /** With fewer hand positions than this, the fit keeps the default grid. */
+  /** With fewer hand positions than this, a calibration keeps the standard grid. */
   fitMinSamples: 20,
   minWidth: 0.18,
   minHeight: 0.3,
@@ -400,8 +400,20 @@ export const GRID = {
   edgeMargin: 0.01,
 } as const;
 
-/** The cell a player holds a hand in to start and to replay: top-middle. */
-export const HANDS_UP_CELL = 1;
+/** The cell a player holds a hand in to start a round, and to play again on the results: top-right. */
+export const START_CELL = 2;
+
+/**
+ * The cell a player holds a hand in on the ready screen to calibrate: top-left. It is the
+ * second choice, so it sits apart from the Start cell, with the top-middle cell between them.
+ */
+export const CALIBRATE_CELL = 0;
+
+/** What the Start cell and the Calibrate cell show on the ready screen: a sign, and a word under it. */
+export const HOLD_CELL_LABELS = {
+  start: { sign: '✋', word: 'Start' },
+  calibrate: { sign: '📏', word: 'Calibrate' },
+} as const;
 
 export const TIMING = {
   /** Camera and tracking delay, taken off every tracking frame's time. Tuned with [ and ]. */
@@ -417,17 +429,21 @@ export const TIMING = {
   fadeSec: 2,
   /** A round that starts inside the song fades in, so the music does not jump in. */
   fadeInSec: 0.3,
-  /** Time to get from the laptop to the play spot before the reach fit. */
+  /** Time to get from the laptop to the play spot before a calibration that a key or a click began. */
   walkBackSec: 8,
   fitSec: 6,
   /**
-   * After a fit begun by hand, hands count only after this long. The fist that chose Start or
-   * Recalibrate is still near the button, and its positions would pull a grid toward it. With
-   * two players the Recalibrate button sits between the grids.
+   * After a calibration begun by hand, hands count only after this long. The hand that held
+   * the Calibrate cell, or the fist that chose Recalibrate on the results, is still there, and
+   * its positions would pull a grid toward it.
    */
   handSettleSec: 1,
+  /** A hand held this long in the Start cell starts the round. */
   readyHoldSec: 1,
+  /** A hand held this long in the Start cell on the results plays again. */
   replayHoldSec: 1.5,
+  /** A hand held this long in the Calibrate cell calibrates its player. Longer than the start: it is the second choice. */
+  calibrateHoldSec: 1.5,
   countdownSec: 3,
   feedbackSec: 0.6,
   /** A tracking frame older than this is stale: hands are hidden and holds reset. */

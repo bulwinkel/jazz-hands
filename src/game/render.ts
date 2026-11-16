@@ -1,7 +1,16 @@
 import type { GestureName, TrackingFrame } from '../tracking/types';
 import { cueColor, withAlpha } from './colors';
 import { markScale } from './cueMark';
-import { FACE_EMOJI, GESTURE_EMOJI, HANDS_UP_CELL, LEVELS, PLAYER_COLORS, TIMING } from './config';
+import {
+  CALIBRATE_CELL,
+  FACE_EMOJI,
+  GESTURE_EMOJI,
+  HOLD_CELL_LABELS,
+  LEVELS,
+  PLAYER_COLORS,
+  START_CELL,
+  TIMING,
+} from './config';
 import { openFaceCue } from './faceJudgment';
 import { cellRect, containRect } from './geometry';
 import type { CueState } from './judgment';
@@ -45,6 +54,20 @@ const FACE_EMOJI_SCALE = 0.7;
 const FACE_EMOJI_ALPHA = 0.8;
 /** The ring around the emoji, as a share of the emoji size. It sits just outside the emoji. */
 const FACE_RING_SCALE = 0.6;
+/** The dashes of the Calibrate cell's outline, as [dash, gap] in pixels. */
+const CALIBRATE_DASH = [10, 8];
+/** The strength of the Calibrate cell's sign and word: lower than the Start cell's, as the second choice. */
+const CALIBRATE_ALPHA = 0.7;
+
+/** Where the sign, its ring and the word sit in a cell that has a word under its sign. */
+interface LabelLayout {
+  /** The middle of the sign and of its ring. */
+  centre: Point;
+  radius: number;
+  /** The middle of the word. */
+  wordY: number;
+  wordSize: number;
+}
 
 const centreOf = (rect: Rect): Point => ({ x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 });
 
@@ -86,7 +109,10 @@ export class GameRenderer {
     this.canvas = canvas;
     this.ctx = ctx;
     // Measure every sign now. The first sign of a round then costs no time in its frame.
-    for (const sign of [...Object.values(GESTURE_EMOJI), ...Object.values(FACE_EMOJI)]) signOffset(sign);
+    const holdCellSigns = Object.values(HOLD_CELL_LABELS).map((label) => label.sign);
+    for (const sign of [...Object.values(GESTURE_EMOJI), ...Object.values(FACE_EMOJI), ...holdCellSigns]) {
+      signOffset(sign);
+    }
   }
 
   draw(view: RenderView, videoAspect: number): void {
@@ -99,7 +125,11 @@ export class GameRenderer {
       if (view.phase !== 'results') this.drawGrid(player.grid, color, pulse);
       if (view.phase === 'play') this.drawCues(player, view.songTimeSec, color);
       if (view.phase === 'play') this.drawFaceCue(player, view.songTimeSec, color);
-      if (view.phase === 'ready' || view.phase === 'results') this.drawHandsUpTarget(player, color);
+      if (view.phase === 'ready') this.drawStartCell(player, color, true);
+      if (view.phase === 'results') this.drawStartCell(player, color, false);
+      // In a calibration of one player, the other player sees their own Calibrate hold go on.
+      const waitsToCalibrate = view.phase === 'fit' && player.calibrateHold > 0;
+      if (view.phase === 'ready' || waitsToCalibrate) this.drawCalibrateCell(player, color);
       if (view.phase !== 'results') this.drawHud(player, view.phase, color);
       this.drawHands(player, view.frame, color);
     }
@@ -277,22 +307,73 @@ export class GameRenderer {
     return Math.min(cell.width, cell.height) * FACE_EMOJI_SCALE;
   }
 
-  // --- Ready check, HUD, hands ---
+  // --- Ready screen, HUD, hands ---
 
-  /** The cell to hold a hand in, with a ring that fills while the hand stays. */
-  private drawHandsUpTarget(player: PlayerRun, color: string): void {
-    const target = this.toScreen(cellRect(player.grid, HANDS_UP_CELL));
-    const centre = centreOf(target);
-    const radius = Math.min(target.width, target.height) * 0.32;
+  /**
+   * The Start cell: a hand held in it starts the round, or plays again on the results. A ring
+   * fills while the hand stays. `withWord` puts the word "Start" under the sign, for the ready
+   * screen, where the Calibrate cell is a second choice.
+   */
+  private drawStartCell(player: PlayerRun, color: string, withWord: boolean): void {
+    const cell = this.toScreen(cellRect(player.grid, START_CELL));
+    const { sign, word } = HOLD_CELL_LABELS.start;
+    this.outline(cell, color, 4, withAlpha(color, 0.21));
+    if (!withWord) {
+      const centre = centreOf(cell);
+      const radius = Math.min(cell.width, cell.height) * 0.32;
+      this.holdRing(centre, radius, color, 10, player.hold);
+      this.sign(sign, centre.x, centre.y, radius * 1.25);
+      return;
+    }
+    const layout = this.labelLayout(cell);
+    this.holdRing(layout.centre, layout.radius, color, 10, player.hold);
+    this.sign(sign, layout.centre.x, layout.centre.y, layout.radius * 1.25);
+    this.text(word, layout.centre.x, layout.wordY, layout.wordSize);
+  }
+
+  /**
+   * The Calibrate cell: a hand held in it calibrates its player. It is the second choice, so
+   * it is fainter than the Start cell: a thin dashed outline, and a thinner ring.
+   */
+  private drawCalibrateCell(player: PlayerRun, color: string): void {
+    const cell = this.toScreen(cellRect(player.grid, CALIBRATE_CELL));
+    const { sign, word } = HOLD_CELL_LABELS.calibrate;
+    const layout = this.labelLayout(cell);
     const ctx = this.ctx;
 
-    this.outline(target, color, 4, withAlpha(color, 0.21));
+    ctx.save();
+    ctx.setLineDash(CALIBRATE_DASH);
+    this.outline(cell, withAlpha(color, 0.6), 2.5, withAlpha(color, 0.08));
+    ctx.restore();
+    this.holdRing(layout.centre, layout.radius, withAlpha(color, 0.85), 6, player.calibrateHold);
+    ctx.save();
+    ctx.globalAlpha = CALIBRATE_ALPHA;
+    this.sign(sign, layout.centre.x, layout.centre.y, layout.radius * 1.1);
+    this.text(word, layout.centre.x, layout.wordY, layout.wordSize);
+    ctx.restore();
+  }
+
+  /**
+   * The word sits at the bottom of the cell, at the base text size, so it reads from across a
+   * room. The sign and its ring fill the room above it.
+   */
+  private labelLayout(cell: Rect): LabelLayout {
+    const wordSize = this.textSize;
+    const wordY = cell.y + cell.height - wordSize * 0.75;
+    const roomHeight = wordY - wordSize * 0.6 - cell.y;
+    const radius = Math.max(0, Math.min(cell.width * 0.32, roomHeight * 0.4));
+    const centre = { x: cell.x + cell.width / 2, y: cell.y + roomHeight / 2 };
+    return { centre, radius, wordY, wordSize };
+  }
+
+  /** A ring that fills clockwise from the top while a hand holds a cell. `progress` goes from 0 to 1. */
+  private holdRing(centre: Point, radius: number, color: string, lineWidth: number, progress: number): void {
+    const ctx = this.ctx;
     ctx.strokeStyle = color;
-    ctx.lineWidth = 10;
+    ctx.lineWidth = lineWidth;
     ctx.beginPath();
-    ctx.arc(centre.x, centre.y, radius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * player.hold);
+    ctx.arc(centre.x, centre.y, radius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
     ctx.stroke();
-    this.sign('✋', centre.x, centre.y, radius * 1.25);
   }
 
   private drawHud(player: PlayerRun, phase: Phase, color: string): void {

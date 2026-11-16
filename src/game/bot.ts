@@ -1,6 +1,6 @@
 import type { GestureName, PlayerTracking, TrackedFace, TrackedHand } from '../tracking/types';
 import { seededRandom } from './chart';
-import { BOT, HANDS_UP_CELL } from './config';
+import { BOT, START_CELL } from './config';
 import { cellCentre, faceRegion } from './geometry';
 import type { Cue, FaceCue, Phase, Rect } from './types';
 
@@ -58,8 +58,8 @@ export function botFace(
 }
 
 /**
- * A simulated player for automated checks. It raises a hand to start, then plays the chart.
- * With face cues, it also pulls each face.
+ * A simulated player for automated checks. It holds a hand in its Start cell to start, then
+ * plays the chart. It never calibrates. With face cues, it also pulls each face.
  */
 export function botPlayer(
   phase: Phase,
@@ -70,7 +70,7 @@ export function botPlayer(
   seed: number,
   faceCues: readonly FaceCue[] = [],
 ): PlayerTracking {
-  if (phase === 'ready' || phase === 'results') return { hands: [handAt(grid, HANDS_UP_CELL)] };
+  if (phase === 'ready' || phase === 'results') return { hands: [handAt(grid, START_CELL)] };
   if (phase !== 'play') return { hands: [] };
 
   const tracked: PlayerTracking = { hands: botHands(timeSec, cues, grid, accuracy, seed) };

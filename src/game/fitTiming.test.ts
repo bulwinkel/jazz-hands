@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { TIMING } from './config';
 import { fitMomentAt, planFit } from './fitTiming';
 
-describe('reach fit timing', () => {
+describe('calibration timing', () => {
   it('lets the players walk back first when the camera runs and no hand began the fit', () => {
     const plan = planFit(false, true);
     expect(plan).toEqual({ walkSec: TIMING.walkBackSec, settleSec: 0, drawSec: TIMING.fitSec });
@@ -23,7 +23,7 @@ describe('reach fit timing', () => {
     expect(planFit(false, false)).toEqual({ walkSec: 0, settleSec: 0, drawSec: TIMING.fitSec });
   });
 
-  it.each(['Start', 'Recalibrate'])('ignores hands for a moment after %s by hand, and adds that moment to the circles', () => {
+  it.each(['a Calibrate cell', 'Recalibrate'])('ignores hands for a moment after %s by hand, and adds that moment to the circles', () => {
     const plan = planFit(true, true);
     expect(plan).toEqual({ walkSec: 0, settleSec: TIMING.handSettleSec, drawSec: TIMING.fitSec });
     const fullSec = TIMING.handSettleSec + TIMING.fitSec;

@@ -14,7 +14,7 @@
 //   --tracker      hands-full, hands-split or pose. Default: the game's choice for the players.
 //   --faces        Turn on face cues for every player, so that the face models run too.
 //   --seconds      How long each run records, from the page load. Default 45. The round starts
-//                  at once, without the menu; Space is pressed at the ready check.
+//                  at once, without the menu or a calibration; Space is pressed on the ready screen.
 //   --fps          The rate Chrome plays the file at. Default: from a .y4m header, else 30.
 //   --threads      The threads of the two runs. Default main,worker. main,main shows how much
 //                  two runs on one thread differ: the floor for main against worker.
@@ -180,7 +180,7 @@ async function recordRun(thread, label) {
   }
 }
 
-/** Lets the game play for `--seconds`, presses Space at the ready check, and returns the phases seen. */
+/** Lets the game play for `--seconds`, presses Space on the ready screen, and returns the phases seen. */
 async function playFor(chrome) {
   const phases = [];
   const startedMs = Date.now();

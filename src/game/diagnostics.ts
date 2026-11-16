@@ -198,6 +198,11 @@ export interface PlayerReport {
   shapes: boolean;
   faces: boolean;
   grid: Rect;
+  /**
+   * True when the grid came from a calibration: in this round, or kept from an earlier round.
+   * False for the standard grid.
+   */
+  calibrated: boolean;
   score: PlayerRun['score'];
   /** Share of play frames in which the tracker saw 0, 1 and 2 of this player's hands. */
   handsSeen: { none: number; one: number; two: number };
@@ -337,6 +342,7 @@ function playerReport(player: PlayerRun, stats: TrackingStats): PlayerReport {
       width: roundTo(player.grid.width, 4),
       height: roundTo(player.grid.height, 4),
     },
+    calibrated: player.calibrated,
     score: player.score,
     handsSeen: { none: share(none, stats.frames), one: share(one, stats.frames), two: share(two, stats.frames) },
     arrivalMs: { mean: mean(arrivals), median: percentile(arrivals, 0.5), cells: arrivals.length },

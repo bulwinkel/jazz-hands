@@ -2,6 +2,7 @@ import { errorText } from '../errorText';
 import { WORKER_LIMITS } from '../tracking/config';
 import type { FaceExpression, FaceRegions, TrackedHand, TrackingFrame } from '../tracking/types';
 import { SongAudio } from './audio';
+import { addReach, beginReach, circlesMessage, finishReach, KeptGrids, startOnKeptGrids } from './calibration';
 import { chartEntries, countMoves, cuesFrom, entriesFrom } from './chart';
 import { CHART, DEFAULT_SEED, FACE_EMOJI, HAND_MENU, MENU_TRACKER, SONGS, TIMING, TOAST } from './config';
 import { chartMix, cueSetMoveShare, cueSetSeed, CueSetPicker, RANDOM_CUE_SET } from './cueSet';
@@ -9,16 +10,15 @@ import { fileNameOf, ratedRoundOf, ratingRecord, saveRating } from './cueSetRati
 import type { RatedRound, SetRating } from './cueSetRating';
 import { buildRunReport, newFaceObservation, newObservation, newTrackingStats } from './diagnostics';
 import type { RunReport, TrackingStats } from './diagnostics';
-import { isHandClick } from './dom';
 import { generateFaceCues } from './faceChart';
 import { needsFace, newFaceCueState } from './faceJudgment';
 import { fitMomentAt, planFit } from './fitTiming';
 import type { FitPlan } from './fitTiming';
 import { logEntry } from './frameLog';
 import type { LoggedFrame } from './frameLog';
-import { containRect, defaultGrid, faceRegion, fitGrid } from './geometry';
+import { containRect, faceRegion } from './geometry';
 import type { MenuHand } from './handMenu';
-import { clearHolds, stepHandsUp } from './handsUp';
+import { clearCalibrateHolds, clearHolds, stepCalibrateHolds, stepHandsUp, stepWaitingHolds } from './handsUp';
 import type { InputView } from './input';
 import { InputHost } from './inputHost';
 import { closingSongTime, frameSongTime, newCueState } from './judgment';
@@ -76,8 +76,11 @@ function readStoredSettings(): unknown {
 
 /**
  * Runs the game through its phases:
- * menu → loading → fit (walk back, then reach fit) → ready → countdown → play → results.
+ * menu → loading → ready → countdown → play → results.
  * Results loop back to countdown on replay. Esc returns to the menu from anywhere.
+ * A calibration (the fit phase) comes between them only when players ask for it: from the
+ * ready screen, with the C key, or with the Recalibrate button of the results. It ends on the
+ * ready screen.
  */
 export class DanceGame {
   private readonly ui: GameUI;
@@ -94,11 +97,26 @@ export class DanceGame {
   private readonly inputs: InputHost;
   /** Whether hand control was on at the last look from the menu. See `syncMenuInput`. */
   private menuHandControl = false;
-  /** True when a pointing hand began the next or current reach fit. It sets the fit's timing: see `planFit`. */
+  /**
+   * True when a hand began the current calibration: a hand held in a Calibrate cell, or a fist
+   * on the Recalibrate button of the results. It sets the calibration's timing: see `planFit`.
+   */
   private fitBegunByHand = false;
   /**
+   * The players whose grids the current calibration fits: every player for the C key and the
+   * Recalibrate button of the results, one player for a Calibrate cell.
+   */
+  private calibrating: PlayerIndex[] = [];
+  /**
+   * Players whose Calibrate hold completed while another player calibrated. They calibrate
+   * next, in this order.
+   */
+  private calibrationQueue: PlayerIndex[] = [];
+  /** The grid of each player's last calibration, until the page reloads. */
+  private readonly keptGrids = new KeptGrids();
+  /**
    * Each player's pointer: which item their hands are on, and how far their fist hold has come.
-   * In the menu, the ready check and the results, and in the video player.
+   * In the menu and the results, and in the video player.
    */
   private pointers = newPlayerPointers(PLAYER_SLOTS.length);
   private manifest?: Manifest;
@@ -153,7 +171,6 @@ export class DanceGame {
     this.ui.restartButton.addEventListener('click', () => this.restartRound());
     this.ui.menuButton.addEventListener('click', () => this.showMenu());
     this.ui.resumeButton.addEventListener('click', () => void this.unlockAudio());
-    this.ui.refitButton.addEventListener('click', (event) => this.refit(isHandClick(event)));
     this.ui.fullscreenButton.addEventListener('click', () => this.toggleFullscreen());
     document.addEventListener('fullscreenchange', this.showFullscreenButton);
     this.showFullscreenButton();
@@ -172,15 +189,17 @@ export class DanceGame {
     this.phase = phase;
     this.phaseStartedMs = performance.now();
     clearHolds(this.players);
+    // A calibration of one player leaves the Calibrate holds of the others alone, and so does
+    // the next calibration of the queue: see `trackWaitingHolds`. Any other phase ends them.
+    if (phase !== 'fit') {
+      clearCalibrateHolds(this.players);
+      this.calibrationQueue = [];
+    }
     this.ui.player.close();
     this.ui.pauseButton.hidden = phase !== 'play';
     this.ui.restartButton.hidden = phase !== 'play';
     // The menu and the results have their own ways out. Every other phase needs one for a touch.
     this.ui.menuButton.hidden = phase === 'menu' || phase === 'results';
-    // The recalibrate button shows in the ready check: there the players see whether the grids
-    // fit. It keeps away from the hands-up cells, which are in other places with two players.
-    this.ui.refitButton.hidden = phase !== 'ready';
-    this.ui.refitButton.dataset.players = String(this.options.settings.playerCount);
     this.clearHandPointer();
     document.body.dataset.phase = phase; // The stylesheet places messages by phase.
     this.expose();
@@ -197,7 +216,7 @@ export class DanceGame {
     this.switchingTracker = false;
     this.ui.resumeButton.hidden = true;
     this.setPhase('menu');
-    this.ui.showMenu(this.options.settings, (byHand) => void this.start(byHand), this.onMenuChange);
+    this.ui.showMenu(this.options.settings, () => void this.start(), this.onMenuChange);
     this.followPreview();
     // A menu that opens is a new chance for the camera, as if hand control had just been turned on.
     this.menuHandControl = false;
@@ -268,10 +287,12 @@ export class DanceGame {
     this.ui.showToast('Hand control stopped. Turn it off and on to try again.', TOAST.longMs);
   };
 
-  /** Loads the song and the tracker for this round, then begins the reach fit. */
-  private async start(byHand = false): Promise<void> {
+  /**
+   * Loads the song and the tracker for this round, then shows the ready screen. Each player
+   * starts on the grid of their last calibration, or on the standard grid.
+   */
+  private async start(): Promise<void> {
     if (this.phase !== 'menu') return;
-    this.fitBegunByHand = byHand;
     this.saveSettings();
     this.preview.follow(null);
     this.setPhase('loading');
@@ -303,6 +324,7 @@ export class DanceGame {
       }
 
       this.players = createPlayers(settings);
+      startOnKeptGrids(this.players, this.keptGrids, settings.playerCount);
       this.chooseCueSet(manifest);
       for (const player of this.players) {
         const chart = chartEntries(manifest, {
@@ -328,7 +350,7 @@ export class DanceGame {
       if (audio.context.state === 'suspended') {
         this.askForClick('Your browser needs a click to turn on the music.');
       } else {
-        this.beginFit();
+        this.showReady();
       }
     } catch (error) {
       this.failIfCurrent(session, error);
@@ -419,28 +441,64 @@ export class DanceGame {
     this.preview.follow(isOn ? songIndex : null);
   }
 
-  private beginFit(): void {
-    const { playerCount } = this.options.settings;
-    for (const player of this.players) {
-      player.reachSamples = [];
-      player.grid = defaultGrid(player.index, playerCount);
-    }
+  /**
+   * The ready screen: the grids, with each player's Start cell and Calibrate cell. A hand held
+   * in every Start cell, or Space, starts the countdown.
+   */
+  private showReady(): void {
     this.ui.resumeButton.hidden = true;
-    this.setPhase('fit');
+    this.setPhase('ready');
+    this.ui.showMessage('Hands up to start!', 'Hold a hand in the Start cell · Space also starts');
   }
 
   /**
-   * Starts the reach fit again, from the fit itself or from any later phase of the round.
-   * The round then goes on from the ready check, with the same cues.
+   * Calibrates every player again, from the calibration itself or from any later phase of the
+   * round: the C key, and the Recalibrate button of the results. The round then goes on from
+   * the ready screen, with the same cues.
    * `byHand` says that a pointing hand asked for it: the players then stand at their spots
-   * already, and the fit waits a moment for that hand to leave the button (see `planFit`).
+   * already, and the calibration waits a moment for that hand to leave the button (see `planFit`).
    */
   private refit(byHand = false): void {
     const inRound = ['fit', 'ready', 'countdown', 'play', 'results'].includes(this.phase);
     if (!inRound || this.switchingTracker) return;
     this.resetRound();
     this.fitBegunByHand = byHand;
+    this.calibrating = this.players.map((player) => player.index);
+    this.calibrationQueue = [];
+    clearCalibrateHolds(this.players);
     this.beginFit();
+  }
+
+  /**
+   * Calibrates one player, who held a hand in their Calibrate cell. Only that player's grid
+   * changes. The hand is still in the cell, so the circles wait a moment for it to leave (see
+   * `planFit`). The Calibrate holds of the other players go on.
+   */
+  private calibrateOne(index: PlayerIndex): void {
+    const player = this.players.find((candidate) => candidate.index === index);
+    if (!player) return;
+    this.fitBegunByHand = true;
+    this.calibrating = [index];
+    clearCalibrateHolds([player]);
+    this.beginFit();
+  }
+
+  /** Begins the calibration of the players in `calibrating`: their grids go back to the standard grid. */
+  private beginFit(): void {
+    beginReach(this.players, this.calibrating, this.options.settings.playerCount);
+    this.ui.resumeButton.hidden = true;
+    this.setPhase('fit');
+  }
+
+  /**
+   * The circles are over. Each calibrated grid is kept for later rounds. Then the next player
+   * in the queue calibrates, or the ready screen shows.
+   */
+  private endFit(): void {
+    finishReach(this.players, this.calibrating, this.keptGrids, this.options.settings.playerCount);
+    const next = this.calibrationQueue.shift();
+    if (next === undefined) this.showReady();
+    else this.calibrateOne(next);
   }
 
   /** Starts the round in play again: the same cues, from the countdown. A paused round too. */
@@ -641,17 +699,17 @@ export class DanceGame {
     this.frame = frame;
     this.rememberFaces(frame);
 
-    if (this.options.settings.handControl) {
-      if (this.phase === 'menu' || this.phase === 'results') this.pointAtPanel(frame, true);
-      // The ready check has one item to point at, the recalibrate button. The canvas draws a
-      // ring on each hand there already.
-      if (this.phase === 'ready') this.pointAtPanel(frame, false);
-    }
+    // The ready screen has nothing to point at: its choices are cells of the grids.
+    const pointsAtPanel = this.phase === 'menu' || this.phase === 'results';
+    if (this.options.settings.handControl && pointsAtPanel) this.pointAtPanel(frame);
 
     if (this.phase === 'fit') {
       this.collectReach(frame);
-    } else if (this.phase === 'ready' || (this.phase === 'results' && !this.ui.player.isOpen)) {
-      this.trackHandsUp(frame, previous);
+      this.trackWaitingHolds(frame, previous);
+    } else if (this.phase === 'ready') {
+      this.trackReadyHolds(frame, previous);
+    } else if (this.phase === 'results' && !this.ui.player.isOpen) {
+      this.trackReplayHold(frame, previous);
     } else if (this.isFrameOfPlay(frame)) {
       this.countFrame(frame);
       const { inputLatencyMs } = this.options.settings;
@@ -681,13 +739,13 @@ export class DanceGame {
   /**
    * An open hand highlights an item on screen, a fist held on it chooses it. Each player's
    * hands move a pointer of their own (see playerPointers.ts), so two players can point at
-   * two items at once. `showRings` draws a ring at each hand, for a phase where the canvas does not.
+   * two items at once. A ring shows at each hand.
    */
-  private pointAtPanel(frame: TrackingFrame, showRings: boolean): void {
+  private pointAtPanel(frame: TrackingFrame): void {
     const handsByPlayer = frame.players.map((player) => this.pointingHands(player.hands));
     const step = stepPlayerPointers(this.pointers, this.ui.handTargets(), handsByPlayer, frame.timeMs);
     this.pointers = step.states;
-    this.ui.showHands(showRings ? handsByPlayer.flat() : [], step.hovers);
+    this.ui.showHands(handsByPlayer.flat(), step.hovers);
     chooseInTurn(step.chooseIds, (id) => this.ui.chooseHandTarget(id), this.handScreen);
   }
 
@@ -711,24 +769,50 @@ export class DanceGame {
     };
   }
 
-  /** Reach fit: grows each player's grid around the hand positions seen so far. */
+  /** Calibration: grows the grid of each player who calibrates around the hand positions seen so far. */
   private collectReach(frame: TrackingFrame): void {
     // Ignore hands while the players walk from the laptop to their spots, and while a hand
-    // that chose Recalibrate leaves the button.
+    // that chose leaves the Calibrate cell or the Recalibrate button.
     const elapsedSec = (performance.now() - this.phaseStartedMs) / 1000;
     if (!fitMomentAt(this.fitPlan(), elapsedSec).handsCount) return;
-    for (const player of this.players) {
-      for (const hand of frame.players[player.index].hands) {
-        player.reachSamples.push({ x: hand.x, y: hand.y });
-      }
-      player.grid = fitGrid(player.reachSamples, player.index, this.options.settings.playerCount);
-    }
+    addReach(this.players, this.calibrating, frame, this.options.settings.playerCount);
   }
 
-  /** Ready and replay: the round starts when every player holds a hand up. */
-  private trackHandsUp(frame: TrackingFrame, previous: TrackingFrame | undefined): void {
-    const holdSec = this.phase === 'ready' ? TIMING.readyHoldSec : TIMING.replayHoldSec;
-    if (stepHandsUp(this.players, frame, previous, holdSec)) this.beginCountdown();
+  /**
+   * Ready screen: the round starts when every player holds a hand in their Start cell. A hand
+   * held in a Calibrate cell calibrates that player. When two holds complete in one frame,
+   * the second player waits for the first.
+   */
+  private trackReadyHolds(frame: TrackingFrame, previous: TrackingFrame | undefined): void {
+    if (stepHandsUp(this.players, frame, previous, TIMING.readyHoldSec)) {
+      this.beginCountdown();
+      return;
+    }
+    const [first, ...others] = stepCalibrateHolds(this.players, frame, previous, TIMING.calibrateHoldSec);
+    if (!first) return;
+    this.calibrateOne(first.index);
+    this.calibrationQueue = others.map((player) => player.index);
+  }
+
+  /**
+   * Calibration of one player: the Calibrate hold that another player began on the ready
+   * screen goes on. When it completes, that player calibrates next.
+   */
+  private trackWaitingHolds(frame: TrackingFrame, previous: TrackingFrame | undefined): void {
+    const completed = stepWaitingHolds(
+      this.players,
+      this.calibrating,
+      this.calibrationQueue,
+      frame,
+      previous,
+      TIMING.calibrateHoldSec,
+    );
+    this.calibrationQueue.push(...completed.map((player) => player.index));
+  }
+
+  /** Results: the next round starts when every player holds a hand in their Start cell. */
+  private trackReplayHold(frame: TrackingFrame, previous: TrackingFrame | undefined): void {
+    if (stepHandsUp(this.players, frame, previous, TIMING.replayHoldSec)) this.beginCountdown();
   }
 
   private countFrame(frame: TrackingFrame): void {
@@ -800,7 +884,7 @@ export class DanceGame {
     if (session !== this.session || audio.context.state !== 'running') return;
 
     this.ui.resumeButton.hidden = true;
-    if (this.phase === 'loading') this.beginFit();
+    if (this.phase === 'loading') this.showReady();
     else if (this.phase === 'play') this.ui.showMessage();
   }
 
@@ -978,10 +1062,10 @@ export class DanceGame {
     if (stage === 'walk') {
       this.ui.showMessage('Walk back to your spot!', String(secondsLeft));
     } else if (stage === 'draw') {
-      this.ui.showMessage('Draw the biggest circles you can with both arms!', String(secondsLeft));
+      const { playerCount } = this.options.settings;
+      this.ui.showMessage(circlesMessage(this.calibrating, playerCount), String(secondsLeft));
     } else {
-      this.setPhase('ready');
-      this.ui.showMessage('Hands up to start!', 'Hold a hand in the glowing cell · Space also starts');
+      this.endFit();
     }
   }
 
@@ -1066,7 +1150,7 @@ export class DanceGame {
     return video && video.videoHeight > 0 ? video.videoWidth / video.videoHeight : 16 / 9;
   }
 
-  /** The timing of the reach fit, from who began it. Test inputs need no time to walk back. */
+  /** The timing of the calibration, from who began it. Test inputs need no time to walk back. */
   private fitPlan(): FitPlan {
     return planFit(this.fitBegunByHand, this.options.input === 'camera');
   }

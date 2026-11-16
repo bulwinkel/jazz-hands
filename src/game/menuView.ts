@@ -1,7 +1,7 @@
 import { carouselOffset, stepRing } from './carousel';
 import { HAND_MENU, LEVELS, PLAYER_COLORS, SONGS } from './config';
 import { nextCueSetChoice } from './cueSet';
-import { find, isHandClick } from './dom';
+import { find } from './dom';
 import type { Settings } from './settings';
 import type { Level, PlayerCount, PlayerIndex, SongLength } from './types';
 
@@ -72,8 +72,8 @@ const STAND_HINT: Record<PlayerCount, string> = {
 
 /** What the menu tells the game. */
 export interface MenuHandlers {
-  /** Start was chosen. `byHand` says that a pointing hand chose it, and not a mouse or a key. */
-  onStart: (byHand: boolean) => void;
+  /** Start was chosen. */
+  onStart: () => void;
   /** A choice changed. The menu has written it into the settings by then. */
   onChange: () => void;
 }
@@ -267,7 +267,7 @@ export function buildMenu(panel: HTMLElement, settings: Settings, handlers: Menu
     settings.length = value as SongLength;
     onChange();
   });
-  find(panel, '#start').addEventListener('click', (event) => onStart(isHandClick(event)));
+  find(panel, '#start').addEventListener('click', () => onStart());
 
   return { stepSong, close: () => listening.abort() };
 }

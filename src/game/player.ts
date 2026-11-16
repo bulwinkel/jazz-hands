@@ -20,7 +20,12 @@ export interface PlayerRun {
   /** Whether this player gets face cues. */
   faces: boolean;
   grid: Rect;
-  /** Hand positions seen during the reach fit. */
+  /**
+   * True when the grid came from a calibration: in this round, or kept from an earlier round.
+   * False for the standard grid. For the run report.
+   */
+  calibrated: boolean;
+  /** Hand positions seen during the player's calibration. */
   reachSamples: Point[];
   cues: Cue[];
   /** How many moves of each name `cues` holds. For the run report. */
@@ -40,10 +45,17 @@ export interface PlayerRun {
   /** Where the tracker last found this player's face. Null until it finds one. */
   faceSeenAt: Point | null;
   score: Score;
-  /** When the current hands-up hold began, in tracking-frame time. */
+  /** When the current hold in the Start cell began, in tracking-frame time. */
   holdStartMs: number | null;
-  /** Progress of the hands-up hold, 0..1. */
+  /** Progress of the hold in the Start cell, 0..1. */
   hold: number;
+  /** When the current hold in the Calibrate cell began, in tracking-frame time. */
+  calibrateHoldStartMs: number | null;
+  /**
+   * Progress of the hold in the Calibrate cell, 0..1. It stays at 1 while the player waits for
+   * the calibration of the other player to end.
+   */
+  calibrateHold: number;
 }
 
 /** The mix of a chart with no cues: the mix of each player until a round makes their chart. */
@@ -59,6 +71,7 @@ export function createPlayers(settings: Settings): PlayerRun[] {
     shapes: settings.shapes[index] || LEVELS[settings.levels[index]].shapeOnEveryCue,
     faces: settings.faces[index],
     grid: defaultGrid(index, settings.playerCount),
+    calibrated: false,
     reachSamples: [],
     cues: [],
     moves: noMoves(),
@@ -72,6 +85,8 @@ export function createPlayers(settings: Settings): PlayerRun[] {
     score: freshScore(),
     holdStartMs: null,
     hold: 0,
+    calibrateHoldStartMs: null,
+    calibrateHold: 0,
   }));
 }
 

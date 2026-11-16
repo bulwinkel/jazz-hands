@@ -13,7 +13,7 @@ export function playSpan(player: PlayerIndex, playerCount: PlayerCount): { left:
   return { left: player * 0.5 + margin, right: (player + 1) * 0.5 - margin };
 }
 
-/** The grid before the reach fit, and when the fit has too few hand positions. */
+/** The standard grid: before a calibration, and after a calibration that saw too few hand positions. */
 export function defaultGrid(player: PlayerIndex, playerCount: PlayerCount): Rect {
   const span = playSpan(player, playerCount);
   const width = playerCount === 1 ? GRID.soloWidth : GRID.duoWidth;
@@ -74,13 +74,23 @@ export function percentile(values: readonly number[], p: number): number {
   return sorted[low] + (sorted[high] - sorted[low]) * (index - low);
 }
 
+const isFinitePoint = (point: Point): boolean => Number.isFinite(point.x) && Number.isFinite(point.y);
+
+/**
+ * True when a calibration saw enough hand positions to fit a grid to. With fewer, `fitGrid`
+ * gives the standard grid.
+ */
+export function hasReachToFit(samples: readonly Point[]): boolean {
+  return samples.filter(isFinitePoint).length >= GRID.fitMinSamples;
+}
+
 /**
  * Fits a player's grid to their reach: the box around the hand positions seen while they
  * draw big circles. A child then gets a smaller, lower grid than an adult.
  */
 export function fitGrid(samples: readonly Point[], player: PlayerIndex, playerCount: PlayerCount): Rect {
-  const points = samples.filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
-  if (points.length < GRID.fitMinSamples) return defaultGrid(player, playerCount);
+  if (!hasReachToFit(samples)) return defaultGrid(player, playerCount);
+  const points = samples.filter(isFinitePoint);
 
   const [lowP, highP] = GRID.fitPercentiles;
   const xs = points.map((p) => p.x);

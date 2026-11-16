@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { botFace, botPlayer } from './bot';
 import { generateChart } from './chart';
-import { BOT, HANDS_UP_CELL } from './config';
+import { BOT, START_CELL } from './config';
 import { generateFaceCues } from './faceChart';
 import { judgeFaceFrame, newFaceCueState } from './faceJudgment';
 import { synthetic } from './fixtures';
@@ -79,15 +79,15 @@ describe('the bot at level 5', () => {
 describe('the bot outside play', () => {
   const cues = chart(synthetic(), 2, false);
 
-  it('keeps its hands down during the reach fit', () => {
+  it('keeps its hands down during a calibration', () => {
     expect(botPlayer('fit', 1, cues, grid, 1, SEED).hands).toHaveLength(0);
   });
 
-  it('raises a hand in the hands-up cell to start and to replay', () => {
+  it('holds a hand in the Start cell to start and to replay', () => {
     for (const phase of ['ready', 'results'] as const) {
       const { hands } = botPlayer(phase, 1, cues, grid, 1, SEED);
       expect(hands).toHaveLength(1);
-      expect(hands[0]).toMatchObject(cellCentre(grid, HANDS_UP_CELL));
+      expect(hands[0]).toMatchObject(cellCentre(grid, START_CELL));
     }
   });
 

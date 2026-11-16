@@ -1,7 +1,7 @@
 import { TIMING } from './config';
 
 /**
- * The timing of the reach fit. The players may first walk from the laptop to their spots.
+ * The timing of a calibration. The players may first walk from the laptop to their spots.
  * Then they draw circles with both arms, and the game grows each grid around their hands.
  */
 
@@ -25,14 +25,15 @@ export interface FitMoment {
 }
 
 /**
- * `byHand` says that a pointing hand began the fit, with Start or Recalibrate. `usesCamera` is
- * false for the test inputs: they need no walk.
+ * `byHand` says that a hand began the calibration: a hand held in a Calibrate cell, or a fist on
+ * the Recalibrate button of the results. `usesCamera` is false for the test inputs: they need
+ * no walk.
  */
 export function planFit(byHand: boolean, usesCamera: boolean): FitPlan {
   return {
     // Players who chose by hand stand at their spots already.
     walkSec: usesCamera && !byHand ? TIMING.walkBackSec : 0,
-    // The fist that chose Start or Recalibrate is still near the button.
+    // The hand that chose is still in the Calibrate cell, or near the button.
     settleSec: byHand ? TIMING.handSettleSec : 0,
     drawSec: TIMING.fitSec,
   };

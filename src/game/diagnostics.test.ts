@@ -40,6 +40,7 @@ function newPlayer(): PlayerRun {
     shapes: false,
     faces: false,
     grid,
+    calibrated: false,
     reachSamples: [],
     cues: [],
     moves: { point: 0, circle: 0 },
@@ -53,6 +54,8 @@ function newPlayer(): PlayerRun {
     score: freshScore(),
     holdStartMs: null,
     hold: 0,
+    calibrateHoldStartMs: null,
+    calibrateHold: 0,
   };
 }
 
@@ -217,6 +220,12 @@ describe('run report', () => {
 
   it('names the chart seed, the cue set it came from, whether that set was random, and the share of moves', () => {
     expect(report([]).settings).toMatchObject({ seed: 1, cueSet: 1, cueSetRandom: true, moveShare: 0.35 });
+  });
+
+  it('says whether the grid came from a calibration or is the standard grid', () => {
+    const standard = newPlayer();
+    const calibrated: PlayerRun = { ...newPlayer(), index: 1, calibrated: true };
+    expect(report([standard, calibrated]).players.map((player) => player.calibrated)).toEqual([false, true]);
   });
 
   it("counts each player's moves by name", () => {
