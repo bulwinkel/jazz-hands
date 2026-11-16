@@ -198,13 +198,14 @@ export class GameRenderer {
   }
 
   /**
-   * The hand shape to make, in the middle of each cell of a cue. A tap with no hand shape has
+   * The hand shape to make, in the middle of each cell of a cue. Each cell shows its own shape:
+   * the two cells of a tap for two hands can ask for two shapes. A tap with no hand shape has
    * nothing there: its block marks the middle of the cell.
    */
   private drawShapes(state: CueState, player: PlayerRun): void {
-    const { gesture } = state.cue;
-    if (!gesture) return;
-    for (const rect of this.cellRects(state, player)) this.drawGesture(rect, gesture);
+    const { shapes } = state.cue;
+    if (!shapes) return;
+    this.cellRects(state, player).forEach((rect, k) => this.drawGesture(rect, shapes[k]));
   }
 
   /** The cells of a cue, on the canvas. */

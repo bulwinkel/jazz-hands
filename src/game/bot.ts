@@ -28,7 +28,8 @@ export function botHands(
     if (!botHits(cue, accuracy, seed)) continue;
     const holding = timeSec >= cue.timeSec - BOT.leadSec && timeSec <= cue.timeSec + BOT.holdSec;
     if (!holding) continue;
-    for (const cell of cue.cells) hands.push(handAt(grid, cell, cue.gesture));
+    // Each hand makes the shape of its own cell.
+    cue.cells.forEach((cell, k) => hands.push(handAt(grid, cell, cue.shapes?.[k])));
   }
   return hands;
 }

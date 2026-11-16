@@ -27,21 +27,29 @@ export interface CellObservation {
   firstInCellMs: number | null;
   /** When a hand in the cell first made the asked-for shape, in ms from the due time. */
   firstMatchMs: number | null;
+  /**
+   * Shape cues only: how often the tracker read each shape on a hand in the cell. Each cell
+   * keeps its own, because the two cells of a cue can ask for two shapes.
+   */
+  shapesRead: Partial<Record<GestureName, number>>;
 }
 
 export interface CueObservation {
   /** Tracking frames judged while the cue's Good window was open. */
   frames: number;
   cells: CellObservation[];
-  /** Shape cues only: how often the tracker read each shape on a hand in the cell. */
-  shapesRead: Partial<Record<GestureName, number>>;
 }
 
 export function newObservation(cue: Cue): CueObservation {
   return {
     frames: 0,
-    cells: cue.cells.map(() => ({ framesInCell: 0, framesMatching: 0, firstInCellMs: null, firstMatchMs: null })),
-    shapesRead: {},
+    cells: cue.cells.map(() => ({
+      framesInCell: 0,
+      framesMatching: 0,
+      firstInCellMs: null,
+      firstMatchMs: null,
+      shapesRead: {},
+    })),
   };
 }
 
@@ -68,12 +76,13 @@ export function observeFrame(
     if (handsInCell.length === 0) return;
 
     const seen = observation.cells[k];
+    const shape = cue.shapes?.[k];
     seen.framesInCell++;
     seen.firstInCellMs ??= Math.round(deltaMs);
     for (const hand of handsInCell) {
-      if (cue.gesture) observation.shapesRead[hand.gesture] = (observation.shapesRead[hand.gesture] ?? 0) + 1;
+      if (shape) seen.shapesRead[hand.gesture] = (seen.shapesRead[hand.gesture] ?? 0) + 1;
     }
-    const matches = handsInCell.some((hand) => !cue.gesture || hand.gesture === cue.gesture);
+    const matches = handsInCell.some((hand) => !shape || hand.gesture === shape);
     if (matches) {
       seen.framesMatching++;
       seen.firstMatchMs ??= Math.round(deltaMs);
@@ -308,6 +317,15 @@ function faceCuesReport(player: PlayerRun): PlayerReport['faceCues'] {
   };
 }
 
+/** Adds how the tracker read the hands in one cell to the readings of the shape that the cell asked for. */
+function addReadings(readings: ShapeReadings, asked: GestureName, read: CellObservation['shapesRead']): void {
+  const forAsked = (readings[asked] ??= {});
+  for (const [name, frames] of Object.entries(read)) {
+    const shape = name as GestureName;
+    forAsked[shape] = (forAsked[shape] ?? 0) + frames;
+  }
+}
+
 function playerReport(player: PlayerRun, stats: TrackingStats): PlayerReport {
   const { goodMs } = LEVELS[player.level];
   const { observations } = player;
@@ -325,7 +343,8 @@ function playerReport(player: PlayerRun, stats: TrackingStats): PlayerReport {
       const arrived = cell.firstInCellMs !== null && cell.firstInCellMs > goodMs[0] + HELD_EARLY_MARGIN_MS;
       if (arrived) arrivals.push(cell.firstInCellMs as number);
     }
-    if (!cue.gesture) return;
+    const { shapes } = cue;
+    if (!shapes) return;
 
     asked++;
     const wasHit = player.states[i]?.result === 'perfect' || player.states[i]?.result === 'good';
@@ -338,11 +357,8 @@ function playerReport(player: PlayerRun, stats: TrackingStats): PlayerReport {
     const onFewFrames = observation.cells.some((cell) => cell.framesMatching < cell.framesInCell / 4);
     if (wasHit && onFewFrames) hitOnFewFrames++;
 
-    const forAsked = (readings[cue.gesture] ??= {});
-    for (const [read, frames] of Object.entries(observation.shapesRead)) {
-      const shape = read as GestureName;
-      forAsked[shape] = (forAsked[shape] ?? 0) + frames;
-    }
+    // Each cell adds its readings to the shape that it asked for.
+    observation.cells.forEach((cell, k) => addReadings(readings, shapes[k], cell.shapesRead));
   });
 
   const [none, one, two] = stats.handCounts[player.index];

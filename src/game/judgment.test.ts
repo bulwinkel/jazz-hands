@@ -13,9 +13,9 @@ function hand(cell: number, gesture: GestureName = 'open'): TrackedHand {
   return { ...cellCentre(grid, cell), gesture, size: 0.05, gestureScore: 1 };
 }
 
-/** A tap due at 1 s. */
-function tap(cells: number[], gesture?: GestureName): Cue {
-  return { timeSec: 1, beatIndex: 2, cells, gesture };
+/** A tap due at 1 s. With a shape, every cell asks for it. */
+function tap(cells: number[], shape?: GestureName): Cue {
+  return { timeSec: 1, beatIndex: 2, cells, shapes: shape ? cells.map(() => shape) : undefined };
 }
 
 /** Feeds one frame into `state`. Returns the rating only on the frame that makes the cue final. */
@@ -122,6 +122,33 @@ describe('hand shapes', () => {
 
   it('judges position only when the tracker cannot read shapes', () => {
     expect(step(newCueState(tap([4], 'fist')), 2, [hand(4, 'unknown')], 1)).toBe('perfect');
+  });
+});
+
+describe('a shape in each cell', () => {
+  /** A double on cells 0 and 2 that asks for a fist in cell 0 and a point in cell 2. */
+  const fistAndPoint = (): CueState => newCueState({ timeSec: 1, beatIndex: 2, cells: [0, 2], shapes: ['fist', 'point'] });
+
+  it('is Perfect when each hand makes the shape of its own cell', () => {
+    expect(step(fistAndPoint(), 5, [hand(0, 'fist'), hand(2, 'point')], 1)).toBe('perfect');
+  });
+
+  it('is a Miss when the hands make the two shapes in the wrong cells', () => {
+    const swapped = fistAndPoint();
+    step(swapped, 5, [hand(0, 'point'), hand(2, 'fist')], 1);
+    expect(swapped.marks).toEqual([null, null]);
+    expect(step(swapped, 5, [], 2)).toBe('miss');
+  });
+
+  it('is a Miss when both hands make the shape of one cell', () => {
+    const bothFists = fistAndPoint();
+    step(bothFists, 5, [hand(0, 'fist'), hand(2, 'fist')], 1);
+    expect(bothFists.marks).toEqual(['perfect', null]);
+    expect(step(bothFists, 5, [], 2)).toBe('miss');
+  });
+
+  it('judges position only when the tracker cannot read shapes', () => {
+    expect(step(fistAndPoint(), 5, [hand(0, 'unknown'), hand(2, 'unknown')], 1)).toBe('perfect');
   });
 });
 

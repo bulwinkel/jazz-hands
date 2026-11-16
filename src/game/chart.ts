@@ -426,7 +426,7 @@ function startMove(frame: ChartFrame, plan: PhrasePlan): RunningMove | null {
  */
 function addMoveCue(frame: ChartFrame, state: ChartState, beat: number, move: MoveCueing): void {
   const cue = tapOn(frame, beat, move.step);
-  if (frame.phraseShape) cue.gesture = frame.phraseShape[beat];
+  if (frame.phraseShape) cue.shapes = [frame.phraseShape[beat]];
   addCue(state, { cue, role: 'move', move: move.tag });
   state.previousWasOffbeat = false;
 }
@@ -467,7 +467,8 @@ function addBeatCues(frame: ChartFrame, state: ChartState, beat: number, roll: B
     return;
   }
   const cue = choice === 'double' ? doubleCue(frame, beat, roll) : singleCue(frame, state, beat, roll);
-  if (frame.phraseShape) cue.gesture = frame.phraseShape[beat];
+  const phraseShape = frame.phraseShape?.[beat];
+  if (phraseShape) cue.shapes = cue.cells.map(() => phraseShape);
   addCue(state, { cue, role: 'beat' });
   addOffbeatTap(frame, state, cue, roll);
 }
@@ -541,7 +542,7 @@ function addSlide(frame: ChartFrame, state: ChartState, beat: number, roll: Beat
   slideBeats(frame, beat).forEach((cellBeat, k) => {
     const cue = tapOn(frame, cellBeat, cells[k]);
     cue.slideStep = SLIDE_STEPS[k];
-    if (frame.phraseShape) cue.gesture = frame.phraseShape[cellBeat];
+    if (frame.phraseShape) cue.shapes = [frame.phraseShape[cellBeat]];
     addCue(state, { cue, role: k === 0 ? 'beat' : 'slide' });
   });
   state.previousWasOffbeat = false;
@@ -559,7 +560,7 @@ function singleCue(frame: ChartFrame, state: ChartState, beat: number, roll: Bea
   const cue = tapOn(frame, beat, frame.master[beat]);
   const rested = cue.timeSec - state.previousSec >= CHART.gestureGapSec - EPSILON;
   if (frame.options.shapes && rested && roll.gesture < CHART.gestureChance) {
-    cue.gesture = CHART.gesturePool[Math.floor(roll.shape * CHART.gesturePool.length)];
+    cue.shapes = [CHART.gesturePool[Math.floor(roll.shape * CHART.gesturePool.length)]];
   }
   return cue;
 }
@@ -587,7 +588,7 @@ function addOffbeatTap(frame: ChartFrame, state: ChartState, cue: Cue, roll: Bea
   const taken = [...cue.cells, frame.master[nextCueBeat]];
   const cell = pickWeighted(CHART.cellWeights, roll.offbeatCell, (c) => !taken.includes(c));
   const tap: Cue = { timeSec: offbeatSec, beatIndex: beat + stride / 2, cells: [cell] };
-  if (frame.phraseShape) tap.gesture = frame.phraseShape[beat];
+  if (frame.phraseShape) tap.shapes = [frame.phraseShape[beat]];
   state.entries.push({ cue: tap, role: 'offbeat' });
   state.previousSec = offbeatSec;
   state.hands.take(offbeatSec);

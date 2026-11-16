@@ -64,10 +64,14 @@ export function isInsideWindow(deltaMs: number, [early, late]: WindowMs): boolea
   return deltaMs >= early - EPSILON_MS && deltaMs <= late + EPSILON_MS;
 }
 
-function handSatisfies(hand: TrackedHand, cell: Rect, gesture: GestureName | undefined): boolean {
+/**
+ * True when a hand is in a cell with the shape that the cell asks for. Each cell asks for its
+ * own shape, so the two hands of a tap for two hands may need two shapes.
+ */
+function handSatisfies(hand: TrackedHand, cell: Rect, shape: GestureName | undefined): boolean {
   if (!insideCell(hand, cell)) return false;
   // 'unknown' means the tracker cannot read hand shapes. Judge such a hand on position alone.
-  return gesture === undefined || hand.gesture === gesture || hand.gesture === 'unknown';
+  return shape === undefined || hand.gesture === shape || hand.gesture === 'unknown';
 }
 
 /**
@@ -94,7 +98,8 @@ export function judgeFrame(
     if (mark === 'perfect') return mark;
     if (!isInsideWindow(deltaMs, goodMs)) return mark;
     const rect = cellRect(grid, cue.cells[k]);
-    if (!hands.some((hand) => handSatisfies(hand, rect, cue.gesture))) return mark;
+    const shape = cue.shapes?.[k];
+    if (!hands.some((hand) => handSatisfies(hand, rect, shape))) return mark;
     // A Good mark is provisional: a hand that stays into the Perfect window upgrades it.
     return isInsideWindow(deltaMs, perfectMs) ? 'perfect' : 'good';
   });

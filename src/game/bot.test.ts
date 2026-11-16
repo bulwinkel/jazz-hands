@@ -71,8 +71,18 @@ describe('the bot at level 4', () => {
 describe('the bot at level 5', () => {
   it('makes the asked-for shape on every cue', () => {
     const { cues, results } = playThrough(synthetic(100, 180), 5, false);
-    expect(cues.every((cue) => cue.gesture !== undefined)).toBe(true);
+    expect(cues.every((cue) => cue.shapes !== undefined)).toBe(true);
     expect(results.every((result) => result === 'perfect')).toBe(true);
+  });
+});
+
+describe('the bot with a shape in each cell', () => {
+  it('makes the shape of each cell with the hand in it', () => {
+    const cue: Cue = { timeSec: 1, beatIndex: 2, cells: [0, 2], shapes: ['fist', 'peace'] };
+    const { hands } = botPlayer('play', 1, [cue], grid, 1, SEED);
+    expect(hands.map((hand) => hand.gesture)).toEqual(['fist', 'peace']);
+    expect(hands[0]).toMatchObject(cellCentre(grid, 0));
+    expect(hands[1]).toMatchObject(cellCentre(grid, 2));
   });
 });
 

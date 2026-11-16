@@ -46,8 +46,12 @@ export interface Cue {
   beatIndex: number;
   /** Cell indices 0..8, row by row. 0 is top-left on screen. All are due at `timeSec`. */
   cells: number[];
-  /** Required hand shape, for every cell of the cue. */
-  gesture?: GestureName;
+  /**
+   * The hand shape that each cell asks for, parallel to `cells`. A cue asks for a shape in every
+   * cell or in none: unset, it asks for none. The two cells of a tap for two hands can ask for
+   * two shapes, one for each hand.
+   */
+  shapes?: GestureName[];
   /** Set on the three cues of a slide only. The run report shows it, to compare slides with other taps. */
   slideStep?: SlideStep;
 }

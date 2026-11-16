@@ -11,6 +11,6 @@ describe('the chart summary', () => {
     expect(summary.slides).toBe(cues.filter((cue) => cue.slideStep === 1).length);
     expect(summary.slides).toBeGreaterThan(20);
     expect(summary.taps + summary.doubles + 3 * summary.slides).toBe(cues.length);
-    expect(summary.gestures).toBe(cues.filter((cue) => cue.gesture).length);
+    expect(summary.gestures).toBe(cues.filter((cue) => cue.shapes).length);
   });
 });

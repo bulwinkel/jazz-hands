@@ -121,7 +121,7 @@ export interface ChartSummary {
   doubles: number;
   /** Slides, not their cells: a slide is three cues. */
   slides: number;
-  /** Cues that ask for a hand shape. */
+  /** Cues that ask for a hand shape, in one cell or in two. */
   gestures: number;
   faces: number;
 }
@@ -133,7 +133,7 @@ export function summariseChart(cues: readonly Cue[], faceCues: readonly FaceCue[
     if (cue.slideStep === 1) summary.slides++;
     else if (cue.cells.length === 2) summary.doubles++;
     else if (cue.slideStep === undefined) summary.taps++;
-    if (cue.gesture) summary.gestures++;
+    if (cue.shapes) summary.gestures++;
   }
   return summary;
 }

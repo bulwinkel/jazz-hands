@@ -28,8 +28,8 @@ function hand(cell: number, gesture: GestureName = 'open'): TrackedHand {
 }
 
 /** A single tap on cell 4, due at 1 s. */
-function tap(gesture?: GestureName): Cue {
-  return { timeSec: 1, beatIndex: 2, cells: [4], gesture };
+function tap(shape?: GestureName): Cue {
+  return { timeSec: 1, beatIndex: 2, cells: [4], shapes: shape ? [shape] : undefined };
 }
 
 /** A player with no cues yet. */
@@ -67,7 +67,7 @@ function newPlayer(): PlayerRun {
 function playOneCue(cue: Cue, handsAt: (timeSec: number) => TrackedHand[]): PlayerRun {
   const player: PlayerRun = {
     ...newPlayer(),
-    shapes: cue.gesture !== undefined,
+    shapes: cue.shapes !== undefined,
     cues: [cue],
     states: [newCueState(cue)],
     observations: [newObservation(cue)],
@@ -172,7 +172,7 @@ describe('observing a cue', () => {
     expect(observation.cells[0].framesInCell).toBeGreaterThan(10);
     expect(observation.cells[0].framesMatching).toBe(0);
     expect(observation.cells[0].firstMatchMs).toBeNull();
-    expect(observation.shapesRead).toEqual({ open: observation.cells[0].framesInCell });
+    expect(observation.cells[0].shapesRead).toEqual({ open: observation.cells[0].framesInCell });
     expect(player.states[0].result).toBe('miss');
   });
 });
@@ -182,6 +182,16 @@ describe('run report', () => {
     const { shapeCues } = report([playOneCue(tap('fist'), () => [hand(4, 'fist')])]).players[0];
     expect(shapeCues).toMatchObject({ asked: 1, hit: 1, readAsAsked: 1, hitOnFewFrames: 0 });
     expect(Object.keys(shapeCues.readings.fist ?? {})).toEqual(['fist']);
+  });
+
+  it('adds the readings of each cell to the shape that the cell asked for', () => {
+    const double: Cue = { timeSec: 1, beatIndex: 2, cells: [0, 2], shapes: ['fist', 'point'] };
+    // The tracker reads the left hand right and the right hand as an open hand.
+    const { shapeCues } = report([playOneCue(double, () => [hand(0, 'fist'), hand(2, 'open')])]).players[0];
+    expect(shapeCues).toMatchObject({ asked: 1, hit: 0 });
+    expect(Object.keys(shapeCues.readings.fist ?? {})).toEqual(['fist']);
+    expect(Object.keys(shapeCues.readings.point ?? {})).toEqual(['open']);
+    expect(shapeCues.readAsAsked).toBeCloseTo(0.5);
   });
 
   it('flags a shape cue that passed on a single frame of the right shape', () => {
@@ -249,7 +259,7 @@ describe('run report', () => {
 
   it('lists every cue with its result and what the tracker showed', () => {
     const [cue] = report([playOneCue(tap('fist'), () => [hand(4, 'fist')])]).players[0].cues;
-    expect(cue).toMatchObject({ cells: [4], gesture: 'fist', result: 'perfect', marks: ['perfect'] });
+    expect(cue).toMatchObject({ cells: [4], shapes: ['fist'], result: 'perfect', marks: ['perfect'] });
     expect(cue.observation.cells[0].framesMatching).toBeGreaterThan(10);
   });
 
