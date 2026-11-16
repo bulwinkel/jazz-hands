@@ -24,7 +24,10 @@ const SHELL_HTML = `
   <div id="cursors" aria-hidden="true"></div>
   <div id="message" role="status" aria-live="polite"><h1></h1><p></p></div>
   <button id="resume" hidden>Click to start</button>
-  <button id="pause" hidden aria-label="Pause game">Ⅱ Pause</button>
+  <div id="round-buttons">
+    <button id="restart" hidden aria-label="Start the round again">↺ Restart</button>
+    <button id="pause" hidden aria-label="Pause game">Ⅱ Pause</button>
+  </div>
   <div id="rec" hidden aria-label="Recording">● REC</div>
   <div id="toast" hidden role="status"></div>
   <div id="player" hidden></div>
@@ -91,6 +94,8 @@ export class GameUI {
   readonly canvas: HTMLCanvasElement;
   readonly debug: HTMLElement;
   readonly pauseButton: HTMLButtonElement;
+  /** Starts the round again, as the R key does. It shows beside the pause button, in a round. */
+  readonly restartButton: HTMLButtonElement;
   readonly resumeButton: HTMLButtonElement;
   /** Starts the reach fit again. It shows in the ready check, where a hand can choose it too. */
   readonly refitButton: HTMLButtonElement;
@@ -138,6 +143,7 @@ export class GameUI {
     this.messageDetail = find(this.messageBox, 'p');
     this.debug = find(root, '#debug');
     this.pauseButton = find(root, '#pause');
+    this.restartButton = find(root, '#restart');
     this.resumeButton = find(root, '#resume');
     this.refitButton = find(root, '#refit');
     this.fullscreenButton = find(root, '#fullscreen');

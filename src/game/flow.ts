@@ -150,6 +150,7 @@ export class DanceGame {
     });
 
     this.ui.pauseButton.addEventListener('click', () => void this.togglePause());
+    this.ui.restartButton.addEventListener('click', () => this.restartRound());
     this.ui.resumeButton.addEventListener('click', () => void this.unlockAudio());
     this.ui.refitButton.addEventListener('click', (event) => this.refit(isHandClick(event)));
     this.ui.fullscreenButton.addEventListener('click', () => this.toggleFullscreen());
@@ -172,6 +173,7 @@ export class DanceGame {
     clearHolds(this.players);
     this.ui.player.close();
     this.ui.pauseButton.hidden = phase !== 'play';
+    this.ui.restartButton.hidden = phase !== 'play';
     // The recalibrate button shows in the ready check: there the players see whether the grids
     // fit. It keeps away from the hands-up cells, which are in other places with two players.
     this.ui.refitButton.hidden = phase !== 'ready';
@@ -436,6 +438,11 @@ export class DanceGame {
     this.resetRound();
     this.fitBegunByHand = byHand;
     this.beginFit();
+  }
+
+  /** Starts the round in play again: the same cues, from the countdown. A paused round too. */
+  private restartRound(): void {
+    if (this.phase === 'play') this.beginCountdown();
   }
 
   /** Starts, or restarts, the song from its 3-2-1 countdown. Keeps the fitted grids. */
@@ -874,7 +881,7 @@ export class DanceGame {
         void this.cycleTracker();
         return;
       case 'r':
-        if (this.phase === 'play') this.beginCountdown();
+        this.restartRound();
         return;
       case 'c':
         this.refit();

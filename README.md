@@ -70,7 +70,7 @@ Each player also has two switches:
 | Esc | Go back to the menu. |
 | F | Full screen. |
 | ← and → | Step through the songs, in the menu. |
-| R | Start the round again. |
+| R | Start the round again. The **Restart** button beside **Pause** does the same. |
 | C | Recalibrate: fit the grids again. |
 | M | Change the hand tracker. |
 | D | Show the tracking numbers. |

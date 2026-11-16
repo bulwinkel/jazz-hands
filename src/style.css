@@ -1036,11 +1036,16 @@ body[data-phase="countdown"] #message h1 {
   color: #161629;
   font-size: 32px;
 }
-#pause {
+/* The buttons of a round, bottom right: Restart, then Pause in the corner. */
+#round-buttons {
   position: absolute;
   bottom: 18px;
   right: 18px;
   z-index: 6;
+  display: flex;
+  gap: 10px;
+}
+#round-buttons button {
   font-size: 18px;
   padding: 8px 14px;
   background: var(--chip);
