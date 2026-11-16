@@ -30,16 +30,39 @@ export interface InputView {
  * Where the mouse puts the hands, as x positions in the frame: player 1's hand, then player 2's
  * or null for none.
  *
- * In a round, two players share the one pointer: it is folded into the left half for player 1
- * and mirrored into the right half for player 2, so one mouse raises the hands of both. The
- * menu has no player areas and each player has a pointer of their own there (see
- * playerPointers.ts), so a mirrored hand would choose a second item. There the mouse is one
- * hand, where the pointer is.
+ * In a round, two players share the one pointer. The hand at the pointer belongs to the player
+ * whose half of the frame it is in, and the other player gets a copy half a frame away. The
+ * grids of two players are the same shape, half a frame apart, so both hands are in the same
+ * cell of each grid: one mouse holds the Start cells of both players. The menu has no player
+ * areas and each player has a pointer of their own there (see playerPointers.ts), so a copy
+ * would choose a second item. There the mouse is one hand, where the pointer is.
  */
 export function mouseHandPositions(pointerX: number, playerCount: PlayerCount, phase: Phase): [number, number | null] {
   if (playerCount === 1 || phase === 'menu') return [pointerX, null];
-  const folded = pointerX > 0.5 ? 1 - pointerX : pointerX;
-  return [folded, 1 - folded];
+  const left = pointerX >= 0.5 ? pointerX - 0.5 : pointerX;
+  return [left, left + 0.5];
+}
+
+/**
+ * The hands of the mouse input in one frame: one hand at the pointer, with the shape of the
+ * held key, and a copy for the other player of two (see `mouseHandPositions`). On the results
+ * the copy stays open. An open hand points but never chooses, so only the hand at the pointer
+ * chooses an item there, and the copy still holds the other player's Start cell to play again.
+ */
+export function mouseHands(
+  pointer: Point,
+  gesture: GestureName,
+  playerCount: PlayerCount,
+  phase: Phase,
+): [PlayerTracking, PlayerTracking] {
+  const [first, second] = mouseHandPositions(pointer.x, playerCount, phase);
+  const pointerPlayer = second !== null && pointer.x >= 0.5 ? 1 : 0;
+  const handAt = (x: number, index: number): PlayerTracking => {
+    const isCopy = index !== pointerPlayer;
+    const shape: GestureName = isCopy && phase === 'results' ? 'open' : gesture;
+    return { hands: [{ x, y: pointer.y, size: 0.05, gesture: shape, gestureScore: 1 }] };
+  };
+  return [handAt(first, 0), second === null ? { hands: [] } : handAt(second, 1)];
 }
 
 /** A source of tracking frames: the camera, or a stand-in for tests. */
@@ -274,12 +297,7 @@ export class SimulatedInput implements GameInput {
   private mousePlayers(view: InputView): [PlayerTracking, PlayerTracking] {
     const heldKey = Object.keys(GESTURE_KEYS).find((key) => this.heldKeys.has(key));
     const gesture: GestureName = heldKey ? GESTURE_KEYS[heldKey] : 'open';
-    const handAt = (x: number): PlayerTracking => ({
-      hands: [{ x, y: this.pointer.y, size: 0.05, gesture, gestureScore: 1 }],
-    });
-
-    const [first, second] = mouseHandPositions(this.pointer.x, view.playerCount, view.phase);
-    return [handAt(first), second === null ? { hands: [] } : handAt(second)];
+    return mouseHands(this.pointer, gesture, view.playerCount, view.phase);
   }
 
   private onPointerMove = (event: PointerEvent): void => {

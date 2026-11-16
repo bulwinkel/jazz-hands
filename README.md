@@ -32,7 +32,9 @@ Open `http://localhost:5173` in Chrome and allow the camera.
 - A large screen helps. Press F for full screen, or touch **Full screen** at the bottom left.
   The button shows only where the browser can make a page full screen.
 - With no webcam, open `http://localhost:5173/?input=mouse`. The mouse is then one hand. Hold
-  1, 2, 3 or 4 for a fist, an open hand, a point or a peace sign.
+  1, 2, 3 or 4 for a fist, an open hand, a point or a peace sign. With two players, the other
+  player gets a copy of the hand half the screen away, in the same cell of their grid. On the
+  results the copy stays open, so only the hand at the pointer chooses.
 
 ## Play
 
