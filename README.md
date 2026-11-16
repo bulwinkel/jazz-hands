@@ -155,6 +155,8 @@ The ready screen shows two cells in each player's grid:
 
 - The Calibrate cell is the second choice: its outline is thin and dashed, and its sign and
   word are fainter.
+- The words have the base text size of the game, which reads from across a room. In a cell
+  that is too narrow for that size, such as on a child's small grid, a word gets smaller to fit.
 - A hand in the Start cell does not count for the Calibrate cell, and the reverse.
 - A player who holds the Start cell does not calibrate. With both hands up, one in each cell,
   the player starts. A Calibrate hold ends when the same player's Start hold begins.

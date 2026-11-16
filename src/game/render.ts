@@ -13,6 +13,8 @@ import {
 } from './config';
 import { openFaceCue } from './faceJudgment';
 import { cellRect, containRect } from './geometry';
+import { holdCellLayout } from './holdCellLayout';
+import type { HoldCellLayout } from './holdCellLayout';
 import type { CueState } from './judgment';
 import { clamp, clamp01 } from './numbers';
 import type { PlayerRun } from './player';
@@ -58,16 +60,6 @@ const FACE_RING_SCALE = 0.6;
 const CALIBRATE_DASH = [10, 8];
 /** The strength of the Calibrate cell's sign and word: lower than the Start cell's, as the second choice. */
 const CALIBRATE_ALPHA = 0.7;
-
-/** Where the sign, its ring and the word sit in a cell that has a word under its sign. */
-interface LabelLayout {
-  /** The middle of the sign and of its ring. */
-  centre: Point;
-  radius: number;
-  /** The middle of the word. */
-  wordY: number;
-  wordSize: number;
-}
 
 const centreOf = (rect: Rect): Point => ({ x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 });
 
@@ -125,8 +117,9 @@ export class GameRenderer {
       if (view.phase !== 'results') this.drawGrid(player.grid, color, pulse);
       if (view.phase === 'play') this.drawCues(player, view.songTimeSec, color);
       if (view.phase === 'play') this.drawFaceCue(player, view.songTimeSec, color);
-      if (view.phase === 'ready') this.drawStartCell(player, color, true);
-      if (view.phase === 'results') this.drawStartCell(player, color, false);
+      // The results draw the Start cell with no word: there it plays again.
+      if (view.phase === 'ready') this.drawStartCell(player, color, HOLD_CELL_LABELS.start.word);
+      if (view.phase === 'results') this.drawStartCell(player, color, null);
       // In a calibration of one player, the other player sees their own Calibrate hold go on.
       const waitsToCalibrate = view.phase === 'fit' && player.calibrateHold > 0;
       if (view.phase === 'ready' || waitsToCalibrate) this.drawCalibrateCell(player, color);
@@ -311,24 +304,16 @@ export class GameRenderer {
 
   /**
    * The Start cell: a hand held in it starts the round, or plays again on the results. A ring
-   * fills while the hand stays. `withWord` puts the word "Start" under the sign, for the ready
-   * screen, where the Calibrate cell is a second choice.
+   * fills while the hand stays. `word` goes under the sign: "Start" on the ready screen, where
+   * the Calibrate cell is a second choice, and none on the results.
    */
-  private drawStartCell(player: PlayerRun, color: string, withWord: boolean): void {
+  private drawStartCell(player: PlayerRun, color: string, word: string | null): void {
     const cell = this.toScreen(cellRect(player.grid, START_CELL));
-    const { sign, word } = HOLD_CELL_LABELS.start;
+    const layout = this.holdCellLayout(cell, word);
     this.outline(cell, color, 4, withAlpha(color, 0.21));
-    if (!withWord) {
-      const centre = centreOf(cell);
-      const radius = Math.min(cell.width, cell.height) * 0.32;
-      this.holdRing(centre, radius, color, 10, player.hold);
-      this.sign(sign, centre.x, centre.y, radius * 1.25);
-      return;
-    }
-    const layout = this.labelLayout(cell);
     this.holdRing(layout.centre, layout.radius, color, 10, player.hold);
-    this.sign(sign, layout.centre.x, layout.centre.y, layout.radius * 1.25);
-    this.text(word, layout.centre.x, layout.wordY, layout.wordSize);
+    this.sign(HOLD_CELL_LABELS.start.sign, layout.centre.x, layout.centre.y, layout.radius * 1.25);
+    this.drawWord(word, layout);
   }
 
   /**
@@ -338,7 +323,7 @@ export class GameRenderer {
   private drawCalibrateCell(player: PlayerRun, color: string): void {
     const cell = this.toScreen(cellRect(player.grid, CALIBRATE_CELL));
     const { sign, word } = HOLD_CELL_LABELS.calibrate;
-    const layout = this.labelLayout(cell);
+    const layout = this.holdCellLayout(cell, word);
     const ctx = this.ctx;
 
     ctx.save();
@@ -349,21 +334,23 @@ export class GameRenderer {
     ctx.save();
     ctx.globalAlpha = CALIBRATE_ALPHA;
     this.sign(sign, layout.centre.x, layout.centre.y, layout.radius * 1.1);
-    this.text(word, layout.centre.x, layout.wordY, layout.wordSize);
+    this.drawWord(word, layout);
     ctx.restore();
   }
 
   /**
-   * The word sits at the bottom of the cell, at the base text size, so it reads from across a
-   * room. The sign and its ring fill the room above it.
+   * Lays out a Start or Calibrate cell (see holdCellLayout.ts). The word gets the base text size,
+   * which reads from across a room, or less where it would not fit the cell.
    */
-  private labelLayout(cell: Rect): LabelLayout {
-    const wordSize = this.textSize;
-    const wordY = cell.y + cell.height - wordSize * 0.75;
-    const roomHeight = wordY - wordSize * 0.6 - cell.y;
-    const radius = Math.max(0, Math.min(cell.width * 0.32, roomHeight * 0.4));
-    const centre = { x: cell.x + cell.width / 2, y: cell.y + roomHeight / 2 };
-    return { centre, radius, wordY, wordSize };
+  private holdCellLayout(cell: Rect, word: string | null): HoldCellLayout {
+    const wordWidth = word === null ? null : this.textWidth(word, this.textSize);
+    return holdCellLayout(cell, this.textSize, wordWidth, this.width);
+  }
+
+  /** The word of a Start or Calibrate cell, where its layout puts it. Nothing for a cell with no word. */
+  private drawWord(word: string | null, layout: HoldCellLayout): void {
+    if (word === null || layout.word === null) return;
+    this.text(word, layout.word.x, layout.word.y, layout.word.size);
   }
 
   /** A ring that fills clockwise from the top while a hand holds a cell. `progress` goes from 0 to 1. */
@@ -518,6 +505,12 @@ export class GameRenderer {
   private sign(content: string, x: number, y: number, size: number): void {
     const { dx, dy } = signOffset(content);
     this.text(content, x - dx * size, y - dy * size, size);
+  }
+
+  /** The width of `content` in the canvas font at `size` pixels. */
+  private textWidth(content: string, size: number): number {
+    this.ctx.font = canvasFont(size);
+    return this.ctx.measureText(content).width;
   }
 
   private text(content: string, x: number, y: number, size: number, color: string = WHITE): void {
