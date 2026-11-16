@@ -162,7 +162,8 @@ The ready screen shows two cells in each player's grid:
   players, the screen names the player: "P1: draw the biggest circles you can with both arms!"
 - When both players hold their Calibrate cells, the first hold that completes calibrates first.
   The hold of the other player goes on, and that player calibrates next. A hold that ends
-  during a calibration does not start again until the ready screen shows.
+  during a calibration, also by a gap in tracking, does not start again until the ready
+  screen shows.
 - The results show only the Start cell. A hand held in it for 1.5 s plays again.
 
 The C key and the **Recalibrate** button of the results calibrate every player. After the C key

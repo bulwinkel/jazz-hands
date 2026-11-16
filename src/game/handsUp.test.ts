@@ -284,6 +284,18 @@ describe('two players who hold their Calibrate cells at nearly the same time', (
     expect(duo[1].calibrateHoldStartMs).toBeNull();
   });
 
+  it('end a waiting hold at a gap in tracking, and do not start it again', () => {
+    const duo = firstHoldCompletes();
+    const late = 2000 + TIMING.staleFrameMs + 1;
+    // The right player's hand stays in the cell, but no frame came for longer than a stale frame.
+    expect(stepWaitingHolds(duo, [0], [], at(late, duo, duo), at(2000, duo, duo), HOLD_SEC)).toEqual([]);
+    expect(duo[1].calibrateHoldStartMs).toBeNull();
+    expect(duo[1].calibrateHold).toBe(0);
+    const later = stepWaitingHolds(duo, [0], [], at(late + 2000, duo, duo), at(late + 1900, duo, duo), HOLD_SEC);
+    expect(later).toEqual([]);
+    expect(duo[1].calibrateHoldStartMs).toBeNull();
+  });
+
   it('do not step the hold of a player who waits already', () => {
     const duo = firstHoldCompletes();
     duo[1].calibrateHold = 1;

@@ -117,7 +117,8 @@ export function stepReadyHolds(
  * began on the ready screen and the player does not wait yet. Two players who hold at nearly
  * the same time then both calibrate: the first hold that completes goes first, and the other
  * player waits. A hold that has ended does not start again, because the Calibrate cell is a
- * choice of the ready screen. Returns the players whose hold completed: they wait now.
+ * choice of the ready screen. A gap in tracking ends a hold here, where on the ready screen it
+ * would start the hold again. Returns the players whose hold completed: they wait now.
  */
 export function stepWaitingHolds(
   players: readonly HoldingPlayer[],
@@ -131,6 +132,10 @@ export function stepWaitingHolds(
     const isBusy = calibrating.includes(player.index) || waiting.includes(player.index);
     return !isBusy && player.calibrateHoldStartMs !== null;
   });
+  if (isStalled(frame, previous)) {
+    clearCalibrateHolds(holding);
+    return [];
+  }
   return stepCalibrateHolds(holding, frame, previous, holdSec);
 }
 
