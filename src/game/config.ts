@@ -165,9 +165,10 @@ export const PREVIEW = {
 /**
  * The seed that the candidate seeds of the cue sets count from, and the seed of the tests.
  * Before cue sets, every round played the chart from this seed. It was picked from 400
- * candidates: its charts for both songs, at levels 3 and 4, come closest to the shares of
- * slides and doubles that the level rules ask for. A random seed can be off by 15 points,
- * which makes a level feel unlike its rules.
+ * candidates when the game had two songs: its charts for both, at levels 3 and 4, came
+ * closest to the shares of slides and doubles that the level rules asked for then. A random
+ * seed could be off by 15 points. The rolls and the chances have changed since, so that choice
+ * says nothing about the charts of today. The cue sets now choose the seed of each round.
  */
 export const DEFAULT_SEED = 20261315;
 
