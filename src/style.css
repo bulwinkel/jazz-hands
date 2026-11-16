@@ -1046,6 +1046,21 @@ body[data-phase="countdown"] #message h1 {
   background: var(--chip);
 }
 
+/* The full-screen button, for a screen with no keyboard. It keeps below the debug box, and
+   it goes away under an open video player: the video's own play button is in that corner. */
+#fullscreen {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  z-index: 6;
+  font-size: 16px;
+  padding: 6px 12px;
+  background: var(--chip);
+}
+#player:not([hidden]) ~ #fullscreen {
+  display: none;
+}
+
 /* The recalibrate button of the ready check. One player: top right, a little in from the
    side, as the menu switches are. Two players: that place is the right player's hands-up
    cell, so the button sits at the top between the two grids, where both players reach it. */

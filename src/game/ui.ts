@@ -28,6 +28,7 @@ const SHELL_HTML = `
   <div id="rec" hidden aria-label="Recording">● REC</div>
   <div id="toast" hidden role="status"></div>
   <div id="player" hidden></div>
+  <button id="fullscreen" hidden>⛶ Full screen</button>
   <button id="refit" hidden data-hand="refit" data-hand-hold="${HAND_MENU.slowHoldSec}">↺ Recalibrate · C</button>
   <pre id="debug" hidden></pre>`;
 
@@ -93,6 +94,8 @@ export class GameUI {
   readonly resumeButton: HTMLButtonElement;
   /** Starts the reach fit again. It shows in the ready check, where a hand can choose it too. */
   readonly refitButton: HTMLButtonElement;
+  /** Makes the page full screen. A touch presses it: a tablet has no F key. */
+  readonly fullscreenButton: HTMLButtonElement;
   /** Plays a recorded round. It lies over the panel and under the hand rings. */
   readonly player: VideoPlayer;
   private readonly root: HTMLElement;
@@ -137,6 +140,7 @@ export class GameUI {
     this.pauseButton = find(root, '#pause');
     this.resumeButton = find(root, '#resume');
     this.refitButton = find(root, '#refit');
+    this.fullscreenButton = find(root, '#fullscreen');
 
     this.player = new VideoPlayer(find(root, '#player'));
   }

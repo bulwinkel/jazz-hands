@@ -29,7 +29,8 @@ Open `http://localhost:5173` in Chrome and allow the camera.
 
 - The first `npm run dev` downloads the MediaPipe models from Google, about 34 MB. After
   that, the game needs no network connection.
-- A large screen helps. Press F for full screen.
+- A large screen helps. Press F for full screen, or touch **Full screen** at the bottom left.
+  The button shows only where the browser can make a page full screen.
 - With no webcam, open `http://localhost:5173/?input=mouse`. The mouse is then one hand. Hold
   1, 2, 3 or 4 for a fist, an open hand, a point or a peace sign.
 

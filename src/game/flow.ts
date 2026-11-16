@@ -152,6 +152,9 @@ export class DanceGame {
     this.ui.pauseButton.addEventListener('click', () => void this.togglePause());
     this.ui.resumeButton.addEventListener('click', () => void this.unlockAudio());
     this.ui.refitButton.addEventListener('click', (event) => this.refit(isHandClick(event)));
+    this.ui.fullscreenButton.addEventListener('click', () => this.toggleFullscreen());
+    document.addEventListener('fullscreenchange', this.showFullscreenButton);
+    this.showFullscreenButton();
     this.ui.player.onChange = this.onPlayerChange;
     window.addEventListener('keydown', this.onKey);
     window.addEventListener('pagehide', () => this.dispose(), { once: true });
@@ -820,6 +823,27 @@ export class DanceGame {
     }
   }
 
+  /**
+   * Makes the page full screen, or leaves full screen. A browser allows this only from a key,
+   * a click or a touch, so a hand in the camera cannot do it.
+   */
+  private toggleFullscreen(): void {
+    if (!document.fullscreenEnabled) return;
+    const toggled = document.fullscreenElement
+      ? document.exitFullscreen()
+      : document.documentElement.requestFullscreen();
+    void toggled.catch(() => {});
+  }
+
+  /**
+   * Shows the full-screen button while the page can go full screen and is not full screen.
+   * In full screen the button would only cover the game: F, Esc or the browser's own control
+   * leaves it.
+   */
+  private showFullscreenButton = (): void => {
+    this.ui.fullscreenButton.hidden = !document.fullscreenEnabled || document.fullscreenElement !== null;
+  };
+
   private onKey = (event: KeyboardEvent): void => {
     if (event.repeat) return;
     const key = event.key.toLowerCase();
@@ -840,13 +864,9 @@ export class DanceGame {
         event.preventDefault();
         this.showMenu();
         return;
-      case 'f': {
-        const toggled = document.fullscreenElement
-          ? document.exitFullscreen()
-          : document.documentElement.requestFullscreen();
-        void toggled.catch(() => {});
+      case 'f':
+        this.toggleFullscreen();
         return;
-      }
       case 'd':
         this.debugVisible = !this.debugVisible;
         return;
