@@ -48,7 +48,7 @@ export interface PlayerRun {
 
 /** The mix of a chart with no cues: the mix of each player until a round makes their chart. */
 export function noMix(): ChartMix {
-  return { slides: 0, doubles: 0, fastSlides: 0, offbeats: 0, cues: 0 };
+  return { slides: 0, doubles: 0, offbeats: 0, cues: 0 };
 }
 
 export function createPlayers(settings: Settings): PlayerRun[] {
@@ -76,20 +76,23 @@ export function createPlayers(settings: Settings): PlayerRun[] {
 }
 
 export interface ChartSummary {
+  /** Single taps outside slides. */
   taps: number;
   doubles: number;
+  /** Slides, not their cells: a slide is three cues. */
   slides: number;
+  /** Cues that ask for a hand shape. */
   gestures: number;
   faces: number;
 }
 
-/** Counts each kind of cue. `gestures` counts the single taps that ask for a hand shape. */
+/** Counts each kind of cue. A slide counts once, on its first cell. */
 export function summariseChart(cues: readonly Cue[], faceCues: readonly FaceCue[]): ChartSummary {
   const summary: ChartSummary = { taps: 0, doubles: 0, slides: 0, gestures: 0, faces: faceCues.length };
   for (const cue of cues) {
-    if (cue.kind === 'slide') summary.slides++;
+    if (cue.slideStep === 1) summary.slides++;
     else if (cue.cells.length === 2) summary.doubles++;
-    else summary.taps++;
+    else if (cue.slideStep === undefined) summary.taps++;
     if (cue.gesture) summary.gestures++;
   }
   return summary;

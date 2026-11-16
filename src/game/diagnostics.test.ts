@@ -29,7 +29,7 @@ function hand(cell: number, gesture: GestureName = 'open'): TrackedHand {
 
 /** A single tap on cell 4, due at 1 s. */
 function tap(gesture?: GestureName): Cue {
-  return { kind: 'tap', timeSec: 1, beatIndex: 2, cells: [4], times: [1], gesture };
+  return { timeSec: 1, beatIndex: 2, cells: [4], times: [1], gesture };
 }
 
 /** A player with no cues yet. */
@@ -236,8 +236,16 @@ describe('run report', () => {
 
   it('lists every cue with its result and what the tracker showed', () => {
     const [cue] = report([playOneCue(tap('fist'), () => [hand(4, 'fist')])]).players[0].cues;
-    expect(cue).toMatchObject({ kind: 'tap', gesture: 'fist', result: 'perfect', marks: ['perfect'] });
+    expect(cue).toMatchObject({ cells: [4], gesture: 'fist', result: 'perfect', marks: ['perfect'] });
     expect(cue.observation.cells[0].framesMatching).toBeGreaterThan(10);
+  });
+
+  it('names the place of a cue in a slide, to compare slides with other taps', () => {
+    const middle: Cue = { ...tap(), slideStep: 2 };
+    const [cue] = report([playOneCue(middle, () => [hand(4)])]).players[0].cues;
+    expect(cue).toMatchObject({ slideStep: 2, result: 'perfect' });
+    const [plain] = report([playOneCue(tap(), () => [hand(4)])]).players[0].cues;
+    expect(plain.slideStep).toBeUndefined();
   });
 });
 

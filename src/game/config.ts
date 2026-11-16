@@ -1,5 +1,5 @@
 import type { FaceExpression, GestureName, TrackerMode, TrackingThread } from '../tracking/types';
-import type { Level, PlayerCount, SlideSpeed } from './types';
+import type { Level, PlayerCount } from './types';
 
 /**
  * Where the camera is tracked when the URL does not say: the main thread, for now.
@@ -174,8 +174,8 @@ export const DEFAULT_SEED = 20261315;
 /**
  * Cue sets give one song other charts at the same difficulty, and differ by their share of
  * moves. Every set tries a few candidate seeds and keeps the one whose charts come closest to
- * the typical mix of the level on this song: its slides, doubles, fast slides, off-beat taps
- * and number of cues. See cueSet.ts.
+ * the typical mix of the level on this song: its slides, doubles, off-beat taps and number of
+ * cues. See cueSet.ts.
  */
 export const CUE_SETS = {
   /**
@@ -200,11 +200,10 @@ export const CUE_SETS = {
    * How much each part of the mix counts in a candidate's distance from the typical mix. A
    * share counts in points; the number of cues counts by its relative change, so 1% more
    * cues is like 1 point. Off-beat taps and the number of cues both say how busy a chart is:
-   * each counts half, so that counts once. At level 3, which has no off-beat taps, the number
-   * of cues sees the slow slides and the taps for the other hand. The weights were chosen by
-   * measuring the 15 songs at levels 3 to 5, at both lengths.
+   * each counts half, so that counts once. The weights were chosen by measuring the 15 songs
+   * at levels 3 to 5, at both lengths, when the mix also held a share of fast slides.
    */
-  weights: { slides: 1, doubles: 1, fastSlides: 1, offbeats: 0.5, cues: 0.5 },
+  weights: { slides: 1, doubles: 1, offbeats: 0.5, cues: 0.5 },
 } as const;
 
 /** Milliseconds around a cue's due time, as [early, late]. Early is negative. */
@@ -219,17 +218,16 @@ export interface LevelRules {
   /** Share of busy cue beats that need two hands at once. */
   doubleChance: number;
   doublesOnBarStartsOnly: boolean;
-  /** Share of busy cue beats that start a slide. */
+  /**
+   * Share of busy cue beats that start a slide, where one fits: three taps in a line, one on
+   * each of three cue beats in a row. See `slideFits` in chart.ts.
+   */
   slideChance: number;
-  /** How the slides split by speed. The three shares add up to 1. */
-  slideSpeeds: Record<SlideSpeed, number>;
   /**
    * Share of busy single taps that are followed by an extra tap halfway to the next cue beat.
    * A double is never followed by one: it leaves no hand free.
    */
   offbeatChance: number;
-  /** Share of slow slides during which the other hand gets a tap, on the slide's middle beat. */
-  companionTapChance: number;
   /** Every cue asks for a hand shape. One shape lasts a few seconds, then it changes. */
   shapeOnEveryCue: boolean;
   /** How long a cue is on screen before it is due. */
@@ -246,9 +244,7 @@ export const LEVELS: Record<Level, LevelRules> = {
     doubleChance: 0,
     doublesOnBarStartsOnly: false,
     slideChance: 0,
-    slideSpeeds: { fast: 0, normal: 1, slow: 0 },
     offbeatChance: 0,
-    companionTapChance: 0,
     shapeOnEveryCue: false,
     approachSec: 1.4,
     perfectMs: [-150, 200],
@@ -261,9 +257,7 @@ export const LEVELS: Record<Level, LevelRules> = {
     doubleChance: 0.3,
     doublesOnBarStartsOnly: true,
     slideChance: 0,
-    slideSpeeds: { fast: 0, normal: 1, slow: 0 },
     offbeatChance: 0,
-    companionTapChance: 0,
     shapeOnEveryCue: false,
     approachSec: 1,
     perfectMs: [-120, 160],
@@ -275,12 +269,11 @@ export const LEVELS: Record<Level, LevelRules> = {
     sparseBelowIntensity: 0,
     doubleChance: 0.45,
     doublesOnBarStartsOnly: false,
-    slideChance: 0.22,
-    slideSpeeds: { fast: 0, normal: 0.7, slow: 0.3 },
+    // A slide takes three cue beats. This chance gives about as many slides as 0.22 gave the
+    // slides of two and three cells before: 91336 against 92279, over every song at its full
+    // length and every candidate seed of the cue sets.
+    slideChance: 0.28,
     offbeatChance: 0,
-    // Without these taps, the other hand had nothing to do during a slow slide. Half is
-    // gentler than level 4.
-    companionTapChance: 0.5,
     shapeOnEveryCue: false,
     approachSec: 1,
     perfectMs: [-120, 160],
@@ -292,10 +285,9 @@ export const LEVELS: Record<Level, LevelRules> = {
     sparseBelowIntensity: 0,
     doubleChance: 0.4,
     doublesOnBarStartsOnly: false,
-    slideChance: 0.3,
-    slideSpeeds: { fast: 0.3, normal: 0.25, slow: 0.45 },
+    // Tuned as level 3: 76862 slides against 77647 with the fast, normal and slow slides of 0.3.
+    slideChance: 0.35,
     offbeatChance: 0.6,
-    companionTapChance: 0.8,
     shapeOnEveryCue: false,
     approachSec: 1,
     perfectMs: [-120, 160],
@@ -307,10 +299,9 @@ export const LEVELS: Record<Level, LevelRules> = {
     sparseBelowIntensity: 0,
     doubleChance: 0.4,
     doublesOnBarStartsOnly: false,
-    slideChance: 0.3,
-    slideSpeeds: { fast: 0.3, normal: 0.25, slow: 0.45 },
+    // The slides of level 4: a shape does not change the chart.
+    slideChance: 0.35,
     offbeatChance: 0.6,
-    companionTapChance: 0.8,
     shapeOnEveryCue: true,
     approachSec: 1,
     perfectMs: [-120, 160],
@@ -341,7 +332,6 @@ export const CHART = {
   /**
    * A hand needs this long to travel from one target to the next. The chart never asks a
    * player's two hands for more: a cue that would is made smaller or left out.
-   * The two ends of a fast slide are one continuous move, so they are exempt.
    */
   handRestSec: 0.45,
   gesturePool: ['fist', 'open', 'point', 'peace'] satisfies GestureName[],

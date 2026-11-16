@@ -20,7 +20,7 @@ const PLAYER: RatingPlayer = {
   level: 4,
   shapes: true,
   faces: false,
-  mix: { slides: 0.212121212, doubles: 0.0833333, fastSlides: 0.0454545, offbeats: 0.3, cues: 100 },
+  mix: { slides: 0.212121212, doubles: 0.0833333, offbeats: 0.3, cues: 100 },
   moves: { point: 3, circle: 1 },
   score: { score: 13456.6, combo: 4, maxCombo: 31, perfect: 80, good: 12, miss: 8, total: 100 },
 };
@@ -44,7 +44,7 @@ describe('a rating record', () => {
       level: 4,
       shapes: true,
       faces: false,
-      chart: { slides: 0.2121, doubles: 0.0833, fastSlides: 0.0455, offbeats: 0.3, cues: 100, moves: { point: 3, circle: 1 } },
+      chart: { slides: 0.2121, doubles: 0.0833, offbeats: 0.3, cues: 100, moves: { point: 3, circle: 1 } },
       result: { score: 13457, accuracy: 0.86, perfect: 80, good: 12, miss: 8 },
       rating: 4,
     });

@@ -314,7 +314,7 @@ function playerReport(player: PlayerRun, stats: TrackingStats): PlayerReport {
     asked++;
     const wasHit = player.states[i]?.result === 'perfect' || player.states[i]?.result === 'good';
     if (wasHit) hit++;
-    // A shape cue may have several cells: both hands of a double, or the cells of a slide.
+    // A shape cue may have two cells: both hands of a double.
     for (const cell of observation.cells) {
       shapeFramesInCell += cell.framesInCell;
       shapeFramesMatching += cell.framesMatching;

@@ -15,12 +15,7 @@ function hand(cell: number, gesture: GestureName = 'open'): TrackedHand {
 
 /** A tap due at 1 s. */
 function tap(cells: number[], gesture?: GestureName): Cue {
-  return { kind: 'tap', timeSec: 1, beatIndex: 2, cells, times: cells.map(() => 1), gesture };
-}
-
-/** A slide from cell 0, due at 1 s, to cell 2, due at 1.6 s. */
-function slide(): Cue {
-  return { kind: 'slide', timeSec: 1, beatIndex: 2, cells: [0, 2], times: [1, 1.6] };
+  return { timeSec: 1, beatIndex: 2, cells, times: cells.map(() => 1), gesture };
 }
 
 /** Feeds one frame into `state`. Returns the rating only on the frame that makes the cue final. */
@@ -125,73 +120,8 @@ describe('hand shapes', () => {
     expect(step(oneOpen, 5, [], 2)).toBe('miss');
   });
 
-  it('needs the shape at every cell of a slide', () => {
-    const shaped: Cue = { ...slide(), gesture: 'peace' };
-    const held = newCueState(shaped);
-    step(held, 5, [hand(0, 'peace')], 1);
-    expect(step(held, 5, [hand(2, 'peace')], 1.6)).toBe('perfect');
-
-    const dropped = newCueState(shaped);
-    step(dropped, 5, [hand(0, 'peace')], 1);
-    step(dropped, 5, [hand(2, 'open')], 1.6);
-    expect(step(dropped, 5, [], 3)).toBe('miss');
-  });
-
   it('judges position only when the tracker cannot read shapes', () => {
     expect(step(newCueState(tap([4], 'fist')), 2, [hand(4, 'unknown')], 1)).toBe('perfect');
-  });
-});
-
-describe('slides', () => {
-  const closeSec = at(1.6, LEVELS[3].goodMs[1] + 1);
-
-  it('is Perfect when the hand is at each end on its beat', () => {
-    const state = newCueState(slide());
-    expect(step(state, 3, [hand(0)], 1)).toBeUndefined();
-    expect(state.marks).toEqual(['perfect', null]);
-    expect(step(state, 3, [hand(2)], 1.6)).toBe('perfect');
-  });
-
-  it('is Good when the start is on time and the end is late', () => {
-    const state = newCueState(slide());
-    step(state, 3, [hand(0)], 1);
-    step(state, 3, [hand(2)], at(1.6, LEVELS[3].perfectMs[1] + 50));
-    expect(step(state, 3, [], closeSec)).toBe('good');
-  });
-
-  it('is a Miss when the start is skipped, and stays open until the end window closes', () => {
-    const state = newCueState(slide());
-    // Past the start cell's window, but the slide is not final until its end cell is judged.
-    expect(step(state, 3, [], at(1, LEVELS[3].goodMs[1] + 1))).toBeUndefined();
-    expect(step(state, 3, [hand(2)], 1.6)).toBeUndefined();
-    expect(step(state, 3, [], closeSec)).toBe('miss');
-  });
-
-  it('is a Miss when the hand never reaches the end', () => {
-    const state = newCueState(slide());
-    step(state, 3, [hand(0)], 1);
-    expect(step(state, 3, [hand(0)], closeSec)).toBe('miss');
-  });
-
-  it('needs the middle cell of a slow slide on its own beat', () => {
-    const slow: Cue = { kind: 'slide', speed: 'slow', timeSec: 1, beatIndex: 2, cells: [0, 1, 2], times: [1, 1.6, 2.2] };
-    const afterEnd = at(2.2, LEVELS[3].goodMs[1] + 1);
-
-    const followed = newCueState(slow);
-    step(followed, 3, [hand(0)], 1);
-    step(followed, 3, [hand(1)], 1.6);
-    expect(step(followed, 3, [hand(2)], 2.2)).toBe('perfect');
-
-    const jumped = newCueState(slow);
-    step(jumped, 3, [hand(0)], 1);
-    step(jumped, 3, [hand(2)], 2.2);
-    expect(step(jumped, 3, [], afterEnd)).toBe('miss');
-  });
-
-  it('does not count the end cell before its own window opens', () => {
-    const state = newCueState(slide());
-    step(state, 3, [hand(0), hand(2)], 1);
-    expect(state.marks).toEqual(['perfect', null]);
   });
 });
 

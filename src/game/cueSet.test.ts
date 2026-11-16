@@ -26,7 +26,7 @@ import {
 import type { ChartFor, CueSetChoice, PoolMeasure, RoundCharts } from './cueSet';
 import { synthetic } from './fixtures';
 import { playEndSec, playStartSec, validateManifest } from './manifest';
-import type { Cue, Level, Manifest, SongLength } from './types';
+import type { Cue, Level, Manifest, SlideStep, SongLength } from './types';
 
 const ALL_SETS = [1, 2, 3, 4, 5, 6];
 
@@ -41,15 +41,33 @@ function round(manifest: Manifest, players: ChartFor[], length: SongLength = 'sh
 const solo = (level: Level): ChartFor[] => [{ level, shapes: false }];
 
 /** A cue on beat `beatIndex` of a test song with one beat a second. */
-function entry(kind: 'single' | 'double' | 'slide', beatIndex: number, role: CueRole = 'beat'): ChartEntry {
-  const cells = kind === 'double' ? [0, 2] : kind === 'slide' ? [0, 8] : [1];
-  const cue: Cue = { kind: kind === 'slide' ? 'slide' : 'tap', timeSec: beatIndex, beatIndex, cells, times: cells.map(() => beatIndex) };
+function entry(kind: 'single' | 'double', beatIndex: number, role: CueRole = 'beat'): ChartEntry {
+  const cells = kind === 'double' ? [0, 2] : [1];
+  const cue: Cue = { timeSec: beatIndex, beatIndex, cells, times: cells.map(() => beatIndex) };
   return { cue, role };
 }
 
+const SLIDE_STEPS: SlideStep[] = [1, 2, 3];
+
+/**
+ * A slide along the top row from beat `first`, one cell a beat, as the chart makes it: a roll
+ * of its first beat chose its first cell, and the slide chose the other two.
+ */
+function slide(first: number): ChartEntry[] {
+  return SLIDE_STEPS.map((slideStep, k) => {
+    const beatIndex = first + k;
+    const cue: Cue = { timeSec: beatIndex, beatIndex, cells: [k], times: [beatIndex], slideStep };
+    return { cue, role: k === 0 ? 'beat' : 'slide' };
+  });
+}
+
 /** `count` cue-beat entries of one kind, from beat `first` on. */
-const entries = (kind: 'single' | 'double' | 'slide', count: number, first: number): ChartEntry[] =>
+const entries = (kind: 'single' | 'double', count: number, first: number): ChartEntry[] =>
   Array.from({ length: count }, (_, i) => entry(kind, first + i));
+
+/** `count` slides in a row, from beat `first` on. Each takes three beats. */
+const slides = (count: number, first: number): ChartEntry[] =>
+  Array.from({ length: count }, (_, i) => slide(first + 3 * i)).flat();
 
 /** The pool of each real song at one level, alone, short length. Each pool takes a while: make it once. */
 const pools = new Map<string, PoolMeasure>();
@@ -183,40 +201,40 @@ describe('candidate seeds', () => {
 });
 
 describe('the mix of a chart', () => {
-  const mixed = (): ChartEntry[] => [...entries('slide', 22, 0), ...entries('double', 45, 22), ...entries('single', 33, 67)];
+  /** 22 slides, 45 doubles and 33 single taps: 100 cues that a roll chose, and 144 cues in all. */
+  const mixed = (): ChartEntry[] => [...slides(22, 0), ...entries('double', 45, 66), ...entries('single', 33, 111)];
+  const song = synthetic(60, 200);
 
   it('is its shares of slides and of doubles, and its number of cues', () => {
-    expect(chartMix(synthetic(60, 120), mixed(), 3)).toEqual({ slides: 0.22, doubles: 0.45, fastSlides: 0, offbeats: 0, cues: 100 });
+    expect(chartMix(song, mixed(), 3)).toEqual({ slides: 0.22, doubles: 0.45, offbeats: 0, cues: 144 });
   });
 
-  it('has its share of fast slides and its off-beat taps per cue on a cue beat', () => {
-    const chart = mixed();
-    for (const fast of chart.slice(0, 5)) fast.cue.speed = 'fast';
-    const offbeats = Array.from({ length: 20 }, (_, i) => entry('single', 100 + i, 'offbeat'));
-    expect(chartMix(synthetic(60, 200), [...chart, ...offbeats], 4)).toEqual({
-      slides: 0.22,
-      doubles: 0.45,
-      fastSlides: 0.05,
-      offbeats: 0.2,
-      cues: 120,
-    });
+  it('counts a slide once in its shares, by its first cell, and all three cells in its number of cues', () => {
+    expect(chartMix(song, slides(10, 0), 3)).toEqual({ slides: 1, doubles: 0, offbeats: 0, cues: 30 });
+    const half = [...slides(10, 0), ...entries('single', 10, 30)];
+    expect(chartMix(song, half, 3)).toEqual({ slides: 0.5, doubles: 0, offbeats: 0, cues: 40 });
   });
 
-  it('counts only cues on cue beats in its shares: no off-beat taps and no taps for the other hand', () => {
-    const extras = [entry('single', 100, 'offbeat'), entry('single', 101, 'companion')];
-    expect(chartMix(synthetic(60, 120), [...mixed(), ...extras], 3)).toMatchObject({ slides: 0.22, doubles: 0.45, cues: 102 });
+  it('has its off-beat taps per cue on a cue beat', () => {
+    const offbeats = Array.from({ length: 20 }, (_, i) => entry('single', 150 + i, 'offbeat'));
+    expect(chartMix(song, [...mixed(), ...offbeats], 4)).toEqual({ slides: 0.22, doubles: 0.45, offbeats: 0.2, cues: 164 });
+  });
+
+  it('counts only cues on cue beats in its shares: no off-beat taps', () => {
+    const extras = [entry('single', 150, 'offbeat'), entry('single', 151, 'offbeat')];
+    expect(chartMix(song, [...mixed(), ...extras], 3)).toMatchObject({ slides: 0.22, doubles: 0.45, cues: 146 });
   });
 
   it('leaves the cues of a move out of its shares, and counts them in its number of cues', () => {
-    const moveCues = entries('slide', 10, 100).map((slide): ChartEntry => ({ ...slide, role: 'move', move: { name: 'point', phrase: 6 } }));
-    expect(chartMix(synthetic(60, 120), [...mixed(), ...moveCues], 3)).toMatchObject({ slides: 0.22, doubles: 0.45, cues: 110 });
+    const moveCues = entries('single', 10, 150).map((tap): ChartEntry => ({ ...tap, role: 'move', move: { name: 'point', phrase: 6 } }));
+    expect(chartMix(song, [...mixed(), ...moveCues], 3)).toMatchObject({ slides: 0.22, doubles: 0.45, cues: 154 });
   });
 
   it('counts only cues in busy music in its shares, where the rules allow slides and doubles', () => {
-    const song = synthetic(60, 200);
-    song.intensity = song.beats.map((_, beat) => (beat < 100 ? 0.8 : 0.2));
-    const quiet = entries('single', 100, 100);
-    expect(chartMix(song, [...mixed(), ...quiet], 3)).toMatchObject({ slides: 0.22, doubles: 0.45, cues: 200 });
+    const changing = synthetic(60, 300);
+    changing.intensity = changing.beats.map((_, beat) => (beat < 150 ? 0.8 : 0.2));
+    const quiet = [...entries('single', 50, 150), ...slides(10, 200)];
+    expect(chartMix(changing, [...mixed(), ...quiet], 3)).toMatchObject({ slides: 0.22, doubles: 0.45, cues: 224 });
   });
 
   it('counts the doubles of level 2 on bar starts only, where the rules allow them', () => {
@@ -228,7 +246,7 @@ describe('the mix of a chart', () => {
 
   it('has no slides, doubles or off-beat taps at level 1', () => {
     const mix = playedMix(round(realSong(1), solo(1)), solo(1)[0], 123);
-    expect(mix).toMatchObject({ slides: 0, doubles: 0, fastSlides: 0, offbeats: 0 });
+    expect(mix).toMatchObject({ slides: 0, doubles: 0, offbeats: 0 });
     expect(mix.cues).toBeGreaterThan(30);
   });
 
@@ -240,11 +258,11 @@ describe('the mix of a chart', () => {
   });
 
   it('is as far from a target as its parts are, each by its weight', () => {
-    const target = { slides: 0.22, doubles: 0.45, fastSlides: 0.06, offbeats: 0.3, cues: 100 };
-    // 12 points of slides, 5 of doubles, 2 of fast slides, 4 of off-beat taps, and 10% more cues.
-    const mix = { slides: 0.1, doubles: 0.4, fastSlides: 0.08, offbeats: 0.26, cues: 110 };
+    const target = { slides: 0.22, doubles: 0.45, offbeats: 0.3, cues: 100 };
+    // 12 points of slides, 5 of doubles, 4 of off-beat taps, and 10% more cues.
+    const mix = { slides: 0.1, doubles: 0.4, offbeats: 0.26, cues: 110 };
     const { weights } = CUE_SETS;
-    const expected = 0.12 * weights.slides + 0.05 * weights.doubles + 0.02 * weights.fastSlides + 0.04 * weights.offbeats + 0.1 * weights.cues;
+    const expected = 0.12 * weights.slides + 0.05 * weights.doubles + 0.04 * weights.offbeats + 0.1 * weights.cues;
     expect(mixDistance(mix, target)).toBeCloseTo(expected, 10);
     expect(mixDistance(target, target)).toBe(0);
   });
@@ -253,11 +271,11 @@ describe('the mix of a chart', () => {
 describe('the typical mix', () => {
   it('is the median of each part', () => {
     const mixes = [
-      { slides: 0.3, doubles: 0.2, fastSlides: 0.1, offbeats: 0.3, cues: 120 },
-      { slides: 0.1, doubles: 0.5, fastSlides: 0.05, offbeats: 0.2, cues: 100 },
-      { slides: 0.2, doubles: 0.4, fastSlides: 0, offbeats: 0.25, cues: 110 },
+      { slides: 0.3, doubles: 0.2, offbeats: 0.3, cues: 120 },
+      { slides: 0.1, doubles: 0.5, offbeats: 0.2, cues: 100 },
+      { slides: 0.2, doubles: 0.4, offbeats: 0.25, cues: 110 },
     ];
-    expect(typicalMix(mixes)).toEqual({ slides: 0.2, doubles: 0.4, fastSlides: 0.05, offbeats: 0.25, cues: 110 });
+    expect(typicalMix(mixes)).toEqual({ slides: 0.2, doubles: 0.4, offbeats: 0.25, cues: 110 });
   });
 
   it('comes from charts without moves: the rest of a chart is what makes it easy or hard', () => {
@@ -280,10 +298,14 @@ describe('the typical mix', () => {
     expect(pool.targets).toEqual(pool.mixes.map(typicalMix));
   });
 
-  it('is close to the rules at level 3, where the rules can be reached', () => {
+  it('is close to the rules at level 3, a little under them in slides', () => {
+    // A slide needs three cue beats in a row, and none starts in the centre cell. Today the
+    // typical share of slides is 0.84 to 0.94 of the chance, and the doubles are at most 1 point off.
     for (const [index] of SONGS.entries()) {
       const { slides, doubles } = songPool(index, 3).targets[0];
-      expect(Math.abs(slides - LEVELS[3].slideChance) + Math.abs(doubles - LEVELS[3].doubleChance)).toBeLessThan(0.04);
+      expect(slides / LEVELS[3].slideChance).toBeGreaterThan(0.8);
+      expect(slides).toBeLessThanOrEqual(LEVELS[3].slideChance);
+      expect(Math.abs(doubles - LEVELS[3].doubleChance)).toBeLessThan(0.02);
     }
   });
 
@@ -327,9 +349,9 @@ describe('the seed of a set', () => {
   });
 
   it('plays like the level usually does, on every song: close to the typical shares of slides and doubles', () => {
-    // A seed of the pool is a median of 8 points from the typical mix at level 3, and 9 at
-    // level 4. The chosen sets are at most 8 points off in each share today: set 5 of Hey-Ho,
-    // Jonah at level 4. With 4 sets and a pool of 96 seeds, the most was 5.1 points.
+    // A seed of the pool is a median of 8 points from the typical mix at level 3, and 14 at
+    // level 4. The chosen sets are at most 5.3 points off in each share today: the doubles of
+    // set 4 of Blessed on the Hillside at level 4.
     for (const [index] of SONGS.entries()) {
       for (const level of [3, 4] as Level[]) {
         const pool = songPool(index, level);
@@ -343,18 +365,17 @@ describe('the seed of a set', () => {
     }
   });
 
-  it('keeps the sets of a song close in fast slides, off-beat taps and number of cues', () => {
-    // Chosen by slides and doubles alone, the sets of a song at level 4 were up to 9.5 points
-    // apart in fast slides, 14.7 in off-beat taps and 13% in cues. With 4 sets: 6.6, 8.9 and
-    // 6.3%. Today, with 6 sets: 6.6, 9.0 and 8.8%, the last at level 3 of Peace, Be Still.
+  it('keeps the sets of a song close in off-beat taps and number of cues', () => {
+    // Chosen by slides and doubles alone, the sets of a song at level 4 were once up to 14.7
+    // points apart in off-beat taps and 13% in cues. Today: 8.7 points, at level 4 of All Eyes
+    // on Us, and 5.2%, at level 4 of Build Your House Upon the Rock.
     const spread = (values: number[]): number => Math.max(...values) - Math.min(...values);
     for (const [index] of SONGS.entries()) {
       for (const level of [3, 4] as Level[]) {
         const pool = songPool(index, level);
         const mixes = ALL_SETS.map((set) => pool.mixes[0][pool.seeds.indexOf(closestCandidate(set, pool))]);
-        expect(spread(mixes.map((mix) => mix.fastSlides))).toBeLessThan(0.08);
-        expect(spread(mixes.map((mix) => mix.offbeats))).toBeLessThan(0.11);
-        expect(spread(mixes.map((mix) => mix.cues)) / pool.targets[0].cues).toBeLessThan(0.09);
+        expect(spread(mixes.map((mix) => mix.offbeats))).toBeLessThan(0.1);
+        expect(spread(mixes.map((mix) => mix.cues)) / pool.targets[0].cues).toBeLessThan(0.07);
       }
     }
   });

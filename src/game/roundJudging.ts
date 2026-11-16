@@ -66,11 +66,13 @@ function judgeFaceCues(player: JudgedPlayer, timeSec: number, frame: TrackingFra
   return feedback;
 }
 
-/** Scores a hand cue. A slide shows its result where it ends. A tap shows it on each of its cells. */
+/**
+ * Scores a hand cue, and shows its result on each of its cells. Each cell of a slide is a cue
+ * of its own, so it gets a result of its own.
+ */
 function awardCue(player: JudgedPlayer, state: CueState, result: Rating, atMs: number): Feedback[] {
   player.score = award(player.score, result);
-  const cells = state.cue.kind === 'slide' ? state.cue.cells.slice(-1) : state.cue.cells;
-  return cells.map((cell) => ({ player: player.index, target: cell, result, atMs }));
+  return state.cue.cells.map((cell) => ({ player: player.index, target: cell, result, atMs }));
 }
 
 /** A face cue scores exactly like a hand cue. Its result shows on the player's face. */

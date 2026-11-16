@@ -43,8 +43,8 @@ describe('the bot plays every cue Perfect', () => {
 
   it.each(cases)('at level %i with shapes %s', (level, shapes) => {
     // 100 BPM is close to the real songs. 109 BPM is the fastest tempo with a cue on every beat,
-    // so it leaves the bot the least time between the end of a slide and the next cue.
-    // At 150 BPM cues sit on every second beat and slides span two beats.
+    // so it leaves the bot the least time from one cell of a slide to the next.
+    // At 150 BPM cues sit on every second beat, and so do the cells of a slide.
     for (const bpm of [100, 109, 150]) {
       const { cues, results } = playThrough(synthetic(bpm, 90), level, shapes);
       expect(cues.length).toBeGreaterThan(10);
@@ -54,17 +54,15 @@ describe('the bot plays every cue Perfect', () => {
 
   it.each([100, 109, 150])('including slides and doubles at level 3, at %i BPM', (bpm) => {
     const { cues } = playThrough(synthetic(bpm, 90), 3, false);
-    expect(cues.some((cue) => cue.kind === 'slide')).toBe(true);
-    expect(cues.some((cue) => cue.kind === 'tap' && cue.cells.length === 2)).toBe(true);
+    expect(cues.some((cue) => cue.slideStep === 3)).toBe(true);
+    expect(cues.some((cue) => cue.cells.length === 2)).toBe(true);
   });
 });
 
 describe('the bot at level 4', () => {
-  it('plays fast slides, slow slides with a tap for the other hand, and off-beat taps Perfect', () => {
+  it('plays slides and off-beat taps Perfect', () => {
     const { cues, results } = playThrough(synthetic(100, 180), 4, false);
-    const lastTime = (cue: Cue): number => cue.times[cue.times.length - 1];
-    expect(cues.some((cue) => cue.speed === 'fast')).toBe(true);
-    expect(cues.some((cue, i) => i > 0 && cues[i - 1].speed === 'slow' && cue.timeSec < lastTime(cues[i - 1]))).toBe(true);
+    expect(cues.some((cue) => cue.slideStep === 3)).toBe(true);
     expect(cues.some((cue) => !Number.isInteger(cue.beatIndex))).toBe(true);
     expect(results.every((result) => result === 'perfect')).toBe(true);
   });

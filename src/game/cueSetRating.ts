@@ -147,7 +147,6 @@ function chartPart(player: RatingPlayer): RatingRecord['chart'] {
   return {
     slides: roundTo(mix.slides, SHARE_DECIMALS),
     doubles: roundTo(mix.doubles, SHARE_DECIMALS),
-    fastSlides: roundTo(mix.fastSlides, SHARE_DECIMALS),
     offbeats: roundTo(mix.offbeats, SHARE_DECIMALS),
     cues: mix.cues,
     moves: { ...player.moves },

@@ -18,7 +18,7 @@ function record(fields) {
     level: 3,
     shapes: false,
     faces: false,
-    chart: { slides: 0.2, doubles: 0.1, fastSlides: 0, offbeats: 0.2, cues: 90, moves: { point: 2, circle: 1 } },
+    chart: { slides: 0.2, doubles: 0.1, offbeats: 0.2, cues: 90, moves: { point: 2, circle: 1 } },
     result: { score: 9000, accuracy: 0.9, perfect: 80, good: 2, miss: 8 },
     rating: 3,
     ...fields,
@@ -35,6 +35,15 @@ describe('reading a ratings file', () => {
     const text = `${lines([record({ rating: 4 }), record({ player: 1, rating: 2 })])}\n`;
     const { records, skipped } = readRatings(text);
     expect(records.map((each) => [each.player, each.rating])).toEqual([[0, 4], [1, 2]]);
+    expect(skipped).toBe(0);
+  });
+
+  it('reads the records of older versions, whose chart holds other parts', () => {
+    // Until 2026-11-16 the chart also held a share of fast slides. The summary does not read
+    // the chart, so a record with any chart counts.
+    const older = record({ chart: { ...record({}).chart, olderShare: 0.05 } });
+    const { records, skipped } = readRatings(lines([older, record({ chart: {} })]));
+    expect(records).toHaveLength(2);
     expect(skipped).toBe(0);
   });
 

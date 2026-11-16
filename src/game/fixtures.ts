@@ -20,20 +20,19 @@ export function synthetic(bpm = 100, seconds = 120, intensity = 0.8): Manifest {
 
 /**
  * Checks a chart against two hands, with its own bookkeeping: every cue cell must find a hand
- * that has had `CHART.handRestSec` since its last target. A slide is one hand's move.
- * Returns the cues that do not fit.
+ * that has had `CHART.handRestSec` since its last target. Each cell of a slide is a tap of its
+ * own. Returns the cues that do not fit.
  */
 export function cuesBeyondTwoHands(cues: Cue[]): Cue[] {
   const lastTargetSec = [-Infinity, -Infinity];
-  const takeFreeHand = (atSec: number, untilSec: number): boolean => {
+  const takeFreeHand = (atSec: number): boolean => {
     const hand = lastTargetSec.findIndex((last) => atSec - last >= CHART.handRestSec - 1e-8);
     if (hand === -1) return false;
-    lastTargetSec[hand] = untilSec;
+    lastTargetSec[hand] = atSec;
     return true;
   };
   return cues.filter((cue) => {
-    if (cue.kind === 'slide') return !takeFreeHand(cue.timeSec, cue.times[cue.times.length - 1]);
-    const fits = cue.cells.map(() => takeFreeHand(cue.timeSec, cue.timeSec));
+    const fits = cue.cells.map(() => takeFreeHand(cue.timeSec));
     return fits.includes(false);
   });
 }

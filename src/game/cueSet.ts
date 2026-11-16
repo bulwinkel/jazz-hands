@@ -11,9 +11,9 @@
  *
  * A set must give other cues at the same difficulty. Every set tries a fixed list of candidate
  * seeds and keeps the one whose charts play most like the level usually does: closest to the
- * typical mix. The mix holds what makes a chart harder: its shares of slides, doubles and fast
- * slides, its off-beat taps, and its number of cues. Two shares alone left the sets of one
- * song apart by up to 9 fast slides and 16 off-beat taps at level 4.
+ * typical mix. The mix holds what makes a chart harder: its shares of slides and doubles, its
+ * off-beat taps, and its number of cues. Two shares alone once left the sets of one song apart
+ * by up to 16 off-beat taps at level 4.
  *
  * The choice measures the charts without moves. A move takes the place of cues on the same
  * cue beats, and the rest of the chart is what makes it easy or hard. The round then plays the
@@ -134,23 +134,22 @@ export interface RoundCharts {
 
 /**
  * What makes a chart easy or hard. The shares are of the cues that the level rules speak
- * about: the cues on cue beats in busy music.
+ * about: the cues that a roll of a cue beat chose in busy music. Those are the single taps,
+ * the doubles and the first cell of each slide.
  */
 export interface ChartMix {
+  /** The share that starts a slide. The second and third cells of a slide count in `cues` only. */
   slides: number;
   /** A level with doubles on bar starts only counts its bar starts. */
   doubles: number;
-  /** The hardest cue of levels 4 and 5. */
-  fastSlides: number;
   /** Off-beat taps, per cue that the shares count. */
   offbeats: number;
-  /** The number of cues of every kind. */
+  /** The number of cues of every kind. A slide is three cues. */
   cues: number;
 }
 
-const isSlide = (cue: Cue): boolean => cue.kind === 'slide';
-const isFastSlide = (cue: Cue): boolean => cue.speed === 'fast';
-const isDouble = (cue: Cue): boolean => cue.kind === 'tap' && cue.cells.length === 2;
+const startsSlide = (cue: Cue): boolean => cue.slideStep === 1;
+const isDouble = (cue: Cue): boolean => cue.cells.length === 2;
 
 /** The share of `cues` that match. With no cues, 0. */
 function shareOf(cues: readonly Cue[], matches: (cue: Cue) => boolean): number {
@@ -159,8 +158,8 @@ function shareOf(cues: readonly Cue[], matches: (cue: Cue) => boolean): number {
 
 /**
  * The mix of a chart. The level rules speak about cue beats in busy music, so the shares are
- * of the cues of role 'beat' on such beats: no off-beat taps, no taps for the other hand
- * during a slow slide, and no cues of a move. The number of cues counts every cue.
+ * of the cues of role 'beat' on such beats: no off-beat taps, no later cells of a slide, and no
+ * cues of a move. The number of cues counts every cue.
  */
 export function chartMix(manifest: Manifest, entries: readonly ChartEntry[], level: Level): ChartMix {
   const busyBeatCues = entries
@@ -171,9 +170,8 @@ export function chartMix(manifest: Manifest, entries: readonly ChartEntry[], lev
     : busyBeatCues;
   const offbeatCount = entries.filter((entry) => entry.role === 'offbeat').length;
   return {
-    slides: shareOf(busyBeatCues, isSlide),
+    slides: shareOf(busyBeatCues, startsSlide),
     doubles: shareOf(doubleBeatCues, isDouble),
-    fastSlides: shareOf(busyBeatCues, isFastSlide),
     offbeats: busyBeatCues.length === 0 ? 0 : offbeatCount / busyBeatCues.length,
     cues: entries.length,
   };
@@ -185,7 +183,6 @@ export function typicalMix(mixes: readonly ChartMix[]): ChartMix {
   return {
     slides: middle('slides'),
     doubles: middle('doubles'),
-    fastSlides: middle('fastSlides'),
     offbeats: middle('offbeats'),
     cues: middle('cues'),
   };
@@ -202,7 +199,6 @@ export function mixDistance(mix: ChartMix, target: ChartMix): number {
   return (
     weights.slides * Math.abs(mix.slides - target.slides) +
     weights.doubles * Math.abs(mix.doubles - target.doubles) +
-    weights.fastSlides * Math.abs(mix.fastSlides - target.fastSlides) +
     weights.offbeats * Math.abs(mix.offbeats - target.offbeats) +
     weights.cues * cueChange
   );

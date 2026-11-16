@@ -22,7 +22,7 @@ function playerWith(cues: Cue[], faceCues: FaceCue[] = []): PlayerRun {
   return player;
 }
 
-const tap = (cell: number, timeSec: number): Cue => ({ kind: 'tap', timeSec, beatIndex: 0, cells: [cell], times: [timeSec] });
+const tap = (cell: number, timeSec: number): Cue => ({ timeSec, beatIndex: 0, cells: [cell], times: [timeSec] });
 
 /** A hand in the middle of one of the player's cells. */
 function handIn(player: PlayerRun, cell: number): TrackedHand {
@@ -58,17 +58,30 @@ describe('judging a round', () => {
     expect(player.observations[0].frames).toBe(0);
   });
 
-  it('flashes a slide only where it ends', () => {
-    const slide: Cue = { kind: 'slide', timeSec: 10, beatIndex: 0, cells: [3, 4, 5], times: [10, 10.5, 11] };
-    const player = playerWith([slide]);
-    judgePlayers([player], 10, frameWith([handIn(player, 3)]), 0);
-    judgePlayers([player], 10.5, frameWith([handIn(player, 4)]), 0);
-    const feedback = judgePlayers([player], 11, frameWith([handIn(player, 5)]), 0);
-    expect(feedback).toEqual([{ player: 0, target: 5, result: 'perfect', atMs: 0 }]);
+  it('judges, scores and flashes each cell of a slide on its own: a missed middle cell is one Miss', () => {
+    // A slide across the middle row, one cell a beat apart at 100 BPM.
+    const slide: Cue[] = [
+      { ...tap(3, 10), slideStep: 1 },
+      { ...tap(4, 10.6), slideStep: 2 },
+      { ...tap(5, 11.2), slideStep: 3 },
+    ];
+    const player = playerWith(slide);
+    const first = judgePlayers([player], 10, frameWith([handIn(player, 3)]), 1);
+    // The hand skips the middle cell: its window closes with no hit.
+    const second = judgePlayers([player], 11.2, frameWith([handIn(player, 5)]), 2);
+    const rest = judgePlayers([player], 12, undefined, 3);
+    expect(first).toEqual([{ player: 0, target: 3, result: 'perfect', atMs: 1 }]);
+    expect(second).toEqual([
+      { player: 0, target: 4, result: 'miss', atMs: 2 },
+      { player: 0, target: 5, result: 'perfect', atMs: 2 },
+    ]);
+    expect(rest).toEqual([]);
+    expect(player.states.map((state) => state.result)).toEqual(['perfect', 'miss', 'perfect']);
+    expect(player.score).toMatchObject({ perfect: 2, good: 0, miss: 1, total: 3, combo: 1 });
   });
 
   it('flashes a double tap on both of its cells', () => {
-    const double: Cue = { kind: 'tap', timeSec: 10, beatIndex: 0, cells: [3, 5], times: [10, 10] };
+    const double: Cue = { timeSec: 10, beatIndex: 0, cells: [3, 5], times: [10, 10] };
     const player = playerWith([double]);
     const feedback = judgePlayers([player], 10, frameWith([handIn(player, 3), handIn(player, 5)]), 0);
     expect(feedback.map((item) => item.target)).toEqual([3, 5]);

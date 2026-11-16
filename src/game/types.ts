@@ -27,35 +27,31 @@ export interface Manifest {
 }
 
 /**
- * How long a slide takes, counted in cue intervals (the time from one cue beat to the next):
- * fast is half an interval, normal is one, slow is two.
+ * The place of a cue in a slide: 1 is the start cell, 2 the middle cell, 3 the end cell. A
+ * slide is three taps in a line, one on each of three cue beats in a row.
  */
-export type SlideSpeed = 'fast' | 'normal' | 'slow';
+export type SlideStep = 1 | 2 | 3;
 
 /**
- * One action for one player.
- *
- * tap: `cells` holds 1 cell, or 2 cells for two hands at once. All are due at `timeSec`.
- * slide: `cells` is the path of one hand, each cell due at its own time in `times`.
- *   A fast or normal slide is [from, to]. A slow slide is [from, middle, to].
+ * One tap for one player: `cells` holds 1 cell, or 2 cells for two hands at once. All are due
+ * at `timeSec`.
  */
 export interface Cue {
-  kind: 'tap' | 'slide';
-  /** Slides only. */
-  speed?: SlideSpeed;
-  /** Due time of the first cell. */
+  /** Due time of the tap. */
   timeSec: number;
   /**
-   * The beat the cue starts on. An off-beat tap sits halfway to the next cue beat: a half beat
-   * in a song with a cue on every beat, a whole beat in a faster song.
+   * The beat the cue is on. An off-beat tap sits halfway to the next cue beat: a half beat in a
+   * song with a cue on every beat, a whole beat in a faster song.
    */
   beatIndex: number;
   /** Cell indices 0..8, row by row. 0 is top-left on screen. */
   cells: number[];
-  /** Due time of each cell, parallel to `cells`. */
+  /** Due time of each cell, parallel to `cells`. Every cell is due at `timeSec`. */
   times: number[];
   /** Required hand shape, for every cell of the cue. */
   gesture?: GestureName;
+  /** Set on the three cues of a slide only. The run report shows it, to compare slides with other taps. */
+  slideStep?: SlideStep;
 }
 
 /**
