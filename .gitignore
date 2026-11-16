@@ -30,3 +30,7 @@ test-results/
 
 # Created by `npm run setup-songs`
 tools/songs/.venv
+
+# Written by Python when the song tool or its tests run
+__pycache__/
+*.pyc

@@ -1,8 +1,133 @@
 <img src="assets/icon.svg" width="64" height="64" alt="">
 
-# mediapipe-dance-game
+# Jazz Hands
+
+Jazz Hands is a dance game for one or two players. You play it with your hands, in front
+of a webcam.
+
+The music plays, and a cell of your grid fills on a beat. Put a hand in that cell when it is
+full. [MediaPipe](https://github.com/google-ai-edge/mediapipe) finds your hands and your face
+in the camera picture. It runs in the browser, so the camera picture stays on your computer.
 
 Created in [T3 Code](https://t3.codes).
+
+## Run it
+
+You need:
+
+- Node 22
+- Google Chrome
+- A webcam and speakers
+- Room to step back, until the camera sees how far your arms reach
+
+```
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173` in Chrome and allow the camera.
+
+- The first `npm run dev` downloads the MediaPipe models from Google, about 34 MB. After
+  that, the game needs no network connection.
+- A large screen helps. Press F for full screen.
+- With no webcam, open `http://localhost:5173/?input=mouse`. The mouse is then one hand. Hold
+  1, 2, 3 or 4 for a fist, an open hand, a point or a peace sign.
+
+## Play
+
+1. Choose a song, the number of players, a level for each player and the length of the round.
+   Point at an item with an open hand ✋, then hold a fist ✊ on it to choose it. The mouse
+   works too.
+2. Choose **Let's dance**, then walk back to your spot. Two players stand side by side: each
+   one gets one half of the screen.
+3. Draw the biggest circles you can with both arms. The game grows each grid around its
+   player's hands.
+4. Hold a hand in the glowing cell to start the round.
+5. Dance. A block grows in a cell and fills it on the beat: have a hand in the cell then.
+
+Each player has a level of their own, so a child and an adult can play one round together.
+
+| Level | Name | What a player gets |
+| --- | --- | --- |
+| 1 | Slow | One cell at a time, with time between the cues |
+| 2 | Every beat | A cue on every beat, and two cells at once on some bar starts |
+| 3 | Two hands + slides | More cues for two hands, and slides from one cell to another |
+| 4 | Fast hands | Fast slides, and taps between the beats |
+| 5 | All signs | Level 4 with a hand shape on every cue |
+
+Each player also has two switches:
+
+| Switch | What it adds |
+| --- | --- |
+| Hand shapes ✊ ✋ ☝️ ✌️ | Some cues ask for a hand shape. |
+| Faces 😁 😲 😘 | The round asks for a smile, an open mouth or a kiss. |
+
+| Key | Use |
+| --- | --- |
+| Space | Start the round. In a round: pause. On the results: play again. |
+| Enter | Start the round, in the menu. |
+| Esc | Go back to the menu. |
+| F | Full screen. |
+| ← and → | Step through the songs, in the menu. |
+| R | Start the round again. |
+| C | Recalibrate: fit the grids again. |
+| M | Change the hand tracker. |
+| D | Show the tracking numbers. |
+| `[` and `]` | Camera delay, 10 ms less or more. |
+| `,` and `.` | Picture offset, 10 ms less or more. |
+
+## Share your videos
+
+The game can record a round as a video. Turn on **Recording** in the top right corner of the
+menu. Download the video from the results screen before you leave it: the game does not keep
+it. See [Record a round](#record-a-round).
+
+I would love to see your rounds. Share your videos with me:
+
+- X: [@kelvinbulw](https://x.com/kelvinbulw)
+- Instagram: [@wbv.dev](https://www.instagram.com/wbv.dev/)
+
+## Work on the code
+
+| Command | Use |
+| --- | --- |
+| `npm run dev` | The game with the dev server, on `http://localhost:5173`. |
+| `npm test` | The unit tests. |
+| `npm run typecheck` | The TypeScript check. |
+| `npm run build` | A build in `dist/`. |
+| `npm run preview` | Serve the build. |
+| `npm run add-song -- "/path/to/Song Name.mp3"` | Add a song. See [Add a song](#add-a-song). |
+
+| Folder | Content |
+| --- | --- |
+| `src/game` | The game: charts, judging, the menu, the results and the recording. |
+| `src/tracking` | The MediaPipe trackers for hands, poses and faces. |
+| `public/songs` | Each song's audio, cover picture and manifest. |
+| `tools/songs` | The tool that analyses a song and writes its manifest. |
+| `scripts` | The asset setup and the automated runs in headless Chrome. |
+
+## Licence
+
+The code is under the MIT licence. See [LICENSE](LICENSE).
+
+The songs and their cover pictures in `public/songs/` are not under the MIT licence. I made
+the songs with [Suno](https://suno.com) and the covers with an image model. You may play
+them with the game, and copy and share them for non-commercial use. Keep the tags of the
+audio files as they are. See [public/songs/README.md](public/songs/README.md).
+
+The MediaPipe runtime and models come from Google, under their own licences.
+
+## Reference
+
+The sections below describe each part of the game in detail.
+
+- [How a cue shows](#how-a-cue-shows)
+- [Cue sets](#cue-sets)
+- [Rate the cue set](#rate-the-cue-set)
+- [Moves](#moves)
+- [Record a round](#record-a-round)
+- [Tracking thread](#tracking-thread)
+- [Add a song](#add-a-song)
 
 ## How a cue shows
 

@@ -122,7 +122,7 @@ describe('a round id', () => {
 
 describe('the file name of a saved report', () => {
   it('is the last part of the path', () => {
-    expect(fileNameOf('/Users/kb/game/test-results/run-20261113-083015.json')).toBe('run-20261113-083015.json');
+    expect(fileNameOf('/home/dancer/game/test-results/run-20261113-083015.json')).toBe('run-20261113-083015.json');
     expect(fileNameOf('C:\\game\\test-results\\run-1.json')).toBe('run-1.json');
     expect(fileNameOf('run-1.json')).toBe('run-1.json');
   });
