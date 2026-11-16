@@ -4,8 +4,7 @@
  * circle through the outer cells. A player sees one move to dance, not a row of single cues.
  *
  * To add a move, add its name to `MoveName` and an entry to `MOVE_DEFINITIONS`: a function that
- * gives the cells of each form. The tests check that each form takes its number of intervals
- * and that each slide is legal.
+ * gives the cells of each form. The tests check that each form takes its number of intervals.
  *
  * Which phrases hold a move is planned once for the song, the same for every level, on a random
  * stream of its own. chart.ts then fits each planned move to the pace of a level.
@@ -15,18 +14,14 @@ import type { Manifest } from './types';
 
 export type MoveName = 'point' | 'circle';
 
-/**
- * The ways to play a move. `taps` and `slides` take 8 cue intervals, `shortTaps` takes 4.
- * A tap takes one interval. A slide takes two: it ends on the next cue beat, and that beat
- * holds no new cue.
- */
-export type MoveForm = 'taps' | 'shortTaps' | 'slides';
+/** The ways to play a move. Each step is a tap and takes one cue interval: `taps` takes 8, `shortTaps` 4. */
+export type MoveForm = 'taps' | 'shortTaps';
 
 /** The cue intervals of each form. A level gets the longest form that its phrase has room for. */
-export const FORM_INTERVALS: Readonly<Record<MoveForm, number>> = { taps: 8, shortTaps: 4, slides: 8 };
+export const FORM_INTERVALS: Readonly<Record<MoveForm, number>> = { taps: 8, shortTaps: 4 };
 
-/** One cue of a move. One cell is a tap. Two cells are a normal-speed slide from the first to the second. */
-export type MoveStep = readonly number[];
+/** One cue of a move: the cell of one tap. */
+export type MoveStep = number;
 
 /** The rolls that lay a move out on the grid, each from 0 to 1. */
 export interface LayoutRolls {
@@ -57,14 +52,8 @@ function pointForms(rolls: LayoutRolls): Record<MoveForm, MoveStep[]> {
   const [a1, a2] = DIAGONALS[first];
   const [b1, b2] = DIAGONALS[1 - first];
   return {
-    taps: [[a1], [a2], [a1], [a2], [b1], [b2], [b1], [b2]],
-    shortTaps: [[a1], [a2], [b1], [b2]],
-    slides: [
-      [a1, a2],
-      [a2, a1],
-      [b1, b2],
-      [b2, b1],
-    ],
+    taps: [a1, a2, a1, a2, b1, b2, b1, b2],
+    shortTaps: [a1, a2, b1, b2],
   };
 }
 
@@ -79,11 +68,7 @@ function circleForms(rolls: LayoutRolls): Record<MoveForm, MoveStep[]> {
   const start = turned.indexOf(corner);
   const ring = [...turned.slice(start), ...turned.slice(0, start)];
   const corners = ring.filter((_, i) => i % 2 === 0);
-  return {
-    taps: ring.map((cell) => [cell]),
-    shortTaps: corners.map((cell) => [cell]),
-    slides: corners.map((cell, i) => [cell, corners[(i + 1) % corners.length]]),
-  };
+  return { taps: ring, shortTaps: corners };
 }
 
 export const MOVE_DEFINITIONS: readonly MoveDefinition[] = [
@@ -100,20 +85,12 @@ export function moveSteps(name: MoveName, form: MoveForm, rolls: LayoutRolls): M
   return definition.forms(rolls)[form];
 }
 
-/** The cue intervals that a step takes: one for a tap, two for a slide. */
-export function stepIntervals(step: MoveStep): number {
-  return step.length === 2 ? 2 : 1;
-}
-
 /**
- * The form that a level gets in a phrase with room for `intervals` cue intervals: a form of 8
- * intervals where 8 fit, the short taps where 4 fit, and none where fewer fit. A level with
- * slides gets the slides form when the phrase's form roll is under `MOVES.slideFormShare`.
+ * The form that a level gets in a phrase with room for `intervals` cue intervals: the taps
+ * where 8 fit, the short taps where 4 fit, and none where fewer fit.
  */
-export function moveForm(intervals: number, levelHasSlides: boolean, formRoll: number): MoveForm | null {
-  if (intervals >= FORM_INTERVALS.taps) {
-    return levelHasSlides && formRoll < MOVES.slideFormShare ? 'slides' : 'taps';
-  }
+export function moveForm(intervals: number): MoveForm | null {
+  if (intervals >= FORM_INTERVALS.taps) return 'taps';
   if (intervals >= FORM_INTERVALS.shortTaps) return 'shortTaps';
   return null;
 }
@@ -133,8 +110,8 @@ export function noMoves(): Record<MoveName, number> {
 }
 
 /**
- * What one phrase holds, the same at every level: the move, and the rolls that choose its form
- * and lay it out. A level then fits the move to its own pace, or leaves it out.
+ * What one phrase holds, the same at every level: the move, and the rolls that lay it out. A
+ * level then fits the move to its own pace, or leaves it out.
  */
 export interface PhrasePlan {
   /** Counted from 0 at the first bar start. */
@@ -144,8 +121,6 @@ export interface PhrasePlan {
   endBeat: number;
   /** Null when the phrase holds no move. */
   move: MoveName | null;
-  /** Below `MOVES.slideFormShare`, a level with slides gets the slides form. */
-  formRoll: number;
   layout: LayoutRolls;
 }
 
@@ -163,7 +138,7 @@ export function phraseBeats(manifest: Manifest): number {
 }
 
 /**
- * The plan of every phrase of the song. Every phrase takes the same five rolls, used or not,
+ * The plan of every phrase of the song. Every phrase takes the same four rolls, used or not,
  * so one phrase's choices never shift another phrase's. Nothing here depends on the level:
  * players on different levels get the same move, laid out the same way, in the same phrase.
  */
@@ -173,7 +148,7 @@ export function planPhrases(manifest: Manifest, random: () => number, options: M
   let previousRolledMove: MoveName | null = null;
 
   for (let firstBeat = manifest.firstDownbeat; firstBeat < manifest.beats.length; firstBeat += beatsPerPhrase) {
-    const roll = { start: random(), move: random(), form: random(), origin: random(), direction: random() };
+    const roll = { start: random(), move: random(), origin: random(), direction: random() };
     // The rolls alone choose the move, so all levels agree even where a level leaves a move out.
     const rolledMove: MoveName | null = roll.start < options.share ? pickMove(roll.move, previousRolledMove) : null;
     previousRolledMove = rolledMove;
@@ -182,7 +157,6 @@ export function planPhrases(manifest: Manifest, random: () => number, options: M
       firstBeat,
       endBeat: firstBeat + beatsPerPhrase,
       move: moveMayStart(manifest, firstBeat, options.fromSec) ? rolledMove : null,
-      formRoll: roll.form,
       layout: { origin: roll.origin, direction: roll.direction },
     });
   }

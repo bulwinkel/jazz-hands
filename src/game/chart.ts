@@ -365,8 +365,8 @@ interface MoveCueing {
 /**
  * The step of a move that this cue beat takes, or null for a normal cue. A move starts on the
  * first beat of a phrase whose plan holds one, when this level has room for a form of it. It
- * ends when its steps are done, when the next phrase starts, or when a step does not fit.
- * Normal cues then go on from that beat.
+ * ends when its steps are done or when the next phrase starts. Normal cues then go on from
+ * that beat.
  */
 function nextMoveStep(frame: ChartFrame, state: ChartState, beat: number): MoveCueing | null {
   const plan = phraseAt(frame, beat);
@@ -375,7 +375,7 @@ function nextMoveStep(frame: ChartFrame, state: ChartState, beat: number): MoveC
   if (!move) return null;
 
   const step = move.steps[move.next];
-  if (!step || beat >= move.endBeat || !stepFits(frame, step, beat, move.endBeat)) {
+  if (step === undefined || beat >= move.endBeat) {
     state.move = null;
     return null;
   }
@@ -397,7 +397,7 @@ function phraseAt(frame: ChartFrame, beat: number): PhrasePlan | undefined {
 function startMove(frame: ChartFrame, plan: PhrasePlan): RunningMove | null {
   if (!plan.move) return null;
   const intervals = (plan.endBeat - plan.firstBeat) / frame.strideAt(plan.firstBeat);
-  const form = moveForm(intervals, frame.rules.slideChance > 0, plan.formRoll);
+  const form = moveForm(intervals);
   if (!form) return null;
   return {
     tag: { name: plan.move, phrase: plan.index },
@@ -405,16 +405,6 @@ function startMove(frame: ChartFrame, plan: PhrasePlan): RunningMove | null {
     next: 0,
     endBeat: plan.endBeat,
   };
-}
-
-/**
- * A tap fits on any cue beat of its phrase. A slide also needs its end beat: the next cue
- * beat, inside the phrase.
- */
-function stepFits(frame: ChartFrame, step: MoveStep, beat: number, phraseEndBeat: number): boolean {
-  if (step.length === 1) return true;
-  const slideEndBeat = beat + frame.strideAt(beat);
-  return slideEndBeat < phraseEndBeat && frame.isCueBeat(slideEndBeat);
 }
 
 /**
@@ -429,15 +419,10 @@ function addMoveCue(frame: ChartFrame, state: ChartState, beat: number, move: Mo
   state.previousWasOffbeat = false;
 }
 
-/** A tap, or a normal slide that ends on the next cue beat. */
+/** A tap on the cell of a move's step. */
 function moveCue(frame: ChartFrame, beat: number, step: MoveStep): Cue {
-  const { beats } = frame.manifest;
-  const timeSec = beats[beat];
-  if (step.length === 1) {
-    return { kind: 'tap', timeSec, beatIndex: beat, cells: [...step], times: [timeSec] };
-  }
-  const endSec = beats[beat + frame.strideAt(beat)];
-  return { kind: 'slide', speed: 'normal', timeSec, beatIndex: beat, cells: [...step], times: [timeSec, endSec] };
+  const timeSec = frame.manifest.beats[beat];
+  return { kind: 'tap', timeSec, beatIndex: beat, cells: [step], times: [timeSec] };
 }
 
 /**

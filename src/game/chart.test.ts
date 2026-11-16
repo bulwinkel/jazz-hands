@@ -13,7 +13,7 @@ import {
   slideTargets,
 } from './chart';
 import type { ChartEntry } from './chart';
-import { CHART, LEVELS, MOVES } from './config';
+import { CHART, LEVELS } from './config';
 import { cuesBeyondTwoHands, synthetic } from './fixtures';
 import { medianBeatInterval, playEndSec, tailStartSec } from './manifest';
 import { phraseBeats } from './moves';
@@ -602,7 +602,7 @@ describe('moves', () => {
     }
   });
 
-  it('play a form of 8 intervals, or 4 taps where the phrase has room for 4 only, each at the pace of the level', () => {
+  it('play 8 taps, or 4 taps where the phrase has room for 4 only, each at the pace of the level', () => {
     // At 128 BPM a phrase has 16 beats. Level 1 has a cue on every 4th beat: room for 4.
     // The other levels have a cue on every 2nd beat: room for 8.
     const song = synthetic(128, 600);
@@ -613,39 +613,19 @@ describe('moves', () => {
         if ((song.beats[cues[0].cue.beatIndex + phraseBeats(song)] ?? Infinity) > tailSec) continue;
         const gaps = cues.slice(1).map((entry, i) => entry.cue.beatIndex - cues[i].cue.beatIndex);
         if (level === 1) expect(gaps).toEqual([4, 4, 4]);
-        else if (cues[0].cue.kind === 'slide') expect(gaps).toEqual([4, 4, 4]);
         else expect(gaps).toEqual([2, 2, 2, 2, 2, 2, 2]);
       }
     }
   });
 
-  it('are made of slides in about half the phrases at levels with slides, and of taps only at levels 1 and 2', () => {
-    const song = synthetic(100, 1800);
-    for (const level of ALL_LEVELS) {
-      const moves = [...byPhrase(withMoves(song, level, 1)).values()];
-      const slideShare = moves.filter((cues) => cues[0].cue.kind === 'slide').length / moves.length;
-      if (LEVELS[level].slideChance > 0) expect(slideShare).toBeCloseTo(MOVES.slideFormShare, 1);
-      else expect(slideShare).toBe(0);
-      for (const cues of moves) expect(new Set(cues.map((entry) => entry.cue.kind)).size).toBe(1);
-    }
-  });
-
-  it('make every slide a normal slide that crosses the grid legally and ends on the next cue beat', () => {
+  it('are made of taps of one cell at every level', () => {
     for (const song of SONGS_FOR_MOVES) {
-      const stride = selectStride(medianBeatInterval(song), CHART.fastIntervalSec);
-      for (const level of [3, 4, 5] as Level[]) {
-        const slides = withMoves(song, level, 1)
-          .filter((entry) => entry.role === 'move' && entry.cue.kind === 'slide')
-          .map((entry) => entry.cue);
-        expect(slides.length).toBeGreaterThan(10);
-        for (const cue of slides) {
-          const [from, to] = cue.cells;
-          expect(cue.speed).toBe('normal');
-          expect(cue.cells).toHaveLength(2);
-          expect(slideTargets(from)).toContain(to);
-          if (song.intensity[cue.beatIndex] >= LEVELS[level].fastFromIntensity) {
-            expect(cue.times).toEqual([song.beats[cue.beatIndex], song.beats[cue.beatIndex + stride]]);
-          }
+      for (const level of ALL_LEVELS) {
+        const moveCues = withMoves(song, level, 1).filter((entry) => entry.role === 'move');
+        expect(moveCues.length).toBeGreaterThan(10);
+        for (const { cue } of moveCues) {
+          expect(cue.cells).toHaveLength(1);
+          expect(cue.times).toEqual([song.beats[cue.beatIndex]]);
         }
       }
     }

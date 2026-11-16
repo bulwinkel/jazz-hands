@@ -359,11 +359,6 @@ export const CHART = {
 export const MOVES = {
   /** A phrase is this many bars. A move starts on the first beat of a phrase and ends inside it. */
   phraseBars: 4,
-  /**
-   * At a level with slides, where the phrase has room for a form of 8 intervals: the share of
-   * phrases whose move is made of slides. The other phrases get the move as taps.
-   */
-  slideFormShare: 0.5,
 } as const;
 
 /** Face cues, for a player who switches faces on. They do not depend on the level. */
