@@ -19,7 +19,7 @@ import { logEntry } from './frameLog';
 import type { LoggedFrame } from './frameLog';
 import { containRect, faceRegion } from './geometry';
 import type { MenuHand } from './handMenu';
-import { clearCalibrateHolds, clearHolds, stepCalibrateHolds, stepHandsUp, stepWaitingHolds } from './handsUp';
+import { clearCalibrateHolds, clearHolds, stepHandsUp, stepReadyHolds, stepWaitingHolds } from './handsUp';
 import type { InputView } from './input';
 import { InputHost } from './inputHost';
 import { closingSongTime, frameSongTime, newCueState } from './judgment';
@@ -820,15 +820,17 @@ export class DanceGame {
 
   /**
    * Ready screen: the round starts when every player holds a hand in their Start cell. A hand
-   * held in a Calibrate cell calibrates that player. When two holds complete in one frame,
-   * the second player waits for the first.
+   * held in a Calibrate cell calibrates that player, unless that player also holds the Start
+   * cell (see `stepReadyHolds`). When two Calibrate holds complete in one frame, the second
+   * player waits for the first.
    */
   private trackReadyHolds(frame: TrackingFrame, previous: TrackingFrame | undefined): void {
-    if (stepHandsUp(this.players, frame, previous, TIMING.readyHoldSec)) {
+    const step = stepReadyHolds(this.players, frame, previous, TIMING.readyHoldSec, TIMING.calibrateHoldSec);
+    if (step.start) {
       this.beginCountdown();
       return;
     }
-    const [first, ...others] = stepCalibrateHolds(this.players, frame, previous, TIMING.calibrateHoldSec);
+    const [first, ...others] = step.calibrate;
     if (!first) return;
     this.calibrateOne(first.index);
     this.calibrationQueue = others.map((player) => player.index);

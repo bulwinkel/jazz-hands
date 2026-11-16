@@ -82,6 +82,36 @@ export function stepCalibrateHolds(
   return players.filter((player) => player.calibrateHold >= 1);
 }
 
+/** What one tracking frame decides on the ready screen. */
+export interface ReadyStep {
+  /** True when every player holds their Start cell long enough: the countdown begins. */
+  start: boolean;
+  /** The players whose Calibrate hold completed, in slot order. Always empty when `start` is true. */
+  calibrate: HoldingPlayer[];
+}
+
+/**
+ * Ready screen: who starts and who calibrates, from one tracking frame. "Hands up to start!"
+ * asks for both hands up, so one hand may land in the Start cell and the other in the
+ * Calibrate cell. Such a player wants to start. So a player whose Start hold is in progress
+ * makes no progress on the Calibrate hold, and a Calibrate hold in progress ends when that
+ * player's Start hold begins.
+ */
+export function stepReadyHolds(
+  players: readonly HoldingPlayer[],
+  frame: TrackingFrame,
+  previous: TrackingFrame | undefined,
+  startHoldSec: number,
+  calibrateHoldSec: number,
+): ReadyStep {
+  const start = stepHandsUp(players, frame, previous, startHoldSec);
+  const starting = players.filter((player) => player.holdStartMs !== null);
+  clearCalibrateHolds(starting);
+  if (start) return { start, calibrate: [] };
+  const free = players.filter((player) => player.holdStartMs === null);
+  return { start, calibrate: stepCalibrateHolds(free, frame, previous, calibrateHoldSec) };
+}
+
 /**
  * During the calibration of one player: the Calibrate hold of another player goes on, when it
  * began on the ready screen and the player does not wait yet. Two players who hold at nearly

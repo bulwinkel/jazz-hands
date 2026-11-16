@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest';
 import type { TrackedHand, TrackingFrame } from '../tracking/types';
 import { CALIBRATE_CELL, START_CELL, TIMING } from './config';
 import { cellRect } from './geometry';
-import { clearCalibrateHolds, clearHolds, stepCalibrateHolds, stepHandsUp, stepWaitingHolds } from './handsUp';
+import {
+  clearCalibrateHolds,
+  clearHolds,
+  stepCalibrateHolds,
+  stepHandsUp,
+  stepReadyHolds,
+  stepWaitingHolds,
+} from './handsUp';
 import type { HoldingPlayer } from './handsUp';
 import { createPlayers } from './player';
 import { parseSettings } from './settings';
@@ -152,6 +159,78 @@ describe('the hold in the Calibrate cell', () => {
       [null, 0],
       [null, 0],
     ]);
+  });
+});
+
+describe('the ready screen', () => {
+  const START_SEC = TIMING.readyHoldSec;
+  const CALIBRATE_SEC = TIMING.calibrateHoldSec;
+
+  /** A frame with these cells held by each player: a hand in each cell of the list. */
+  function cellsFrame(timeMs: number, all: readonly HoldingPlayer[], cells: readonly number[][]): TrackingFrame {
+    const hands = (index: number): TrackedHand[] => {
+      const player = all.find((candidate) => candidate.index === index);
+      return player ? (cells[index] ?? []).map((cell) => handIn(player, cell)) : [];
+    };
+    return { timeMs, inferenceMs: 0, players: [{ hands: hands(0) }, { hands: hands(1) }] };
+  }
+
+  /**
+   * Steps the ready screen in frames 100 ms apart, from 0 ms to `endMs`, with the cells that
+   * `cellsAt` gives at each time. Returns the time and the outcome of the first frame that
+   * starts or calibrates, or null.
+   */
+  function runReady(
+    all: HoldingPlayer[],
+    endMs: number,
+    cellsAt: (timeMs: number) => number[][],
+  ): { timeMs: number; start: boolean; calibrate: number[] } | null {
+    let previous: TrackingFrame | undefined;
+    for (let timeMs = 0; timeMs <= endMs; timeMs += 100) {
+      const current = cellsFrame(timeMs, all, cellsAt(timeMs));
+      const step = stepReadyHolds(all, current, previous, START_SEC, CALIBRATE_SEC);
+      const calibrate = step.calibrate.map((player) => player.index);
+      if (step.start || calibrate.length > 0) return { timeMs, start: step.start, calibrate };
+      previous = current;
+    }
+    return null;
+  }
+
+  it('starts one player who raises both hands, the left hand 0.6 s before the right', () => {
+    const solo = players(1);
+    const both = (timeMs: number): number[][] => [timeMs < 600 ? [CALIBRATE_CELL] : [CALIBRATE_CELL, START_CELL]];
+    expect(runReady(solo, 3000, both)).toEqual({ timeMs: 600 + START_SEC * 1000, start: true, calibrate: [] });
+  });
+
+  it('ends the Calibrate hold of a player when their Start hold begins', () => {
+    const solo = players(1);
+    const both = (timeMs: number): number[][] => [timeMs < 600 ? [CALIBRATE_CELL] : [CALIBRATE_CELL, START_CELL]];
+    runReady(solo, 500, both);
+    expect(solo[0].calibrateHold).toBeGreaterThan(0);
+    runReady(solo, 600, both);
+    expect(solo[0].calibrateHoldStartMs).toBeNull();
+    expect(solo[0].calibrateHold).toBe(0);
+  });
+
+  it('starts two players when one holds both cells and the other raises a hand later', () => {
+    const duo = players(2);
+    const cells = (timeMs: number): number[][] => [
+      [START_CELL, CALIBRATE_CELL],
+      timeMs < 1000 ? [] : [START_CELL],
+    ];
+    expect(runReady(duo, 4000, cells)).toEqual({ timeMs: 1000 + START_SEC * 1000, start: true, calibrate: [] });
+  });
+
+  it('calibrates a player who holds only the Calibrate cell', () => {
+    const duo = players(2);
+    const cells = (): number[][] => [[], [CALIBRATE_CELL]];
+    expect(runReady(duo, 4000, cells)).toEqual({ timeMs: CALIBRATE_SEC * 1000, start: false, calibrate: [1] });
+  });
+
+  it('calibrates one player while the other player holds the Start cell alone', () => {
+    const duo = players(2);
+    const cells = (): number[][] => [[START_CELL], [CALIBRATE_CELL]];
+    expect(runReady(duo, 4000, cells)).toEqual({ timeMs: CALIBRATE_SEC * 1000, start: false, calibrate: [1] });
   });
 });
 

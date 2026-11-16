@@ -154,6 +154,8 @@ The ready screen shows two cells in each player's grid:
 - The Calibrate cell is the second choice: its outline is thin and dashed, and its sign and
   word are fainter.
 - A hand in the Start cell does not count for the Calibrate cell, and the reverse.
+- A player who holds the Start cell does not calibrate. With both hands up, one in each cell,
+  the player starts. A Calibrate hold ends when the same player's Start hold begins.
 - A calibration from the Calibrate cell waits 1 s for the hand to leave the cell. Then the
   player draws circles for 6 s. Then the ready screen shows again.
 - Only the player who held calibrates. The grid of the other player does not change. With two
