@@ -20,6 +20,8 @@ import { candidateSeeds, cueSetMoveShare } from './cueSet';
 import { cuesBeyondTwoHands, synthetic } from './fixtures';
 import { leadInEndSec, medianBeatInterval, playEndSec, playStartSec, tailStartSec, validateManifest } from './manifest';
 import { phraseBeats } from './moves';
+import { shufflePhrases } from './shapePatterns';
+import type { GestureName } from '../tracking/types';
 import type { Cue, Level, Manifest } from './types';
 
 const ALL_LEVELS: Level[] = [1, 2, 3, 4, 5];
@@ -425,8 +427,19 @@ describe('level 5', () => {
   });
 
   it('has the same cues as level 4, plus the shapes', () => {
-    const withoutShapes = cues.map(({ shapes: _shapes, ...cue }) => cue);
+    const withoutShapes = cues.map(({ shapes: _shapes, shuffle: _shuffle, ...cue }) => cue);
     expect(withoutShapes).toEqual(chart(song, 4, 42));
+  });
+
+  it('asks for the phrase shape of the beat in every cell of a steady phrase', () => {
+    const shapes = phraseShapes(song, 42);
+    const steady = cues.filter((cue) => !cue.shuffle);
+    expect(steady.length).toBeGreaterThan(300);
+    steady.forEach((cue) => {
+      // An off-beat tap keeps the shape of the cue beat before it.
+      const shape = shapes[Math.floor(cue.beatIndex)];
+      expect(cue.shapes).toEqual(cue.cells.map(() => shape));
+    });
   });
 
   it('keeps one shape for at least 4 seconds, changes it on a bar start, and never repeats it', () => {
@@ -442,6 +455,160 @@ describe('level 5', () => {
 
   it('uses every shape of the pool', () => {
     expect(new Set(cues.flatMap((cue) => cue.shapes ?? []))).toEqual(new Set(CHART.gesturePool));
+  });
+});
+
+describe('shuffle phrases at level 5', () => {
+  /** A whole song at level 5, with each cue's role. */
+  const entriesOf = (song: Manifest, seed = 42): ChartEntry[] =>
+    chartEntries(song, { level: 5, shapes: true, seed, endSec: song.durationSec });
+
+  /** The phrase that a cue's beat belongs to, counted from 0 at the first bar start. */
+  const phraseOf = (song: Manifest, cue: Cue): number =>
+    Math.floor((Math.floor(cue.beatIndex) - song.firstDownbeat) / phraseBeats(song));
+
+  /**
+   * The first shape of each cue that the pattern counts, by shuffle phrase: every cue of the
+   * phrase except the off-beat taps, in time order.
+   */
+  function runs(song: Manifest, entries: ChartEntry[]): GestureName[][] {
+    const byPhrase = new Map<number, GestureName[]>();
+    for (const { cue, role } of entries) {
+      if (!cue.shuffle || role === 'offbeat') continue;
+      const phrase = phraseOf(song, cue);
+      const shapes = byPhrase.get(phrase) ?? [];
+      shapes.push(cue.shapes?.[0] as GestureName);
+      byPhrase.set(phrase, shapes);
+    }
+    return [...byPhrase.values()];
+  }
+
+  it('change the shape at every cue where the cues are at least 0.7 s apart', () => {
+    // At 130 BPM the cues of busy music come every second beat, 0.92 s apart.
+    const song = synthetic(130, 600);
+    const shuffles = runs(song, entriesOf(song));
+    expect(shuffles.length).toBeGreaterThan(5);
+    for (const shapes of shuffles) {
+      const length = new Set(shapes).size;
+      expect([2, 3]).toContain(length);
+      shapes.forEach((shape, k) => {
+        if (k > 0) expect(shape).not.toBe(shapes[k - 1]);
+        // The pattern repeats: a pair every two cues, a triple every three.
+        if (k >= length) expect(shape).toBe(shapes[k - length]);
+      });
+    }
+  });
+
+  it('change the shape at every second cue where the cues come closer than 0.7 s', () => {
+    // At 100 BPM the cues come on every beat, 0.6 s apart.
+    const song = synthetic(100, 600);
+    const shuffles = runs(song, entriesOf(song));
+    expect(shuffles.length).toBeGreaterThan(5);
+    for (const shapes of shuffles) {
+      expect(new Set(shapes).size).toBeGreaterThan(1);
+      shapes.forEach((shape, k) => {
+        if (k % 2 === 1) expect(shape).toBe(shapes[k - 1]);
+        if (k % 2 === 0 && k > 0) expect(shape).not.toBe(shapes[k - 1]);
+      });
+    }
+  });
+
+  it('let an off-beat tap keep the shape of the cue before it', () => {
+    const song = synthetic(130, 600);
+    const entries = entriesOf(song);
+    const offbeats = entries.filter((entry) => entry.role === 'offbeat' && entry.cue.shuffle);
+    expect(offbeats.length).toBeGreaterThan(20);
+    entries.forEach((entry, i) => {
+      if (entry.role !== 'offbeat' || !entries[i - 1].cue.shuffle) return;
+      expect(entry.cue.shuffle).toBe(true);
+      expect(entry.cue.shapes).toEqual([entries[i - 1].cue.shapes?.[0]]);
+    });
+  });
+
+  it('give a tap for two hands the shape of the pattern now and its next shape', () => {
+    const song = synthetic(130, 600);
+    const counted = entriesOf(song).filter((entry) => entry.cue.shuffle && entry.role !== 'offbeat');
+    let doubles = 0;
+    counted.forEach(({ cue }, i) => {
+      const next = counted[i + 1]?.cue;
+      if (cue.cells.length !== 2) return;
+      doubles++;
+      expect(cue.shapes?.[1]).not.toBe(cue.shapes?.[0]);
+      // Each cue is a step here, so the cue after it in the phrase starts with that next shape.
+      if (next && phraseOf(song, next) === phraseOf(song, cue)) expect(next.shapes?.[0]).toBe(cue.shapes?.[1]);
+    });
+    expect(doubles).toBeGreaterThan(10);
+  });
+
+  it('step a slide through the pattern, cell by cell', () => {
+    const song = synthetic(130, 600);
+    const cues = entriesOf(song).map((entry) => entry.cue);
+    let slides = 0;
+    cues.forEach((cue, i) => {
+      if (!startsSlide(cue) || !cue.shuffle || !cues[i + 2].shuffle) return;
+      slides++;
+      expect(cues[i + 1].shapes?.[0]).not.toBe(cue.shapes?.[0]);
+      expect(cues[i + 2].shapes?.[0]).not.toBe(cues[i + 1].shapes?.[0]);
+    });
+    expect(slides).toBeGreaterThan(10);
+  });
+
+  it('are the phrases that the music gives, the same for every seed', () => {
+    const song = synthetic(130, 600);
+    const planned = shufflePhrases(song, { firstCueSec: leadInEndSec(song), endSec: song.durationSec });
+    const plannedPhrases = planned.flatMap((isShuffle, phrase) => (isShuffle ? [phrase] : []));
+    expect(plannedPhrases.length).toBeGreaterThan(5);
+    for (const seed of [1, 2, 3, 42]) {
+      const marked = new Set(entriesOf(song, seed).flatMap(({ cue }) => (cue.shuffle ? [phraseOf(song, cue)] : [])));
+      expect([...marked]).toEqual(plannedPhrases);
+    }
+  });
+
+  it('come in no chart below level 5', () => {
+    const song = synthetic(130, 600);
+    for (const level of SWITCH_LEVELS) {
+      expect(chart(song, level, 42, { shapes: true }).some((cue) => cue.shuffle)).toBe(false);
+    }
+  });
+});
+
+describe('shuffle phrases on every song', () => {
+  /** The phrases that hold a shuffle cue in a played chart. */
+  const shufflesOf = (song: Manifest, entries: ChartEntry[]): number[] => {
+    const phrases = entries.flatMap(({ cue }) =>
+      cue.shuffle ? [Math.floor((Math.floor(cue.beatIndex) - song.firstDownbeat) / phraseBeats(song))] : [],
+    );
+    return [...new Set(phrases)];
+  };
+
+  it.each(['short', 'full'] as const)('are the same for every cue set of a %s round', (length) => {
+    for (const song of SONG_MANIFESTS) {
+      const startSec = playStartSec(song, length);
+      const endSec = playEndSec(song, length);
+      const played = [1, 2, 3, 4, 5, 6].map((set) => {
+        const seed = candidateSeeds(set)[0];
+        const options = { level: 5 as Level, shapes: true, seed, endSec, moves: cueSetMoveShare(set) };
+        const entries = chartEntries(song, { ...options, movesFromSec: startSec + CHART.leadSec });
+        return shufflesOf(song, entriesFrom(entries, startSec));
+      });
+      expect(played[0].length).toBeGreaterThan(0);
+      for (const phrases of played) expect(phrases).toEqual(played[0]);
+    }
+  });
+
+  it.each(['short', 'full'] as const)('never come in the first two phrases of a %s round, nor two in a row', (length) => {
+    for (const song of SONG_MANIFESTS) {
+      const startSec = playStartSec(song, length);
+      const options = { level: 5 as Level, shapes: true, seed: DEFAULT_SEED, endSec: playEndSec(song, length) };
+      const entries = chartEntries(song, { ...options, movesFromSec: startSec + CHART.leadSec });
+      const played = entriesFrom(entries, startSec);
+      const phraseOf = (cue: Cue): number => Math.floor((Math.floor(cue.beatIndex) - song.firstDownbeat) / phraseBeats(song));
+      const firstPhrase = phraseOf(played[0].cue);
+      for (const phrase of shufflesOf(song, played)) {
+        expect(phrase).toBeGreaterThanOrEqual(firstPhrase + CHART.steadyOpeningPhrases);
+        expect(shufflesOf(song, played)).not.toContain(phrase + 1);
+      }
+    }
   });
 });
 
@@ -724,12 +891,23 @@ describe('moves', () => {
     }
   });
 
-  it('keep the phrase shape at a level with a shape on every cue', () => {
+  it('keep the phrase shape in a steady phrase at a level with a shape on every cue', () => {
     const song = synthetic(100, 600);
     const shapes = phraseShapes(song, 42);
-    const moveCues = withMoves(song, 5, 1).filter((entry) => entry.role === 'move');
-    expect(moveCues.length).toBeGreaterThan(100);
+    const moveCues = withMoves(song, 5, 1).filter((entry) => entry.role === 'move' && !entry.cue.shuffle);
+    expect(moveCues.length).toBeGreaterThan(50);
     for (const { cue } of moveCues) expect(cue.shapes).toEqual([shapes[cue.beatIndex]]);
+  });
+
+  it('change the shape at each cue of a shuffle phrase, where the cues are at least 0.7 s apart', () => {
+    // At 130 BPM the cues of busy music come every second beat, 0.92 s apart.
+    const moveCues = withMoves(synthetic(130, 600), 5, 1).filter((entry) => entry.role === 'move' && entry.cue.shuffle);
+    expect(new Set(moveCues.map((entry) => entry.move?.phrase)).size).toBeGreaterThan(3);
+    moveCues.forEach((entry, i) => {
+      const before = moveCues[i - 1];
+      if (!before || before.move?.phrase !== entry.move?.phrase) return;
+      expect(entry.cue.shapes?.[0]).not.toBe(before.cue.shapes?.[0]);
+    });
   });
 
   it('get a clear moment before them: no slide runs into a move, and no off-beat tap comes just before it', () => {
@@ -946,10 +1124,10 @@ describe('slides on every song', () => {
     expect(shaped).toBeGreaterThan(100);
   });
 
-  it('give each cell of a slide the phrase shape of its own beat at level 5', () => {
+  it('give each cell of a slide the phrase shape of its own beat at level 5, in a steady phrase', () => {
     for (const { song, seed, entries } of chartsAt(5)) {
       const shapes = phraseShapes(song, seed);
-      const slideCells = entries.map((entry) => entry.cue).filter(inSlide);
+      const slideCells = entries.map((entry) => entry.cue).filter((cue) => inSlide(cue) && !cue.shuffle);
       for (const cue of slideCells) expect(cue.shapes).toEqual([shapes[cue.beatIndex]]);
     }
   });

@@ -54,6 +54,11 @@ export interface Cue {
   shapes?: GestureName[];
   /** Set on the three cues of a slide only. The run report shows it, to compare slides with other taps. */
   slideStep?: SlideStep;
+  /**
+   * Set on the cues of a shuffle phrase only, where the shape changes from cue to cue by a
+   * pattern. The run report shows it, to compare shuffles with steady phrases.
+   */
+  shuffle?: boolean;
 }
 
 /**

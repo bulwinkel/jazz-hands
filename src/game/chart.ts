@@ -3,8 +3,8 @@ import type { LevelRules } from './config';
 import { isBarStart, leadInEndSec, medianBeatInterval, tailStartSec } from './manifest';
 import { moveForm, moveSteps, noMoves, phraseBeats, planPhrases } from './moves';
 import type { MoveName, MoveStep, MoveTag, PhrasePlan } from './moves';
-import { rollPattern, shapeAtStep, shapePattern } from './shapePatterns';
-import type { PatternRolls } from './shapePatterns';
+import { cuesPerStep, rollPattern, shapeAtStep, shapePattern, shufflePhrases, shuffleShape } from './shapePatterns';
+import type { PatternRolls, Shuffle } from './shapePatterns';
 import type { GestureName } from '../tracking/types';
 import type { Cue, Level, Manifest, SlideStep } from './types';
 
@@ -23,7 +23,8 @@ export interface ChartOptions {
   /**
    * No move starts before this time, in song seconds. A round that starts inside the song
    * passes its start plus `CHART.leadSec`, where its first cue may come, so that the round
-   * never begins with the rest of a move.
+   * never begins with the rest of a move. The shuffle phrases of a level with a shape on every
+   * cue count the phrases of the round from here too.
    */
   movesFromSec?: number;
 }
@@ -249,6 +250,11 @@ interface ChartFrame {
   master: number[];
   /** The shape of every beat, at a level with a shape on every cue. */
   phraseShape?: GestureName[];
+  /**
+   * At a level with a shape on every cue, the shuffle of each phrase, by its index: null for a
+   * steady phrase. Empty at other levels. See shapePatterns.ts.
+   */
+  shuffles: (Shuffle | null)[];
   /** Beats from one cue to the next around this beat: 1 where cues come on every beat. */
   strideAt: (beat: number) => number;
   isCueBeat: (beat: number) => boolean;
@@ -283,12 +289,14 @@ function chartFrame(manifest: Manifest, options: ChartOptions): ChartFrame {
     share: options.moves ?? 0,
     fromSec: options.movesFromSec ?? -Infinity,
   });
+  const cueIntervalSec = (beat: number): number => strideAt(beat) * beatIntervalSec;
   return {
     manifest,
     options,
     rules,
     master: masterCells(manifest, options.seed),
     phraseShape: rules.shapeOnEveryCue ? phraseShapes(manifest, options.seed) : undefined,
+    shuffles: rules.shapeOnEveryCue ? planShuffles(manifest, options, cueIntervalSec) : [],
     strideAt,
     isCueBeat,
     plans,
@@ -298,6 +306,46 @@ function chartFrame(manifest: Manifest, options: ChartOptions): ChartFrame {
 
 /** The moves roll on a stream of their own, so a chart without moves is the chart from before moves. */
 const MOVE_SEED_STREAM = 0xd15c0;
+
+/** The patterns of shuffle phrases roll on a stream of their own, so they change no cell or time. */
+const SHUFFLE_SEED_STREAM = 0x5b0ff1e;
+
+/**
+ * The shuffle of every phrase, by its index, at a level with a shape on every cue: null for a
+ * steady phrase. The music and the round choose the shuffle phrases, the seed only their
+ * patterns. Every phrase takes the rolls of a pattern, used or not, so one phrase's pattern
+ * never shifts another's.
+ */
+function planShuffles(
+  manifest: Manifest,
+  options: ChartOptions,
+  cueIntervalSec: (beat: number) => number,
+): (Shuffle | null)[] {
+  const round = {
+    firstCueSec: Math.max(leadInEndSec(manifest), options.movesFromSec ?? -Infinity),
+    endSec: options.endSec,
+  };
+  const random = seededRandom(options.seed ^ SHUFFLE_SEED_STREAM);
+  const beatsPerPhrase = phraseBeats(manifest);
+  return shufflePhrases(manifest, round).map((isShuffle, phrase) => {
+    const pattern = shapePattern(rollPattern(random));
+    if (!isShuffle) return null;
+    const firstBeat = manifest.firstDownbeat + phrase * beatsPerPhrase;
+    const endBeat = Math.min(firstBeat + beatsPerPhrase, manifest.beats.length);
+    const closestSec = shortestInterval(cueIntervalSec, firstBeat, endBeat);
+    return { pattern, cuesPerStep: cuesPerStep(closestSec) };
+  });
+}
+
+/**
+ * The shortest time from one cue beat to the next, over the beats from `firstBeat` up to
+ * `endBeat`. The pace of a phrase can change with its music: the closest cues decide.
+ */
+function shortestInterval(cueIntervalSec: (beat: number) => number, firstBeat: number, endBeat: number): number {
+  let shortestSec = Infinity;
+  for (let beat = firstBeat; beat < endBeat; beat++) shortestSec = Math.min(shortestSec, cueIntervalSec(beat));
+  return shortestSec;
+}
 
 /** What a chart keeps from one cue to the next. */
 interface ChartState {
@@ -314,6 +362,11 @@ interface ChartState {
   previousWasOffbeat: boolean;
   /** The move in progress. Null between moves. */
   move: RunningMove | null;
+  /**
+   * The shuffle phrase whose pattern the cues step through, by its index, and how many of its
+   * cues on cue beats have come so far. The count starts again in each shuffle phrase.
+   */
+  shuffleCues: { phrase: number; count: number };
 }
 
 /** A move that has started: its steps, the next one to take, and the beat its phrase ends. */
@@ -363,6 +416,7 @@ export function chartEntries(manifest: Manifest, options: ChartOptions): ChartEn
     previousSec: -Infinity,
     previousWasOffbeat: false,
     move: null,
+    shuffleCues: { phrase: -1, count: 0 },
   };
 
   for (let beat = 0; beat < manifest.beats.length; beat++) {
@@ -435,11 +489,12 @@ function startMove(frame: ChartFrame, plan: PhrasePlan): RunningMove | null {
 
 /**
  * Adds a move's cue. Inside a move there are no off-beat taps and no shapes from the shapes
- * switch: the move is enough to follow. A level with a shape on every cue keeps its phrase shape.
+ * switch: the move is enough to follow. A level with a shape on every cue gives each cue of the
+ * move its shape: the phrase shape, or in a shuffle phrase the next step of the pattern.
  */
 function addMoveCue(frame: ChartFrame, state: ChartState, beat: number, move: MoveCueing): void {
   const cue = tapOn(frame, beat, move.step);
-  if (frame.phraseShape) cue.shapes = [frame.phraseShape[beat]];
+  giveEveryCueShapes(frame, state, cue);
   addCue(state, { cue, role: 'move', move: move.tag });
   state.previousWasOffbeat = false;
 }
@@ -480,10 +535,34 @@ function addBeatCues(frame: ChartFrame, state: ChartState, beat: number, roll: B
     return;
   }
   const cue = choice === 'double' ? doubleCue(frame, state, beat, roll) : singleCue(frame, state, beat, roll);
-  const phraseShape = frame.phraseShape?.[beat];
-  if (phraseShape) cue.shapes = cue.cells.map(() => phraseShape);
+  giveEveryCueShapes(frame, state, cue);
   addCue(state, { cue, role: 'beat' });
   addOffbeatTap(frame, state, cue, roll);
+}
+
+/**
+ * Gives a cue its shapes at a level with a shape on every cue. Other levels give none here.
+ *
+ * In a steady phrase, every cell takes the phrase shape of the beat. In a shuffle phrase, the
+ * cue takes the shape of the pattern now, and the second cell of a tap for two hands takes the
+ * next shape. Then the pattern counts the cue: each cue on a cue beat is a step, or each second
+ * cue where the cues come fast. A shape from the shapes switch gives way to these shapes.
+ */
+function giveEveryCueShapes(frame: ChartFrame, state: ChartState, cue: Cue): void {
+  if (!frame.phraseShape) return;
+  const phrase = phraseAt(frame, cue.beatIndex)?.index;
+  const shuffle = phrase === undefined ? null : (frame.shuffles[phrase] ?? null);
+  if (phrase === undefined || shuffle === null) {
+    const shape = frame.phraseShape[cue.beatIndex];
+    cue.shapes = cue.cells.map(() => shape);
+    return;
+  }
+
+  if (state.shuffleCues.phrase !== phrase) state.shuffleCues = { phrase, count: 0 };
+  const cuesBefore = state.shuffleCues.count;
+  cue.shapes = cue.cells.map((_, cell) => shuffleShape(shuffle, cuesBefore, cell));
+  cue.shuffle = true;
+  state.shuffleCues.count++;
 }
 
 /** Adds a cue, and books its beat and the hands it takes. */
@@ -544,8 +623,9 @@ const SLIDE_STEPS: readonly SlideStep[] = [1, 2, 3];
  * Adds a slide: three taps in a line, from the beat's master cell through the middle cell to a
  * cell two steps away, one tap on each of its three cue beats. With the shapes switch, a level
  * with `shapesOnDoublesAndSlides` may give the slide a pattern: the cells step through it, one
- * shape each (A B A or A B C). A level with a shape on every cue gives each cell the phrase
- * shape of its beat. No off-beat tap follows any of the cells.
+ * shape each (A B A or A B C). A level with a shape on every cue gives each cell the shape of
+ * its own beat: the phrase shape, or in a shuffle phrase the next step of the pattern. No
+ * off-beat tap follows any of the cells.
  */
 function addSlide(frame: ChartFrame, state: ChartState, beat: number, roll: BeatRolls): void {
   const from = frame.master[beat];
@@ -560,7 +640,7 @@ function addSlide(frame: ChartFrame, state: ChartState, beat: number, roll: Beat
     const cue = tapOn(frame, cellBeat, cells[k]);
     cue.slideStep = SLIDE_STEPS[k];
     if (pattern) cue.shapes = [shapeAtStep(pattern, k)];
-    if (frame.phraseShape) cue.shapes = [frame.phraseShape[cellBeat]];
+    giveEveryCueShapes(frame, state, cue);
     addCue(state, { cue, role: k === 0 ? 'beat' : 'slide' });
   });
   state.previousWasOffbeat = false;
@@ -631,8 +711,19 @@ function addOffbeatTap(frame: ChartFrame, state: ChartState, cue: Cue, roll: Bea
   const taken = [...cue.cells, frame.master[nextCueBeat]];
   const cell = pickWeighted(CHART.cellWeights, roll.offbeatCell, (c) => !taken.includes(c));
   const tap: Cue = { timeSec: offbeatSec, beatIndex: beat + stride / 2, cells: [cell] };
-  if (frame.phraseShape) tap.shapes = [frame.phraseShape[beat]];
+  keepShape(frame, tap, cue);
   state.entries.push({ cue: tap, role: 'offbeat' });
   state.previousSec = offbeatSec;
   state.hands.take(offbeatSec);
+}
+
+/**
+ * At a level with a shape on every cue, an off-beat tap keeps the shape of the cue before it:
+ * the shape of its first cell. It comes too soon after that cue for a new shape to read. In a
+ * shuffle phrase, the pattern does not count it.
+ */
+function keepShape(frame: ChartFrame, tap: Cue, before: Cue): void {
+  if (!frame.phraseShape || !before.shapes) return;
+  tap.shapes = [before.shapes[0]];
+  if (before.shuffle) tap.shuffle = true;
 }
