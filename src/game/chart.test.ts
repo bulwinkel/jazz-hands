@@ -370,6 +370,18 @@ describe('two hands', () => {
     }
   });
 
+  it('are enough for each tap of a slide where the beats come unevenly', () => {
+    // Beats 8, 9 and 10 are due at 4.8 s, 5.0 s and 5.2 s. A slide on them would ask one hand
+    // for its first and third taps 0.4 s apart: less than the rest that a hand needs.
+    const song = synthetic(100, 120);
+    song.beats[9] = 5;
+    song.beats[10] = 5.2;
+    const cues = chart(song, 3, 42);
+    expect(cuesBeyondTwoHands(cues)).toEqual([]);
+    const early = cues.filter((cue) => cue.timeSec < 6);
+    expect(early.map((cue) => cue.timeSec)).not.toEqual([4.8, 5, 5.2]);
+  });
+
   it('are not asked for an off-beat tap straight after a double, or a double after an off-beat tap', () => {
     const cues = chart(synthetic(100, 1800), 4, 42);
     cues.forEach((cue, i) => {

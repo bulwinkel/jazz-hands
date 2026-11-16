@@ -198,22 +198,40 @@ export function countMoves(entries: readonly ChartEntry[]): Record<MoveName, num
  * hand last reached a target. A tap takes one hand for each of its cells.
  */
 class HandBudget {
-  private readonly lastTargetSec = [-Infinity, -Infinity];
+  private readonly lastTargetSec: number[];
+
+  /** Both hands rested, or the same hands as another budget, to try taps on a copy. */
+  constructor(lastTargetSec: readonly number[] = [-Infinity, -Infinity]) {
+    this.lastTargetSec = [...lastTargetSec];
+  }
 
   /** How many hands have rested long enough to reach a new target at `timeSec`. */
   freeAt(timeSec: number): number {
     return this.lastTargetSec.filter((last) => timeSec - last >= CHART.handRestSec - EPSILON).length;
   }
 
-  /** Gives a reach that ends at `untilSec` to the hand that has rested longest. */
-  use(untilSec: number): void {
+  /** Gives the target of a tap at `atSec` to the hand that has rested longest. */
+  take(atSec: number): void {
     const hand = this.lastTargetSec[0] <= this.lastTargetSec[1] ? 0 : 1;
-    this.lastTargetSec[hand] = untilSec;
+    this.lastTargetSec[hand] = atSec;
   }
 
-  /** A tap uses one hand for each of its cells. */
-  useFor(cue: Cue): void {
-    cue.cells.forEach(() => this.use(cue.timeSec));
+  /** A tap takes one hand for each of its cells. */
+  takeFor(cue: Cue): void {
+    cue.cells.forEach(() => this.take(cue.timeSec));
+  }
+
+  /**
+   * True when single taps at these times, in this order, each find a rested hand. The taps are
+   * tried on a copy: this budget does not change.
+   */
+  fitsTaps(timesSec: readonly number[]): boolean {
+    const trial = new HandBudget(this.lastTargetSec);
+    for (const timeSec of timesSec) {
+      if (trial.freeAt(timeSec) === 0) return false;
+      trial.take(timeSec);
+    }
+    return true;
   }
 }
 
@@ -460,7 +478,7 @@ function addCue(state: ChartState, entry: ChartEntry): void {
   state.entries.push(entry);
   state.previousBeat = cue.beatIndex;
   state.previousSec = cue.timeSec;
-  state.hands.useFor(cue);
+  state.hands.takeFor(cue);
 }
 
 /**
@@ -484,15 +502,18 @@ function pickBeatCue(frame: ChartFrame, state: ChartState, beat: number, roll: B
 
 /**
  * A slide needs a line of three cells from the beat's cell, so none starts in the centre. It
- * needs three cue beats in a row, one for each cell. It never starts straight after an off-beat
- * tap: a slide takes a player's whole attention, so it gets a clear moment before it. Nor does
- * it run into the first beat of a planned move.
+ * needs three cue beats in a row, one for each cell, and a rested hand for each of its taps in
+ * turn. It never starts straight after an off-beat tap: a slide takes a player's whole
+ * attention, so it gets a clear moment before it. Nor does it run into the first beat of a
+ * planned move.
  */
 function slideFits(frame: ChartFrame, state: ChartState, beat: number): boolean {
   const cellBeats = slideBeats(frame, beat);
   const endBeat = cellBeats[cellBeats.length - 1];
   if (slideTargets(frame.master[beat]).length === 0) return false;
   if (!cellBeats.every((cellBeat) => frame.isCueBeat(cellBeat))) return false;
+  const tapTimesSec = cellBeats.map((cellBeat) => frame.manifest.beats[cellBeat]);
+  if (!state.hands.fitsTaps(tapTimesSec)) return false;
   return !state.previousWasOffbeat && !crowdsMove(frame, beat, endBeat);
 }
 
@@ -569,5 +590,5 @@ function addOffbeatTap(frame: ChartFrame, state: ChartState, cue: Cue, roll: Bea
   if (frame.phraseShape) tap.gesture = frame.phraseShape[beat];
   state.entries.push({ cue: tap, role: 'offbeat' });
   state.previousSec = offbeatSec;
-  state.hands.use(offbeatSec);
+  state.hands.take(offbeatSec);
 }
