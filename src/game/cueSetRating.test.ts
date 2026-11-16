@@ -14,13 +14,22 @@ const ROUND: RatedRound = {
   moveShare: 0.7,
 };
 
-/** Player 2 on level 4, after a round with 80 perfect, 12 good and 8 miss. */
+/**
+ * Player 2 on level 4, after a round with 80 perfect, 12 good and 8 miss. Of the four cues that
+ * stand for the chart, the third changes the shape: a share of 0.25.
+ */
 const PLAYER: RatingPlayer = {
   index: 1,
   level: 4,
   shapes: true,
   faces: false,
   faceCuesDropped: false,
+  cues: [
+    { timeSec: 5, beatIndex: 8, cells: [0], shapes: ['fist'] },
+    { timeSec: 6, beatIndex: 10, cells: [2], shapes: ['fist'] },
+    { timeSec: 7, beatIndex: 12, cells: [3, 5], shapes: ['peace', 'point'] },
+    { timeSec: 8, beatIndex: 14, cells: [1] },
+  ],
   mix: { slides: 0.212121212, doubles: 0.0833333, offbeats: 0.3, cues: 100 },
   moves: { point: 3, circle: 1 },
   score: { score: 13456.6, combo: 4, maxCombo: 31, perfect: 80, good: 12, miss: 8, total: 100 },
@@ -46,7 +55,14 @@ describe('a rating record', () => {
       shapes: true,
       faces: false,
       facesDropped: false,
-      chart: { slides: 0.2121, doubles: 0.0833, offbeats: 0.3, cues: 100, moves: { point: 3, circle: 1 } },
+      chart: {
+        slides: 0.2121,
+        doubles: 0.0833,
+        offbeats: 0.3,
+        cues: 100,
+        moves: { point: 3, circle: 1 },
+        shapeChanges: 0.25,
+      },
       result: { score: 13457, accuracy: 0.86, perfect: 80, good: 12, miss: 8 },
       rating: 4,
     });

@@ -6,6 +6,7 @@ import { roundTo } from './numbers';
 import { isInsideWindow } from './judgment';
 import type { CueState } from './judgment';
 import type { MoveName } from './moves';
+import { shapeChangeShare } from './player';
 import type { PlayerRun } from './player';
 import { playedSec, startPlay } from './playTime';
 import type { PlayTime } from './playTime';
@@ -219,6 +220,11 @@ export interface PlayerReport {
   arrivalMs: { mean: number | null; median: number | null; cells: number };
   /** How many moves of each name the round's chart held. */
   moves: Record<MoveName, number>;
+  /**
+   * The share of the round's cues whose shapes differ from the shapes of the cue before them.
+   * See `shapeChangeShare` in player.ts.
+   */
+  shapeChanges: number;
   shapeCues: {
     asked: number;
     hit: number;
@@ -378,6 +384,7 @@ function playerReport(player: PlayerRun, stats: TrackingStats): PlayerReport {
     handsSeen: { none: share(none, stats.frames), one: share(one, stats.frames), two: share(two, stats.frames) },
     arrivalMs: { mean: mean(arrivals), median: percentile(arrivals, 0.5), cells: arrivals.length },
     moves: { ...player.moves },
+    shapeChanges: roundTo(shapeChangeShare(player.cues), 3),
     shapeCues: {
       asked,
       hit,

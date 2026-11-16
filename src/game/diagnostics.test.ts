@@ -257,6 +257,24 @@ describe('run report', () => {
     expect(run.tracking).toMatchObject({ framesPerSec: 30, drawnPerSec: 60 });
   });
 
+  it('lists each cue with the shape of each cell, and marks a cue of a shuffle phrase', () => {
+    const double: Cue = { timeSec: 1, beatIndex: 2, cells: [0, 2], shapes: ['fist', 'point'], shuffle: true };
+    const [cue] = report([playOneCue(double, () => [hand(0, 'fist'), hand(2, 'point')])]).players[0].cues;
+    expect(cue).toMatchObject({ cells: [0, 2], shapes: ['fist', 'point'], shuffle: true, result: 'perfect' });
+    expect(report([playOneCue(tap('fist'), () => [])]).players[0].cues[0].shuffle).toBeUndefined();
+  });
+
+  it('gives the share of cues whose shapes differ from the cue before them', () => {
+    const cues: Cue[] = [tap('fist'), { ...tap('point'), timeSec: 2 }, { ...tap('point'), timeSec: 3 }, { ...tap(), timeSec: 4 }];
+    const player: PlayerRun = {
+      ...newPlayer(),
+      cues,
+      states: cues.map(newCueState),
+      observations: cues.map(newObservation),
+    };
+    expect(report([player]).players[0].shapeChanges).toBe(0.25);
+  });
+
   it('lists every cue with its result and what the tracker showed', () => {
     const [cue] = report([playOneCue(tap('fist'), () => [hand(4, 'fist')])]).players[0].cues;
     expect(cue).toMatchObject({ cells: [4], shapes: ['fist'], result: 'perfect', marks: ['perfect'] });

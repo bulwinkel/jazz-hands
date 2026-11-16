@@ -11,6 +11,7 @@
 import type { ChartMix } from './cueSet';
 import type { MoveName } from './moves';
 import { roundTo } from './numbers';
+import { shapeChangeShare } from './player';
 import type { PlayerRun } from './player';
 import { accuracy } from './scoring';
 import type { Level, PlayerCount, PlayerIndex, SongLength } from './types';
@@ -72,7 +73,7 @@ export function ratedRoundOf(round: EndedRound, random: () => number): RatedRoun
 /** What a record needs of the player who rates. */
 export type RatingPlayer = Pick<
   PlayerRun,
-  'index' | 'level' | 'shapes' | 'faces' | 'faceCuesDropped' | 'mix' | 'moves' | 'score'
+  'index' | 'level' | 'shapes' | 'faces' | 'faceCuesDropped' | 'cues' | 'mix' | 'moves' | 'score'
 >;
 
 /** One line of the ratings file. */
@@ -100,8 +101,12 @@ export interface RatingRecord {
    * 2026-11-17 do not have it.
    */
   facesDropped: boolean;
-  /** What the part of the chart that the round played held. See `ChartMix` in cueSet.ts. */
-  chart: ChartMix & { moves: Record<MoveName, number> };
+  /**
+   * What the part of the chart that the round played held. See `ChartMix` in cueSet.ts. Also
+   * the share of cues whose shapes differ from the cue before them: see `shapeChangeShare` in
+   * player.ts. Records from before 2026-11-17 have no `shapeChanges`.
+   */
+  chart: ChartMix & { moves: Record<MoveName, number>; shapeChanges: number };
   result: { score: number; accuracy: number; perfect: number; good: number; miss: number };
   rating: SetRating;
 }
@@ -161,6 +166,7 @@ function chartPart(player: RatingPlayer): RatingRecord['chart'] {
     offbeats: roundTo(mix.offbeats, SHARE_DECIMALS),
     cues: mix.cues,
     moves: { ...player.moves },
+    shapeChanges: roundTo(shapeChangeShare(player.cues), SHARE_DECIMALS),
   };
 }
 

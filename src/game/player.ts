@@ -137,3 +137,27 @@ export function summariseChart(cues: readonly Cue[], faceCues: readonly FaceCue[
   }
   return summary;
 }
+
+/**
+ * The share of cues whose shapes differ from the shapes of the cue before them: how often a
+ * player has to change hand shape. Two cues ask for the same shapes when they ask for the same
+ * set of shapes: a fist in both cells of a tap for two hands is the same as a fist in one cell.
+ * A cue with no shape changes nothing. A cue with a shape after a cue with none counts as a
+ * change: the hand has to make the shape. The first cue has no cue before it, and counts as no
+ * change. A chart with no cues gives 0.
+ */
+export function shapeChangeShare(cues: readonly Cue[]): number {
+  if (cues.length === 0) return 0;
+  let changes = 0;
+  cues.forEach((cue, i) => {
+    if (i === 0 || !cue.shapes) return;
+    if (shapesKey(cue) !== shapesKey(cues[i - 1])) changes++;
+  });
+  return changes / cues.length;
+}
+
+/** The set of shapes that a cue asks for, as one text, to compare two cues. Empty for a cue with no shape. */
+function shapesKey(cue: Cue): string {
+  const shapes = new Set(cue.shapes ?? []);
+  return [...shapes].sort().join(' ');
+}

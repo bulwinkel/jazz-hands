@@ -19,7 +19,7 @@ function record(fields) {
     shapes: false,
     faces: false,
     facesDropped: false,
-    chart: { slides: 0.2, doubles: 0.1, offbeats: 0.2, cues: 90, moves: { point: 2, circle: 1 } },
+    chart: { slides: 0.2, doubles: 0.1, offbeats: 0.2, cues: 90, moves: { point: 2, circle: 1 }, shapeChanges: 0.1 },
     result: { score: 9000, accuracy: 0.9, perfect: 80, good: 2, miss: 8 },
     rating: 3,
     ...fields,
@@ -63,6 +63,16 @@ describe('reading a ratings file', () => {
     const { records, skipped } = readRatings(lines([older, newer]));
     expect(skipped).toBe(0);
     expect(records.map((each) => each.rating)).toEqual([2, 4]);
+  });
+
+  it('reads a record saved before 2026-11-17, whose chart holds no share of shape changes', () => {
+    const olderChart = { slides: 0.2, doubles: 0.1, offbeats: 0.2, cues: 90, moves: { point: 2, circle: 1 } };
+    const older = record({ chart: olderChart, level: 5, cueSet: 2, rating: 4 });
+    const { records, skipped } = readRatings(lines([older, record({ roundId: 'round-b', level: 5, cueSet: 2, rating: 2 })]));
+    expect(skipped).toBe(0);
+    const text = summaryText(records, skipped);
+    expect(text).toContain('Ratings: 2');
+    expect(text).toContain('By level and set\nLevel  Set  Ratings  Mean\n-----  ---  -------  ----\n5      2    2        3.00');
   });
 
   it('leaves out empty lines, and does not count them', () => {
