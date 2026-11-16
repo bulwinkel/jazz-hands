@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { cueSetLine, movesLine, playerHeading } from './resultText';
+import { cueSetLine, movesLine, playerHeading, REPLAY_PROMPT } from './resultText';
+
+describe('the replay prompt', () => {
+  it('says where to hold: the Start cell, high to the right on the mirrored screen', () => {
+    expect(REPLAY_PROMPT).toBe('Hold a hand high to your right to play again 🙌');
+  });
+});
 
 describe('player heading', () => {
   it('names the player from 1 and their level', () => {

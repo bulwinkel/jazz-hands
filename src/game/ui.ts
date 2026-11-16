@@ -10,7 +10,7 @@ import { buildRatingRows, ratingRowHtml } from './ratingView';
 import type { RateHandler, RatingRows } from './ratingView';
 import { RECORDINGS_HTML, removePreview, showRecordings } from './recordingsView';
 import type { RecordingsView } from './roundRecordings';
-import { cueSetLine, movesLine, playerHeading, RESULTS_HEADING } from './resultText';
+import { cueSetLine, movesLine, playerHeading, REPLAY_PROMPT, RESULTS_HEADING } from './resultText';
 import { accuracy, stars } from './scoring';
 import type { Settings } from './settings';
 import { VideoPlayer } from './videoPlayer';
@@ -221,8 +221,7 @@ export class GameUI {
       <div class="results-lower">
         <div class="results-next">
           ${team}
-          <p class="replay-prompt">Hands up to play again 🙌</p>
-          <p class="replay-hint">Raise a hand high to your right and hold</p>
+          <p class="replay-prompt">${REPLAY_PROMPT}</p>
           <div class="result-actions">
             <button id="replay" class="primary" data-hand="replay" data-hand-hold="${HAND_MENU.slowHoldSec}">Play again · Space</button>
             <button id="menu" data-hand="menu" data-hand-hold="${HAND_MENU.slowHoldSec}">Menu · Esc</button>

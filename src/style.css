@@ -704,15 +704,12 @@ canvas {
   font-size: 32px;
   margin-left: 16px;
 }
+/* The line that asks for a replay. It says where to hold, at full size: the Start cell lies
+   under the results panel. */
 .replay-prompt {
   font-size: 32px;
   font-weight: 850;
-  margin: 12px 0 4px;
-}
-.replay-hint {
-  margin: 4px 0 12px;
-  font-size: 18px;
-  color: var(--text-soft);
+  margin: 12px 0;
 }
 .result-actions {
   display: flex;
