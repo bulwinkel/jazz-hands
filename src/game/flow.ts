@@ -2,7 +2,15 @@ import { errorText } from '../errorText';
 import { WORKER_LIMITS } from '../tracking/config';
 import type { FaceExpression, FaceRegions, TrackedHand, TrackingFrame } from '../tracking/types';
 import { SongAudio } from './audio';
-import { addReach, beginReach, circlesMessage, finishReach, KeptGrids, startOnKeptGrids } from './calibration';
+import {
+  addReach,
+  beginReach,
+  circlesMessage,
+  finishReach,
+  gridNotChangedText,
+  KeptGrids,
+  startOnKeptGrids,
+} from './calibration';
 import { chartEntries, countMoves, cuesFrom, entriesFrom } from './chart';
 import { CHART, DEFAULT_SEED, FACE_EMOJI, HAND_MENU, MENU_TRACKER, SONGS, TIMING, TOAST } from './config';
 import { chartMix, cueSetMoveShare, cueSetSeed, CueSetPicker, RANDOM_CUE_SET } from './cueSet';
@@ -530,11 +538,15 @@ export class DanceGame {
   }
 
   /**
-   * The circles are over. Each calibrated grid is kept for later rounds. Then the next player
-   * in the queue calibrates, or the ready screen shows.
+   * The circles are over. Each calibrated grid is kept for later rounds. A calibration with too
+   * little reach changes nothing, and a note says so. Then the next player in the queue
+   * calibrates, or the ready screen shows.
    */
   private endFit(): void {
-    finishReach(this.players, this.calibrating, this.keptGrids, this.options.settings.playerCount);
+    const { playerCount } = this.options.settings;
+    const unchanged = finishReach(this.players, this.calibrating, this.keptGrids, playerCount);
+    const note = gridNotChangedText(unchanged, playerCount);
+    if (note) this.ui.showToast(note, TOAST.longMs);
     const next = this.calibrationQueue.shift();
     if (next === undefined) this.showReady();
     else this.calibrateOne(next);

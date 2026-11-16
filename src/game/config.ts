@@ -398,8 +398,12 @@ export const GRID = {
   defaultHeight: 0.8,
   /** The reach fit ignores the outermost 2% of hand positions on each side. */
   fitPercentiles: [0.02, 0.98],
-  /** With fewer hand positions than this, a calibration keeps the standard grid. */
+  /**
+   * With fewer hand positions than this, the grid on screen stays the standard grid while a
+   * player draws, and the calibration does not count.
+   */
   fitMinSamples: 20,
+  /** The smallest grid. A calibration whose reach is smaller than this does not count. */
   minWidth: 0.18,
   minHeight: 0.3,
   /** Gap between a grid and the edge of its player's area. */

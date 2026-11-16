@@ -27,6 +27,11 @@ export interface PlayerRun {
   calibrated: boolean;
   /** Hand positions seen during the player's calibration. */
   reachSamples: Point[];
+  /**
+   * The grid the player had before the calibration in progress. A calibration with too little
+   * reach gives it back. Null while the player does not calibrate.
+   */
+  gridBeforeReach: Rect | null;
   cues: Cue[];
   /** How many moves of each name `cues` holds. For the run report. */
   moves: Record<MoveName, number>;
@@ -89,6 +94,7 @@ export function createPlayers(settings: Settings): PlayerRun[] {
     grid: defaultGrid(index, settings.playerCount),
     calibrated: false,
     reachSamples: [],
+    gridBeforeReach: null,
     cues: [],
     moves: noMoves(),
     mix: noMix(),

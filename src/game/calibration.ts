@@ -12,7 +12,7 @@ import type { PlayerCount, PlayerIndex, Rect } from './types';
  */
 
 /** What a calibration reads and changes of a player. */
-export type CalibratedPlayer = Pick<PlayerRun, 'index' | 'grid' | 'calibrated' | 'reachSamples'>;
+export type CalibratedPlayer = Pick<PlayerRun, 'index' | 'grid' | 'calibrated' | 'reachSamples' | 'gridBeforeReach'>;
 
 /**
  * The grids that calibrations gave, kept in memory until the page reloads. A new round from
@@ -22,11 +22,9 @@ export type CalibratedPlayer = Pick<PlayerRun, 'index' | 'grid' | 'calibrated' |
 export class KeptGrids {
   private readonly grids = new Map<string, Rect>();
 
-  /** Keeps the grid of a calibration. Null forgets the kept grid: that calibration saw too few hands. */
-  keep(player: PlayerIndex, playerCount: PlayerCount, grid: Rect | null): void {
-    const key = gridKey(player, playerCount);
-    if (grid) this.grids.set(key, { ...grid });
-    else this.grids.delete(key);
+  /** Keeps the grid of a calibration that counted. */
+  keep(player: PlayerIndex, playerCount: PlayerCount, grid: Rect): void {
+    this.grids.set(gridKey(player, playerCount), { ...grid });
   }
 
   /** The kept grid of a slot, or undefined when that slot has none. */
@@ -56,7 +54,9 @@ function calibratingOnly<T extends CalibratedPlayer>(players: readonly T[], cali
 
 /**
  * The calibration of the players in `calibrating` begins: their grids go back to the standard
- * grid, and grow from there.
+ * grid, and grow from there. Each player's grid from before is put aside, for a calibration
+ * that does not count. A calibration that stops another one, such as the C key during the
+ * circles, keeps the grid from before the first.
  */
 export function beginReach(
   players: readonly CalibratedPlayer[],
@@ -64,9 +64,9 @@ export function beginReach(
   playerCount: PlayerCount,
 ): void {
   for (const player of calibratingOnly(players, calibrating)) {
+    player.gridBeforeReach ??= { ...player.grid };
     player.reachSamples = [];
     player.grid = defaultGrid(player.index, playerCount);
-    player.calibrated = false;
   }
 }
 
@@ -89,20 +89,43 @@ export function addReach(
 }
 
 /**
- * The calibration of the players in `calibrating` ends. The grid it gave each of them is kept
- * for later rounds. A calibration that saw too few hands left the standard grid: that counts
- * as no calibration, and the kept grid of the slot is forgotten.
+ * The calibration of the players in `calibrating` ends. When a player's reach counts (see
+ * `hasReachToFit`), the grid it gave is the player's grid, and it is kept for later rounds.
+ * When it does not count, nothing changes: the player gets back the grid from before, and
+ * `calibrated` and the kept grid stay as they were. Returns the players whose calibration did
+ * not count.
  */
 export function finishReach(
   players: readonly CalibratedPlayer[],
   calibrating: readonly PlayerIndex[],
   kept: KeptGrids,
   playerCount: PlayerCount,
-): void {
+): PlayerIndex[] {
+  const unchanged: PlayerIndex[] = [];
   for (const player of calibratingOnly(players, calibrating)) {
-    player.calibrated = hasReachToFit(player.reachSamples);
-    kept.keep(player.index, playerCount, player.calibrated ? player.grid : null);
+    const gridBefore = player.gridBeforeReach ?? player.grid;
+    player.gridBeforeReach = null;
+    if (hasReachToFit(player.reachSamples)) {
+      player.calibrated = true;
+      kept.keep(player.index, playerCount, player.grid);
+    } else {
+      player.grid = gridBefore;
+      unchanged.push(player.index);
+    }
   }
+  return unchanged;
+}
+
+/**
+ * The note that tells the players that a calibration did not count. With two players it names
+ * each player whose grid stayed. Null when every calibration counted.
+ */
+export function gridNotChangedText(unchanged: readonly PlayerIndex[], playerCount: PlayerCount): string | null {
+  if (unchanged.length === 0) return null;
+  if (playerCount === 1) return 'Grid not changed: draw bigger circles to calibrate';
+  const names = unchanged.map((index) => `P${index + 1}`);
+  if (names.length === 1) return `${names[0]} grid not changed: draw bigger circles to calibrate`;
+  return `${names.join(' and ')} grids not changed: draw bigger circles to calibrate`;
 }
 
 /**

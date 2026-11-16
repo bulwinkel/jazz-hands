@@ -76,29 +76,54 @@ export function percentile(values: readonly number[], p: number): number {
 
 const isFinitePoint = (point: Point): boolean => Number.isFinite(point.x) && Number.isFinite(point.y);
 
+/** The edges of a reach, as frame fractions. */
+interface ReachBox {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
 /**
- * True when a calibration saw enough hand positions to fit a grid to. With fewer, `fitGrid`
- * gives the standard grid.
+ * The box around a player's reach: the hand positions without the outermost few on each side
+ * (`GRID.fitPercentiles`). Null with fewer hand positions than `GRID.fitMinSamples`.
+ */
+function reachBox(samples: readonly Point[]): ReachBox | null {
+  const points = samples.filter(isFinitePoint);
+  if (points.length < GRID.fitMinSamples) return null;
+  const [lowP, highP] = GRID.fitPercentiles;
+  const xs = points.map((p) => p.x);
+  const ys = points.map((p) => p.y);
+  return {
+    left: percentile(xs, lowP),
+    right: percentile(xs, highP),
+    top: percentile(ys, lowP),
+    bottom: percentile(ys, highP),
+  };
+}
+
+/**
+ * True when a calibration saw enough reach to count: at least `GRID.fitMinSamples` hand
+ * positions, which span at least `GRID.minWidth` by `GRID.minHeight` before `fitGrid` clamps
+ * them. 20 positions come in a third of a second, so the count alone is not enough: a player
+ * who stands still through a calibration would get the smallest grid.
  */
 export function hasReachToFit(samples: readonly Point[]): boolean {
-  return samples.filter(isFinitePoint).length >= GRID.fitMinSamples;
+  const box = reachBox(samples);
+  if (!box) return false;
+  return box.right - box.left >= GRID.minWidth && box.bottom - box.top >= GRID.minHeight;
 }
 
 /**
  * Fits a player's grid to their reach: the box around the hand positions seen while they
- * draw big circles. A child then gets a smaller, lower grid than an adult.
+ * draw big circles. A child then gets a smaller, lower grid than an adult. With too few hand
+ * positions it gives the standard grid. The grid on screen follows this while the player
+ * draws; `hasReachToFit` says whether the end result counts.
  */
 export function fitGrid(samples: readonly Point[], player: PlayerIndex, playerCount: PlayerCount): Rect {
-  if (!hasReachToFit(samples)) return defaultGrid(player, playerCount);
-  const points = samples.filter(isFinitePoint);
-
-  const [lowP, highP] = GRID.fitPercentiles;
-  const xs = points.map((p) => p.x);
-  const ys = points.map((p) => p.y);
-  const left = percentile(xs, lowP);
-  const right = percentile(xs, highP);
-  const top = percentile(ys, lowP);
-  const bottom = percentile(ys, highP);
+  const box = reachBox(samples);
+  if (!box) return defaultGrid(player, playerCount);
+  const { left, right, top, bottom } = box;
 
   // A too-small reach grows around its centre. A too-large reach is cut to the player's area.
   const span = playSpan(player, playerCount);

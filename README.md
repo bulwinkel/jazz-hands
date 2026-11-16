@@ -174,8 +174,14 @@ the calibration waits 1 s for that hand to leave the button.
 
 The game keeps the grid of each player's last calibration in memory, for that player and that
 number of players, until the page reloads. A new round from the menu starts on that grid.
-**Play again** and **R** keep the grids of the round. A calibration that sees fewer than 20 hand
-positions gives the standard grid, and the game then keeps no grid for that player.
+**Play again** and **R** keep the grids of the round.
+
+A calibration counts only when it sees at least 20 hand positions, and they span at least the
+smallest grid: 0.18 of the frame wide and 0.3 high (`GRID.minWidth` and `GRID.minHeight`). A
+player who stands still through a calibration then keeps their grid. When a calibration does
+not count, nothing changes: the player gets back the grid they had before it, the kept grid
+stays, and a note says "Grid not changed: draw bigger circles to calibrate". With two players
+the note names the player. This holds for the calibration of one player and of every player.
 
 The run report names:
 

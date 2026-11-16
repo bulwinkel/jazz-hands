@@ -5,10 +5,12 @@ import {
   defaultGrid,
   faceRegion,
   fitGrid,
+  hasReachToFit,
   insideCell,
   percentile,
   playSpan,
 } from './geometry';
+import { GRID } from './config';
 import type { Point } from './types';
 
 const repeat = (count: number, point: (i: number) => Point): Point[] => Array.from({ length: count }, (_, i) => point(i));
@@ -92,6 +94,29 @@ describe('reach fit', () => {
     expect(grid.x).toBeLessThan(0.5);
     expect(grid.x + grid.width).toBeGreaterThan(0.5);
     expect(playSpan(0, 1)).toEqual({ left: 0.01, right: 0.99 });
+  });
+});
+
+describe('a reach that counts for a calibration', () => {
+  /** Hand positions at two corners of a box of this size: the reach is exactly the box. */
+  const box = (width: number, height: number, count = 40): Point[] =>
+    repeat(count, (i) => (i % 2 ? { x: 0.2, y: 0.2 } : { x: 0.2 + width, y: 0.2 + height }));
+
+  it('spans at least the smallest grid, before the clamp', () => {
+    expect(hasReachToFit(box(GRID.minWidth, GRID.minHeight))).toBe(true);
+    expect(hasReachToFit(box(GRID.minWidth - 0.001, 0.6))).toBe(false);
+    expect(hasReachToFit(box(0.4, GRID.minHeight - 0.001))).toBe(false);
+  });
+
+  it('needs at least 20 hand positions, however wide they spread', () => {
+    expect(hasReachToFit(box(0.4, 0.6, GRID.fitMinSamples))).toBe(true);
+    expect(hasReachToFit(box(0.4, 0.6, GRID.fitMinSamples - 1))).toBe(false);
+  });
+
+  it('does not count a player who stands still, though the grid on screen grows to the smallest size', () => {
+    const still = repeat(60, () => ({ x: 0.25, y: 0.5 }));
+    expect(hasReachToFit(still)).toBe(false);
+    expect(fitGrid(still, 0, 2).width).toBe(GRID.minWidth);
   });
 });
 

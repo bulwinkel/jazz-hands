@@ -42,6 +42,7 @@ function newPlayer(): PlayerRun {
     grid,
     calibrated: false,
     reachSamples: [],
+    gridBeforeReach: null,
     cues: [],
     moves: { point: 0, circle: 0 },
     mix: noMix(),
