@@ -250,7 +250,7 @@ chosen chart with the set's share of moves.
 On the 20 songs, in a Short round at levels 3 and 4, the sets are a median of 0.6 points from
 the typical shares of slides and two-hand cues, and at most 5.3 (the two-hand cues of set 4 of
 Blessed on the Hillside at level 4). At level 4 the sets of one song differ by a median of 4.4
-points in off-beat taps and 2.7% in their cues. A set does not match where the cues are, or
+points in off-beat taps and 3.2% in their cues. A set does not match where the cues are, or
 which hand shapes they ask for.
 
 The typical mix is not the level rules: at levels 4 and 5 a slide never follows an off-beat
