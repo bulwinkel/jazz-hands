@@ -16,6 +16,7 @@ import type { GestureName } from '../tracking/types';
 import { CHART } from './config';
 import { tailStartSec } from './manifest';
 import { phraseBeats } from './moves';
+import { clamp01 } from './numbers';
 import type { Manifest } from './types';
 
 const EPSILON = 1e-8;
@@ -121,7 +122,8 @@ export function shufflePhrases(manifest: Manifest, round: RoundSpan): boolean[] 
     // A phrase is in the round when it can hold a cue of the round.
     const inRound = lastSec >= round.firstCueSec - EPSILON && firstSec < cueEndSec;
     const opening = roundPhrases < CHART.steadyOpeningPhrases;
-    const intense = phraseIntensity(manifest, firstBeat, endBeat) >= shuffleThreshold(firstSec, round) - EPSILON;
+    const threshold = shuffleThreshold(firstSec, round);
+    const intense = phraseIntensity(manifest, firstBeat, endBeat) >= threshold - EPSILON;
     const isShuffle: boolean = inRound && !opening && !previousIsShuffle && intense;
     if (inRound) roundPhrases++;
     shuffles.push(isShuffle);
@@ -133,7 +135,9 @@ export function shufflePhrases(manifest: Manifest, round: RoundSpan): boolean[] 
 /** The mean intensity of the beats from `firstBeat` up to `endBeat`. */
 export function phraseIntensity(manifest: Manifest, firstBeat: number, endBeat: number): number {
   let sum = 0;
-  for (let beat = firstBeat; beat < endBeat; beat++) sum += manifest.intensity[beat];
+  for (let beat = firstBeat; beat < endBeat; beat++) {
+    sum += manifest.intensity[beat];
+  }
   return sum / (endBeat - firstBeat);
 }
 
@@ -143,8 +147,7 @@ export function phraseIntensity(manifest: Manifest, firstBeat: number, endBeat: 
  * `CHART.shuffleIntensityTo` at its end, and never below busy music.
  */
 export function shuffleThreshold(timeSec: number, round: RoundSpan): number {
-  const progress = (timeSec - round.firstCueSec) / (round.endSec - round.firstCueSec);
-  const share = Math.min(1, Math.max(0, progress));
+  const progress = clamp01((timeSec - round.firstCueSec) / (round.endSec - round.firstCueSec));
   const { shuffleIntensityFrom: from, shuffleIntensityTo: to } = CHART;
-  return Math.max(CHART.busyIntensity, from + (to - from) * share);
+  return Math.max(CHART.busyIntensity, from + (to - from) * progress);
 }

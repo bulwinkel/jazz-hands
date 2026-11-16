@@ -343,7 +343,9 @@ function planShuffles(
  */
 function shortestInterval(cueIntervalSec: (beat: number) => number, firstBeat: number, endBeat: number): number {
   let shortestSec = Infinity;
-  for (let beat = firstBeat; beat < endBeat; beat++) shortestSec = Math.min(shortestSec, cueIntervalSec(beat));
+  for (let beat = firstBeat; beat < endBeat; beat++) {
+    shortestSec = Math.min(shortestSec, cueIntervalSec(beat));
+  }
   return shortestSec;
 }
 
@@ -550,9 +552,10 @@ function addBeatCues(frame: ChartFrame, state: ChartState, beat: number, roll: B
  */
 function giveEveryCueShapes(frame: ChartFrame, state: ChartState, cue: Cue): void {
   if (!frame.phraseShape) return;
-  const phrase = phraseAt(frame, cue.beatIndex)?.index;
-  const shuffle = phrase === undefined ? null : (frame.shuffles[phrase] ?? null);
-  if (phrase === undefined || shuffle === null) {
+  // A beat before the first bar start belongs to no phrase: -1 finds no shuffle.
+  const phrase = phraseAt(frame, cue.beatIndex)?.index ?? -1;
+  const shuffle = frame.shuffles[phrase] ?? null;
+  if (shuffle === null) {
     const shape = frame.phraseShape[cue.beatIndex];
     cue.shapes = cue.cells.map(() => shape);
     return;
