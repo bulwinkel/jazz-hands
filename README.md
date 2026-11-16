@@ -177,6 +177,9 @@ A slide fits on a cue beat only when all of these are true:
 Nothing else comes inside a slide: no off-beat tap, and no other cue on its beats. The next cue
 comes on the cue beat after the end cell at the earliest.
 
+A round that starts inside the song never starts with the rest of a slide: a slide stays or goes
+as a whole, by its start cell.
+
 So a chart has a smaller share of slides than the chance. In a Short round, the typical mix of
 a song (see [Cue sets](#cue-sets)) has a share of slides of 0.25 at level 3 and 0.19 at levels
 4 and 5: the median over the 20 songs. At levels 4 and 5 a slide never follows an off-beat tap.

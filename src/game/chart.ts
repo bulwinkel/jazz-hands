@@ -128,13 +128,29 @@ export function phraseShapes(manifest: Manifest, seed: number): GestureName[] {
   });
 }
 
+/** A hand cue or a face cue, as `cuesFrom` reads it. A face cue is never part of a slide. */
+interface TimedCue {
+  timeSec: number;
+  slideStep?: SlideStep;
+}
+
 /**
  * The cues of a round that starts partway into the song. Players need a moment to find the
- * beat, so cues in the first seconds after the start are left out.
+ * beat, so cues in the first seconds after the start are left out. A slide stays or goes as a
+ * whole, by its first cell: a round never starts with the rest of a slide.
  */
-export function cuesFrom<C extends { timeSec: number }>(cues: C[], startSec: number): C[] {
+export function cuesFrom<C extends TimedCue>(cues: C[], startSec: number): C[] {
   if (startSec <= 0) return cues;
-  return cues.filter((cue) => cue.timeSec >= startSec + CHART.leadSec);
+  const firstSec = startSec + CHART.leadSec;
+  const kept: C[] = [];
+  let slideKept = false;
+  for (const cue of cues) {
+    if (cue.slideStep === 1) slideKept = cue.timeSec >= firstSec;
+    const laterSlideCell = cue.slideStep === 2 || cue.slideStep === 3;
+    const keep = laterSlideCell ? slideKept : cue.timeSec >= firstSec;
+    if (keep) kept.push(cue);
+  }
+  return kept;
 }
 
 /**

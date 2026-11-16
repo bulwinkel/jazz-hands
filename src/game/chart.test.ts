@@ -16,12 +16,15 @@ import {
 } from './chart';
 import type { ChartEntry } from './chart';
 import { CHART, DEFAULT_SEED, LEVELS, SONGS } from './config';
+import { candidateSeeds, cueSetMoveShare } from './cueSet';
 import { cuesBeyondTwoHands, synthetic } from './fixtures';
-import { medianBeatInterval, playEndSec, tailStartSec, validateManifest } from './manifest';
+import { medianBeatInterval, playEndSec, playStartSec, tailStartSec, validateManifest } from './manifest';
 import { phraseBeats } from './moves';
 import type { Cue, Level, Manifest } from './types';
 
 const ALL_LEVELS: Level[] = [1, 2, 3, 4, 5];
+/** The manifests of every song in `SONGS`, in order. */
+const SONG_MANIFESTS = SONGS.map((song) => validateManifest(JSON.parse(readFileSync(`public${song.manifest}`, 'utf8'))));
 /** Levels where hand shapes come from the player's switch, not from the level itself. */
 const SWITCH_LEVELS: Level[] = [1, 2, 3, 4];
 const column = (cell: number): number => cell % 3;
@@ -150,8 +153,70 @@ describe('a round that starts inside the song', () => {
     const late = cuesFrom(cues, 120);
     expect(late.length).toBeGreaterThan(50);
     expect(late[0].timeSec).toBeGreaterThanOrEqual(120 + CHART.leadSec);
-    // The rest of the song is unchanged: the same cues as in a round from the start.
-    expect(late).toEqual(cues.filter((cue) => cue.timeSec >= 120 + CHART.leadSec));
+    // The rest of the song is unchanged: the same cues as in a round from the start. Here the
+    // cut falls inside a slide, and its end cell at 124.2 s goes with the rest of it.
+    const firstSec = 120 + CHART.leadSec;
+    const slideStartSec = (i: number): number => cues[i - (cues[i].slideStep ?? 1) + 1].timeSec;
+    const expected = cues.filter((cue, i) => cue.timeSec >= firstSec && slideStartSec(i) >= firstSec);
+    expect(cues.some((cue) => cue.timeSec === 124.2 && cue.slideStep === 3)).toBe(true);
+    expect(late).toEqual(expected);
+  });
+
+  /** Checks that every cue of a slide has the other two cues of its slide next to it, in order. */
+  function expectWholeSlides(cues: readonly Cue[]): void {
+    cues.forEach((cue, i) => {
+      if (cue.slideStep === 1) expect([cues[i + 1]?.slideStep, cues[i + 2]?.slideStep]).toEqual([2, 3]);
+      if (cue.slideStep === 2) expect(cues[i - 1]?.slideStep).toBe(1);
+      if (cue.slideStep === 3) expect(cues[i - 1]?.slideStep).toBe(2);
+    });
+  }
+
+  /** The cues that a Short round of one player plays, with the moves of a cue set. */
+  function shortRound(song: Manifest, level: Level, seed: number, set: number): { all: Cue[]; played: Cue[] } {
+    const startSec = playStartSec(song, 'short');
+    const options = {
+      level,
+      shapes: false,
+      seed,
+      endSec: playEndSec(song, 'short'),
+      moves: cueSetMoveShare(set),
+      movesFromSec: startSec + CHART.leadSec,
+    };
+    const entries = chartEntries(song, options);
+    const played = entriesFrom(entries, startSec);
+    return { all: entries.map((entry) => entry.cue), played: played.map((entry) => entry.cue) };
+  }
+
+  it('keeps or drops a slide as a whole: the Short round of Todo Bueno at level 3, set 4', () => {
+    // The cut at 136.802 s once fell inside a slide, and kept only its end cell, at 136.920 s.
+    const song = SONG_MANIFESTS[SONGS.findIndex((entry) => entry.manifest === '/songs/todo-bueno.json')];
+    const { all, played } = shortRound(song, 3, 20265329, 4);
+    const cutSec = playStartSec(song, 'short') + CHART.leadSec;
+    expect(cutSec).toBeCloseTo(136.802, 3);
+    const start = all.findIndex((cue) => cue.slideStep === 1 && cue.timeSec >= cutSec - 2);
+    const cutSlide = all.slice(start, start + 3);
+    expect(cutSlide[0].timeSec).toBeLessThan(cutSec);
+    expect(cutSlide[2].timeSec).toBeCloseTo(136.9204, 4);
+    expect(played.filter((cue) => cutSlide.includes(cue))).toEqual([]);
+    expect(played[0].slideStep).toBe(1);
+    expectWholeSlides(played);
+  });
+
+  it('never starts with the rest of a slide, in the Short round of every song at levels 3 to 5', () => {
+    let cutSlides = 0;
+    for (const song of SONG_MANIFESTS) {
+      const cutSec = playStartSec(song, 'short') + CHART.leadSec;
+      for (const level of [3, 4, 5] as Level[]) {
+        for (const seed of candidateSeeds(4)) {
+          const { all, played } = shortRound(song, level, seed, 4);
+          expectWholeSlides(played);
+          const straddles = all.some((cue, i) => cue.slideStep === 1 && cue.timeSec < cutSec && all[i + 2].timeSec >= cutSec);
+          if (straddles && cutSec > CHART.leadSec) cutSlides++;
+        }
+      }
+    }
+    // The cut falls inside a slide in some of these charts, so the test sees the case.
+    expect(cutSlides).toBeGreaterThan(20);
   });
 });
 
@@ -619,7 +684,6 @@ describe('moves', () => {
 });
 
 describe('slides on every song', () => {
-  const SONG_MANIFESTS = SONGS.map((song) => validateManifest(JSON.parse(readFileSync(`public${song.manifest}`, 'utf8'))));
   const SEEDS = [DEFAULT_SEED, 7, 2026];
   /** Without moves, and with the moves of sets 5 and 6. */
   const MOVE_SHARES = [0, 0.7];
