@@ -221,11 +221,20 @@ export interface PlayerReport {
   };
   cues: Array<Cue & { result?: string; marks: CueState['marks']; observation: CueObservation }>;
   faceCues: {
+    /** The face cues that the round played. 0 when it dropped them before play. */
     asked: number;
     hit: number;
+    /**
+     * True when the round dropped this player's face cues before play: the camera had not seen
+     * the face on the ready screen, the results or the countdown. False with faces off.
+     */
+    droppedBeforePlay: boolean;
+    /** The face cues that gave no result, because no tracking frame in their window had the face. */
+    unseen: number;
     /** One entry for each expression the cues asked for. Read these to set `FACES.thresholds`. */
     expressions: Partial<Record<FaceExpression, ExpressionReport>>;
-    cues: Array<FaceCue & { result?: string; observation: FaceObservation }>;
+    /** `unseen` is true for a cue that gave no result because the camera did not see the face. Its `result` is then unset. */
+    cues: Array<FaceCue & { result?: string; unseen: boolean; observation: FaceObservation }>;
   };
 }
 
@@ -284,10 +293,13 @@ function faceCuesReport(player: PlayerRun): PlayerReport['faceCues'] {
   return {
     asked: faceCues.length,
     hit: faceStates.filter((state) => isHit(state.result)).length,
+    droppedBeforePlay: player.faceCuesDropped,
+    unseen: faceStates.filter((state) => state.unseen === true).length,
     expressions,
     cues: faceCues.map((cue, i) => ({
       ...cue,
       result: faceStates[i]?.result,
+      unseen: faceStates[i]?.unseen === true,
       observation: faceObservations[i],
     })),
   };

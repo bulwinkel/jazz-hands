@@ -36,14 +36,29 @@ export interface PlayerRun {
   states: CueState[];
   /** What the tracker showed around each cue, parallel to `cues`. For the run report. */
   observations: CueObservation[];
-  /** Empty when this player has faces off. */
+  /**
+   * The face cues of the chart, from the round's start. Empty when this player has faces off.
+   * Each round and each replay decides again from these: see `faceCues`.
+   */
+  chartFaceCues: FaceCue[];
+  /**
+   * The face cues that the round plays: the chart's face cues, or none when the camera had not
+   * seen the player's face before play. See faceCheck.ts.
+   */
   faceCues: FaceCue[];
+  /** True when the round plays none of the chart's face cues, because the camera had not seen the face before play. */
+  faceCuesDropped: boolean;
   /** Judging state of each face cue, parallel to `faceCues`. */
   faceStates: FaceCueState[];
   /** What the tracker showed around each face cue, parallel to `faceCues`. For the run report. */
   faceObservations: FaceObservation[];
   /** Where the tracker last found this player's face. Null until it finds one. */
   faceSeenAt: Point | null;
+  /**
+   * True once the tracker has found this player's face since the ready screen or the results
+   * last opened. At the start of play, a player whose face it has not found gets no face cues.
+   */
+  faceSeenSinceScreen: boolean;
   score: Score;
   /** When the current hold in the Start cell began, in tracking-frame time. */
   holdStartMs: number | null;
@@ -78,10 +93,13 @@ export function createPlayers(settings: Settings): PlayerRun[] {
     mix: noMix(),
     states: [],
     observations: [],
+    chartFaceCues: [],
     faceCues: [],
+    faceCuesDropped: false,
     faceStates: [],
     faceObservations: [],
     faceSeenAt: null,
+    faceSeenSinceScreen: false,
     score: freshScore(),
     holdStartMs: null,
     hold: 0,

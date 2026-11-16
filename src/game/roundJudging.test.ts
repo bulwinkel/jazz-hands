@@ -96,6 +96,46 @@ describe('judging a round', () => {
   });
 });
 
+describe('a face cue that the camera cannot see', () => {
+  const smileCue: FaceCue = { timeSec: 10, beatIndex: 0, expression: 'smile' };
+  const relaxedFace: TrackedFace = { x: 0.5, y: 0.3, expressions: { smile: 0, openMouth: 0, pucker: 0 } };
+
+  /** A level-1 player with a combo of 1 from a hand cue at 9 s, then a face cue at 10 s. */
+  function playerWithCombo(): PlayerRun {
+    const player = playerWith([tap(4, 9)], [smileCue]);
+    judgePlayers([player], 9, frameWith([handIn(player, 4)]), 0);
+    expect(player.score).toMatchObject({ combo: 1, total: 1, perfect: 1 });
+    return player;
+  }
+
+  it('gives no result when no frame in its window had the face: score, combo and total stay, and nothing flashes', () => {
+    const player = playerWithCombo();
+    const before = { ...player.score };
+    const inWindow = judgePlayers([player], 10, frameWith([]), 1);
+    const closing = judgePlayers([player], 11, undefined, 2);
+    expect([...inWindow, ...closing]).toEqual([]);
+    expect(player.score).toEqual(before);
+    expect(player.faceStates[0]).toMatchObject({ unseen: true });
+    expect(player.faceStates[0].result).toBeUndefined();
+  });
+
+  it('is a Miss when a frame in its window had the face, and no hit', () => {
+    const player = playerWithCombo();
+    const inWindow = judgePlayers([player], 10, frameWith([], relaxedFace), 1);
+    const closing = judgePlayers([player], 11, undefined, 2);
+    expect([...inWindow, ...closing]).toEqual([{ player: 0, target: 'face', result: 'miss', atMs: 2 }]);
+    expect(player.score).toMatchObject({ combo: 0, total: 2, miss: 1 });
+  });
+
+  it('is judged no more once it has no result, also by a late frame from inside its window', () => {
+    const player = playerWithCombo();
+    judgePlayers([player], 11, undefined, 2);
+    const smile: TrackedFace = { ...relaxedFace, expressions: { smile: 1, openMouth: 0, pucker: 0 } };
+    expect(judgePlayers([player], 10, frameWith([], smile), 3)).toEqual([]);
+    expect(player.score.total).toBe(1);
+  });
+});
+
 describe('a frame that a tracking worker delivers late', () => {
   /**
    * Level 3: a hand enters the cell 320 ms after the beat, and the Good window ends at 350 ms.

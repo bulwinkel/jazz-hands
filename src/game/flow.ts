@@ -11,6 +11,7 @@ import type { RatedRound, SetRating } from './cueSetRating';
 import { buildRunReport, newFaceObservation, newObservation, newTrackingStats } from './diagnostics';
 import type { RunReport, TrackingStats } from './diagnostics';
 import { generateFaceCues } from './faceChart';
+import { decideFaceCues, facesOffText, looksForFaceBeforePlay, restartFaceCheck } from './faceCheck';
 import { needsFace, newFaceCueState } from './faceJudgment';
 import { fitMomentAt, planFit } from './fitTiming';
 import type { FitPlan } from './fitTiming';
@@ -114,6 +115,11 @@ export class DanceGame {
   private calibrationQueue: PlayerIndex[] = [];
   /** The grid of each player's last calibration, until the page reloads. */
   private readonly keptGrids = new KeptGrids();
+  /**
+   * True once the round has decided on its face cues, at the start of play. The ready screen
+   * and the results make it false again: the next play decides again. See faceCheck.ts.
+   */
+  private faceCuesDecided = false;
   /**
    * Each player's pointer: which item their hands are on, and how far their fist hold has come.
    * In the menu and the results, and in the video player.
@@ -343,7 +349,8 @@ export class DanceGame {
         player.mix = chartMix(manifest, played, player.level);
         if (player.faces) {
           const faceCues = generateFaceCues(manifest, this.seed, this.endSec);
-          player.faceCues = cuesFrom(faceCues, this.startSec);
+          player.chartFaceCues = cuesFrom(faceCues, this.startSec);
+          player.faceCues = player.chartFaceCues;
         }
       }
 
@@ -449,6 +456,31 @@ export class DanceGame {
     this.ui.resumeButton.hidden = true;
     this.setPhase('ready');
     this.ui.showMessage('Hands up to start!', 'Hold a hand in the Start cell · Space also starts');
+    this.beginFaceCheck();
+  }
+
+  /**
+   * The ready screen or the results opened. The face cues of the next play are open again,
+   * and the camera must see each face again, from now: a calibration moves the face region.
+   */
+  private beginFaceCheck(): void {
+    this.faceCuesDecided = false;
+    restartFaceCheck(this.players);
+  }
+
+  /**
+   * Play begins after a ready screen or the results: a player whose face the camera has not
+   * seen since that screen opened gets no face cues in this round. A note says so.
+   */
+  private checkFacesBeforePlay(): void {
+    const dropped = decideFaceCues(this.players);
+    for (const player of this.players) {
+      player.faceStates = player.faceCues.map(newFaceCueState);
+      player.faceObservations = player.faceCues.map(newFaceObservation);
+    }
+    this.faceCuesDecided = true;
+    const note = facesOffText(dropped, this.options.settings.playerCount);
+    if (note) this.ui.showToast(note, TOAST.longMs);
   }
 
   /**
@@ -561,6 +593,8 @@ export class DanceGame {
       this.fail(error);
       return;
     }
+    // A restart inside the round has no ready screen: it keeps the decision of the round.
+    if (!this.faceCuesDecided) this.checkFacesBeforePlay();
     this.trackingStats = newTrackingStats(performance.now());
     this.setPhase('play');
     this.ui.pauseButton.textContent = 'Ⅱ Pause';
@@ -573,6 +607,7 @@ export class DanceGame {
     this.ratedRound = this.roundToRate();
     this.audio?.stop();
     this.setPhase('results');
+    this.beginFaceCheck();
     this.ui.showResults(this.players, this.cueSet, {
       onReplay: this.beginCountdown,
       onMenu: this.showMenu,
@@ -728,11 +763,16 @@ export class DanceGame {
     return inCurrentStretch(this.trackingStats.play, frame.timeMs);
   }
 
-  /** Keeps where each face was last found. A face cue is drawn there, on the player's own face. */
+  /**
+   * Keeps where each face was last found. A face cue is drawn there, on the player's own face.
+   * Also notes that the camera saw the face, for the face check before play.
+   */
   private rememberFaces(frame: TrackingFrame): void {
     for (const player of this.players) {
       const face = frame.players[player.index].face;
-      if (face) player.faceSeenAt = { x: face.x, y: face.y };
+      if (!face) continue;
+      player.faceSeenAt = { x: face.x, y: face.y };
+      player.faceSeenSinceScreen = true;
     }
   }
 
@@ -1120,8 +1160,8 @@ export class DanceGame {
 
   /**
    * One line for each player with faces on: the strength of each expression in the latest
-   * frame. The tracker reads a face only around a face cue, so the line shows a dash
-   * between cues.
+   * frame. The tracker reads a face only before play and around a face cue, so the line shows
+   * a dash between cues.
    */
   private faceDebugLines(): string[] {
     const expressions = Object.keys(FACE_EMOJI) as FaceExpression[];
@@ -1165,19 +1205,25 @@ export class DanceGame {
 
   /**
    * Where the tracker looks for each player's face in the next frame. It looks only while
-   * the game needs that player's face for a face cue. At all other times the face models
-   * do no work, so hand tracking keeps its full speed.
+   * the game needs that player's face: for a face cue in play, and before play for the face
+   * check (see faceCheck.ts). At all other times the face models do no work, so hand tracking
+   * keeps its full speed.
    */
   private faceRegions(): FaceRegions {
     const regions: FaceRegions = [null, null];
-    if (this.phase !== 'play') return regions;
-    const timeSec = this.songTime();
-    const inputLatencySec = this.options.settings.inputLatencyMs / 1000;
     for (const player of this.players) {
-      const faceNeeded = needsFace(player.faceCues, player.level, timeSec, inputLatencySec);
-      if (faceNeeded) regions[player.index] = faceRegion(player.grid);
+      if (this.needsFaceNow(player)) regions[player.index] = faceRegion(player.grid);
     }
     return regions;
+  }
+
+  /** True while the game needs a player's face from the tracker. */
+  private needsFaceNow(player: PlayerRun): boolean {
+    if (this.phase !== 'play') {
+      return looksForFaceBeforePlay(this.phase, player, this.faceCuesDecided);
+    }
+    const inputLatencySec = this.options.settings.inputLatencyMs / 1000;
+    return needsFace(player.faceCues, player.level, this.songTime(), inputLatencySec);
   }
 
   private saveSettings = (): void => {

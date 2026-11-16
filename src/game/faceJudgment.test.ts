@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { FaceExpression, TrackedFace } from '../tracking/types';
 import { FACES, LEVELS } from './config';
-import { judgeFaceFrame, needsFace, newFaceCueState, openFaceCue } from './faceJudgment';
+import { isFinalFaceCue, judgeFaceFrame, needsFace, newFaceCueState, openFaceCue } from './faceJudgment';
 import type { FaceCueState } from './faceJudgment';
 import type { FaceCue, Level, Rating } from './types';
 
@@ -42,6 +42,7 @@ describe('judgeFaceFrame', () => {
 
   it('never changes a final cue', () => {
     const state = newFaceCueState(cue());
+    step(state, 2, face('smile', 0), 1);
     step(state, 2, undefined, 2);
     expect(state.result).toBe('miss');
     expect(step(state, 2, face('smile'), 2)).toBeUndefined();
@@ -78,7 +79,17 @@ describe.each(ALL_LEVELS)('timing windows at level %i', (level) => {
   it('scores Miss for a face that is only pulled outside the Good window', () => {
     const state = newFaceCueState(cue());
     step(state, level, face('smile'), at(1, goodMs[0] - 1));
+    // Inside the window the camera sees the face, but not the smile.
+    step(state, level, face('smile', 0), at(1, 0));
     expect(step(state, level, face('smile'), afterClose)).toBe('miss');
+  });
+
+  it('gives no result when the face shows only outside the Good window', () => {
+    const state = newFaceCueState(cue());
+    step(state, level, face('smile'), at(1, goodMs[0] - 1));
+    step(state, level, undefined, at(1, 0));
+    expect(step(state, level, face('smile'), afterClose)).toBeUndefined();
+    expect(state.unseen).toBe(true);
   });
 
   it('scores Perfect for pulling the face early and holding it, as soon as the Perfect window opens', () => {
@@ -117,10 +128,48 @@ describe('the expression', () => {
     expect(step(state, 2, face('pucker'), afterClose)).toBe('miss');
   });
 
-  it('is a Miss when no face is found', () => {
+  it('is a Miss when the face is found in one frame and shows nothing', () => {
     const state = newFaceCueState(cue());
-    expect(step(state, 2, undefined, 1)).toBeUndefined();
+    expect(step(state, 2, undefined, 0.9)).toBeUndefined();
+    expect(step(state, 2, face('smile', 0), 1)).toBeUndefined();
+    expect(step(state, 2, undefined, 1.1)).toBeUndefined();
     expect(step(state, 2, undefined, afterClose)).toBe('miss');
+    expect(state.unseen).toBeUndefined();
+  });
+});
+
+describe('a face cue the camera cannot see', () => {
+  const level: Level = 2;
+  const afterClose = at(1, LEVELS[level].goodMs[1] + 1);
+
+  it('gives no result when no frame in its window had the face', () => {
+    const state = newFaceCueState(cue());
+    for (const offsetMs of [-200, 0, 200]) {
+      expect(step(state, level, undefined, at(1, offsetMs))).toBeUndefined();
+    }
+    expect(step(state, level, undefined, afterClose)).toBeUndefined();
+    expect(state).toMatchObject({ faceFound: false, unseen: true });
+    expect(state.result).toBeUndefined();
+  });
+
+  it('is final once its window closes, and never changes after', () => {
+    const state = newFaceCueState(cue());
+    expect(isFinalFaceCue(state)).toBe(false);
+    step(state, level, undefined, afterClose);
+    expect(isFinalFaceCue(state)).toBe(true);
+    expect(judgeFaceFrame(state, level, face('smile'), at(1, 0))).toBe(state);
+  });
+
+  it('does not count a face seen after the window closed', () => {
+    const state = newFaceCueState(cue());
+    expect(step(state, level, face('smile', 0), afterClose)).toBeUndefined();
+    expect(state.unseen).toBe(true);
+  });
+
+  it('is no longer the open face cue once it is final', () => {
+    const states = [newFaceCueState(cue())];
+    states[0] = judgeFaceFrame(states[0], level, undefined, afterClose);
+    expect(openFaceCue(states, level, afterClose)).toBeUndefined();
   });
 });
 

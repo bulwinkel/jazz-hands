@@ -1,7 +1,7 @@
 import type { TrackingFrame } from '../tracking/types';
 import { LEVELS } from './config';
 import { observeFaceFrame, observeFrame } from './diagnostics';
-import { judgeFaceFrame } from './faceJudgment';
+import { isFinalFaceCue, judgeFaceFrame } from './faceJudgment';
 import { judgeFrame } from './judgment';
 import type { CueState } from './judgment';
 import type { PlayerRun } from './player';
@@ -49,7 +49,11 @@ function judgeHandCues(player: JudgedPlayer, timeSec: number, frame: TrackingFra
   return feedback;
 }
 
-/** The same as for hand cues: with no frame, it only closes cues whose time has passed. */
+/**
+ * The same as for hand cues: with no frame, it only closes cues whose time has passed. A face
+ * cue that ends with no result, because the camera did not see the face, scores nothing and
+ * shows no flash.
+ */
 function judgeFaceCues(player: JudgedPlayer, timeSec: number, frame: TrackingFrame | undefined, atMs: number): Feedback[] {
   const feedback: Feedback[] = [];
   const face = frame?.players[player.index].face;
@@ -58,7 +62,7 @@ function judgeFaceCues(player: JudgedPlayer, timeSec: number, frame: TrackingFra
     const state = player.faceStates[i];
     if (state.cue.timeSec - opensAheadSec > timeSec) break; // This cue and all later ones are not open yet.
     if (frame) observeFaceFrame(player.faceObservations[i], state.cue, player.level, face, timeSec);
-    if (state.result) continue;
+    if (isFinalFaceCue(state)) continue;
     const next = judgeFaceFrame(state, player.level, face, timeSec);
     player.faceStates[i] = next;
     if (next.result) feedback.push(awardFace(player, next.result, atMs));

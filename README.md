@@ -63,7 +63,7 @@ Each player also has two switches:
 | Switch | What it adds |
 | --- | --- |
 | Hand shapes ✊ ✋ ☝️ ✌️ | Some cues ask for a hand shape. |
-| Faces 😁 😲 😘 | The round asks for a smile, an open mouth or a kiss. |
+| Faces 😁 😲 😘 | The round asks for a smile, an open mouth or a kiss. See [Faces](#faces). |
 
 | Key | Use |
 | --- | --- |
@@ -127,6 +127,7 @@ The sections below describe each part of the game in detail.
 - [Calibrate](#calibrate)
 - [How a cue shows](#how-a-cue-shows)
 - [Slides](#slides)
+- [Faces](#faces)
 - [Cue sets](#cue-sets)
 - [Rate the cue set](#rate-the-cue-set)
 - [Moves](#moves)
@@ -250,6 +251,42 @@ and `goodMs` in `LEVELS`):
   shape too. When the tracker cannot read hand shapes, only the place of the hand counts.
 - A Perfect scores 100 points and a Good 50, times a combo bonus from 1 to 2. A Miss scores 0
   and ends the combo.
+
+## Faces
+
+With the Faces switch on, the round asks a player for a smile 😁, an open mouth 😲 or a kiss 😘
+on a bar start, every few bars. The sign shows over the player's face. A face cue is judged
+and scored as a tap, with the face in place of the hand.
+
+The game does not punish a player for what the camera cannot see.
+
+- Before play, the face models look for the face of each player whose chart has face cues:
+  on the ready screen, on the results and during the countdown, until the camera sees it.
+- When play begins, a player whose face the camera has not seen since the ready screen or the
+  results opened gets no face cues in this round. A note says so: "Faces off: the camera cannot
+  see your face". With two players, it names the player: "P1 faces off: the camera cannot see
+  your face".
+- The Faces switch stays on. Each new round and each **Play again** looks again. **R** has no
+  ready screen, so it keeps the choice of the round.
+- The camera must see the face again each time the ready screen opens, after a calibration
+  too, and each time the results open.
+- In the round, a face cue with no hit is a Miss only when the camera saw the face in a frame
+  inside the cue's window. With no such frame, the cue gives no result: no score, no change to
+  the combo, no count in the total, and no flash.
+
+The face models cost tracking speed, so they run only when the game needs a face. In play,
+that is while a face cue is on screen. A round that dropped a player's face cues runs no face
+model for that player in play. Before play, they run only for a player whose chart has face
+cues, and only until the camera has seen that player's face.
+
+The run report names:
+
+| Field | What it holds |
+| --- | --- |
+| `players[].faceCues.asked` | The face cues that the round played. 0 when it dropped them before play. |
+| `players[].faceCues.droppedBeforePlay` | True when the round dropped the player's face cues, because the camera had not seen the face before play. |
+| `players[].faceCues.unseen` | The face cues that gave no result, because no frame in their window had the face. |
+| `players[].faceCues.cues[].unseen` | True for a face cue that gave no result. Its `result` is then empty. |
 
 ## Cue sets
 
@@ -511,7 +548,7 @@ node scripts/compare-threads.mjs --camera-file=/path/to/recording.mov
 | `--url=<url>` | The game. The default is `http://localhost:5192/`. |
 | `--players=1` | One player. The default is 2. |
 | `--tracker=<mode>` | `hands-full`, `hands-split` or `pose`. The default is the game's choice for the players. |
-| `--faces` | Turn on face cues, so that the face models run too. |
+| `--faces` | Turn on face cues, so that the face models run too. A run whose recording shows no face before play drops its face cues, and runs no face model in play. |
 | `--seconds=<n>` | How long each run records. The default is 45. |
 | `--fps=<n>` | The rate Chrome plays the file at. The default comes from a `.y4m` header, else 30. |
 | `--threads=main,main` | Compare two runs on the main thread: how far two runs differ with no thread change. Main against worker should differ no more. The default is `main,worker`. |

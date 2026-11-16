@@ -12,7 +12,9 @@
 //   --url          A running dev server or `vite preview` of the game. Default as above.
 //   --players      1 or 2. Default 2.
 //   --tracker      hands-full, hands-split or pose. Default: the game's choice for the players.
-//   --faces        Turn on face cues for every player, so that the face models run too.
+//   --faces        Turn on face cues for every player, so that the face models run too: before
+//                  play, and in play around the face cues. A run whose recording shows no face
+//                  before play drops its face cues, and then runs no face model in play.
 //   --seconds      How long each run records, from the page load. Default 45. The round starts
 //                  at once, without the menu or a calibration; Space is pressed on the ready screen.
 //   --fps          The rate Chrome plays the file at. Default: from a .y4m header, else 30.
@@ -160,7 +162,7 @@ function frameAspect(path) {
 
 async function recordRun(thread, label) {
   // Both runs play cue set 1. The game picks a set at random by default, and with --faces the
-  // face models run only around the face cues of the set's chart.
+  // face models run in play only around the face cues of the set's chart.
   const params = new URLSearchParams({ input: 'camera', autostart: '1', framelog: '1', previews: '0', hands: '0', set: '1', players, thread });
   if (tracker) params.set('tracker', tracker);
   if (faces) for (const player of ['0', '1']) params.set(`faces${player}`, '1');

@@ -154,13 +154,28 @@ describe('the bot with faces on', () => {
     expect(strengths.filter((strength) => strength === 0)).toHaveLength(2);
   });
 
-  it('has no face outside play, and none without face cues', () => {
+  it('shows a still face before play, so the face check before play keeps its face cues', () => {
+    const region = faceRegion(grid);
+    for (const phase of ['ready', 'results', 'countdown'] as const) {
+      const { face } = botPlayer(phase, 1, [], grid, 1, SEED);
+      expect(face?.x).toBeCloseTo(region.x + region.width / 2);
+      expect(face?.y).toBeCloseTo(region.y + region.height / 2);
+      expect(face?.expressions).toEqual({ smile: 0, openMouth: 0, pucker: 0 });
+    }
+  });
+
+  it('has no face during a calibration, and none in play without face cues', () => {
     const faceCues = generateFaceCues(synthetic(), SEED, 120);
     const dueSec = faceCues[0].timeSec;
-    expect(botPlayer('ready', dueSec, [], grid, 1, SEED, faceCues).face).toBeUndefined();
-    expect(botPlayer('results', dueSec, [], grid, 1, SEED, faceCues).face).toBeUndefined();
+    expect(botPlayer('fit', dueSec, [], grid, 1, SEED, faceCues).face).toBeUndefined();
     expect(botPlayer('play', dueSec, [], grid, 1, SEED).face).toBeUndefined();
     expect(botPlayer('play', dueSec, [], grid, 1, SEED, faceCues).face).toBeDefined();
+  });
+
+  it('shows a still face around a face cue that it skips, so the cue is a Miss and not unseen', () => {
+    const [first] = generateFaceCues(synthetic(), SEED, 120);
+    const face = botFace(first.timeSec, [first], grid, 0, SEED);
+    expect(face?.expressions).toEqual({ smile: 0, openMouth: 0, pucker: 0 });
   });
 
   it('skips the same face cues on every run when its accuracy is below 1', () => {
