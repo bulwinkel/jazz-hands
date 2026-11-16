@@ -265,7 +265,7 @@ function chartFrame(manifest: Manifest, options: ChartOptions): ChartFrame {
     const stride = selectStride(beatIntervalSec, fast ? CHART.fastIntervalSec : CHART.slowIntervalSec);
     return intensity[beat] < rules.sparseBelowIntensity ? stride * 2 : stride;
   };
-  // Every beat asks for its stride several times: work each one out once.
+  // Every beat asks for its stride more than once: work each one out once.
   const strides = beats.map((_, beat) => strideFor(beat));
   const strideAt = (beat: number): number => strides[beat] ?? strideFor(beat);
   const isCueBeat = (beat: number): boolean =>
@@ -434,7 +434,7 @@ function addMoveCue(frame: ChartFrame, state: ChartState, beat: number, move: Mo
 /** A tap on one cell, due on a beat. */
 function tapOn(frame: ChartFrame, beat: number, cell: number): Cue {
   const timeSec = frame.manifest.beats[beat];
-  return { timeSec, beatIndex: beat, cells: [cell], times: [timeSec] };
+  return { timeSec, beatIndex: beat, cells: [cell] };
 }
 
 /**
@@ -551,7 +551,7 @@ function addSlide(frame: ChartFrame, state: ChartState, beat: number, roll: Beat
 function doubleCue(frame: ChartFrame, beat: number, roll: BeatRolls): Cue {
   const timeSec = frame.manifest.beats[beat];
   const cells = doubleCells(frame.master[beat], roll.side, roll.partnerRow);
-  return { timeSec, beatIndex: beat, cells, times: [timeSec, timeSec] };
+  return { timeSec, beatIndex: beat, cells };
 }
 
 /** A tap on the beat's master cell. With shapes on, some ask for a shape, when the hand has time to make it. */
@@ -586,7 +586,7 @@ function addOffbeatTap(frame: ChartFrame, state: ChartState, cue: Cue, roll: Bea
 
   const taken = [...cue.cells, frame.master[nextCueBeat]];
   const cell = pickWeighted(CHART.cellWeights, roll.offbeatCell, (c) => !taken.includes(c));
-  const tap: Cue = { timeSec: offbeatSec, beatIndex: beat + stride / 2, cells: [cell], times: [offbeatSec] };
+  const tap: Cue = { timeSec: offbeatSec, beatIndex: beat + stride / 2, cells: [cell] };
   if (frame.phraseShape) tap.gesture = frame.phraseShape[beat];
   state.entries.push({ cue: tap, role: 'offbeat' });
   state.previousSec = offbeatSec;

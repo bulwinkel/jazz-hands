@@ -22,7 +22,7 @@ function playerWith(cues: Cue[], faceCues: FaceCue[] = []): PlayerRun {
   return player;
 }
 
-const tap = (cell: number, timeSec: number): Cue => ({ timeSec, beatIndex: 0, cells: [cell], times: [timeSec] });
+const tap = (cell: number, timeSec: number): Cue => ({ timeSec, beatIndex: 0, cells: [cell] });
 
 /** A hand in the middle of one of the player's cells. */
 function handIn(player: PlayerRun, cell: number): TrackedHand {
@@ -81,7 +81,7 @@ describe('judging a round', () => {
   });
 
   it('flashes a double tap on both of its cells', () => {
-    const double: Cue = { timeSec: 10, beatIndex: 0, cells: [3, 5], times: [10, 10] };
+    const double: Cue = { timeSec: 10, beatIndex: 0, cells: [3, 5] };
     const player = playerWith([double]);
     const feedback = judgePlayers([player], 10, frameWith([handIn(player, 3), handIn(player, 5)]), 0);
     expect(feedback.map((item) => item.target)).toEqual([3, 5]);

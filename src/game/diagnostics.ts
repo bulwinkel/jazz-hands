@@ -19,18 +19,18 @@ import type { Cue, FaceCue, Level, Rating, Rect } from './types';
 
 /** What the tracker showed in one cell of a cue while that cell could be hit. */
 export interface CellObservation {
-  /** Tracking frames with a hand in the cell, inside the cell's Good window. */
+  /** Tracking frames with a hand in the cell, inside the cue's Good window. */
   framesInCell: number;
   /** Of those, frames where the hand also made the asked-for shape. All of them when no shape is asked. */
   framesMatching: number;
-  /** When a hand was first seen in the cell, in ms from the cell's due time. Negative is early. */
+  /** When a hand was first seen in the cell, in ms from the cue's due time. Negative is early. */
   firstInCellMs: number | null;
   /** When a hand in the cell first made the asked-for shape, in ms from the due time. */
   firstMatchMs: number | null;
 }
 
 export interface CueObservation {
-  /** Tracking frames judged while the Good window of any cell was open. */
+  /** Tracking frames judged while the cue's Good window was open. */
   frames: number;
   cells: CellObservation[];
   /** Shape cues only: how often the tracker read each shape on a hand in the cell. */
@@ -58,14 +58,11 @@ export function observeFrame(
   hands: readonly TrackedHand[],
   timeSec: number,
 ): void {
-  const { goodMs } = LEVELS[level];
-  let anyWindowOpen = false;
+  const deltaMs = (timeSec - cue.timeSec) * 1000;
+  if (!isInsideWindow(deltaMs, LEVELS[level].goodMs)) return;
+  observation.frames++;
 
   cue.cells.forEach((cell, k) => {
-    const deltaMs = (timeSec - cue.times[k]) * 1000;
-    if (!isInsideWindow(deltaMs, goodMs)) return;
-    anyWindowOpen = true;
-
     const rect = cellRect(grid, cell);
     const handsInCell = hands.filter((hand) => insideCell(hand, rect));
     if (handsInCell.length === 0) return;
@@ -82,7 +79,6 @@ export function observeFrame(
       seen.firstMatchMs ??= Math.round(deltaMs);
     }
   });
-  if (anyWindowOpen) observation.frames++;
 }
 
 /** What the tracker showed of a player's face while one face cue could be hit. */

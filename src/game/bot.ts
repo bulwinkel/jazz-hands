@@ -14,7 +14,7 @@ export function botHits(cue: Pick<Cue, 'beatIndex'>, accuracy: number, seed: num
   return roll < accuracy;
 }
 
-/** The bot's hands during play: one in every cue cell around that cell's due time. */
+/** The bot's hands during play: one in every cell of a cue, around the cue's due time. */
 export function botHands(
   timeSec: number,
   cues: readonly Cue[],
@@ -26,12 +26,9 @@ export function botHands(
   for (const cue of cues) {
     if (cue.timeSec - BOT.leadSec > timeSec) break; // Cues are in time order: the rest are later.
     if (!botHits(cue, accuracy, seed)) continue;
-    cue.cells.forEach((cell, k) => {
-      const dueSec = cue.times[k];
-      if (timeSec >= dueSec - BOT.leadSec && timeSec <= dueSec + BOT.holdSec) {
-        hands.push(handAt(grid, cell, cue.gesture));
-      }
-    });
+    const holding = timeSec >= cue.timeSec - BOT.leadSec && timeSec <= cue.timeSec + BOT.holdSec;
+    if (!holding) continue;
+    for (const cell of cue.cells) hands.push(handAt(grid, cell, cue.gesture));
   }
   return hands;
 }

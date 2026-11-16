@@ -44,10 +44,8 @@ export interface Cue {
    * song with a cue on every beat, a whole beat in a faster song.
    */
   beatIndex: number;
-  /** Cell indices 0..8, row by row. 0 is top-left on screen. */
+  /** Cell indices 0..8, row by row. 0 is top-left on screen. All are due at `timeSec`. */
   cells: number[];
-  /** Due time of each cell, parallel to `cells`. Every cell is due at `timeSec`. */
-  times: number[];
   /** Required hand shape, for every cell of the cue. */
   gesture?: GestureName;
   /** Set on the three cues of a slide only. The run report shows it, to compare slides with other taps. */

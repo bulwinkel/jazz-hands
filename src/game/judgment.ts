@@ -73,10 +73,10 @@ function handSatisfies(hand: TrackedHand, cell: Rect, gesture: GestureName | und
 /**
  * Applies one tracking frame to one cue and returns the new state. Never mutates `state`.
  *
- * Each cell is judged against its own due time. A cell is Perfect when a hand is in it during
- * any frame inside the Perfect window, so arriving early and holding still is correct play.
- * The cue is Perfect as soon as every cell is. Otherwise it becomes final when the Good window
- * of its last cell closes: Miss if a cell was never hit, else Good.
+ * Every cell is due at the cue's time. A cell is Perfect when a hand is in it during any frame
+ * inside the Perfect window, so arriving early and holding still is correct play. The cue is
+ * Perfect as soon as every cell is. Otherwise it becomes final when its Good window closes:
+ * Miss if a cell was never hit, else Good.
  */
 export function judgeFrame(
   state: CueState,
@@ -88,10 +88,10 @@ export function judgeFrame(
   if (state.result) return state;
   const { perfectMs, goodMs } = LEVELS[level];
   const { cue } = state;
+  const deltaMs = (timeSec - cue.timeSec) * 1000;
 
   const marks = state.marks.map((mark, k): CellMark => {
     if (mark === 'perfect') return mark;
-    const deltaMs = (timeSec - cue.times[k]) * 1000;
     if (!isInsideWindow(deltaMs, goodMs)) return mark;
     const rect = cellRect(grid, cue.cells[k]);
     if (!hands.some((hand) => handSatisfies(hand, rect, cue.gesture))) return mark;
@@ -104,8 +104,7 @@ export function judgeFrame(
     next.result = 'perfect';
     return next;
   }
-  const lastDueSec = Math.max(...cue.times);
-  const windowClosed = (timeSec - lastDueSec) * 1000 > goodMs[1] + EPSILON_MS;
+  const windowClosed = deltaMs > goodMs[1] + EPSILON_MS;
   if (windowClosed) next.result = marks.includes(null) ? 'miss' : 'good';
   return next;
 }

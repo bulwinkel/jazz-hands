@@ -15,7 +15,7 @@ function hand(cell: number, gesture: GestureName = 'open'): TrackedHand {
 
 /** A tap due at 1 s. */
 function tap(cells: number[], gesture?: GestureName): Cue {
-  return { timeSec: 1, beatIndex: 2, cells, times: cells.map(() => 1), gesture };
+  return { timeSec: 1, beatIndex: 2, cells, gesture };
 }
 
 /** Feeds one frame into `state`. Returns the rating only on the frame that makes the cue final. */

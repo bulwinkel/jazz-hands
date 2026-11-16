@@ -84,13 +84,12 @@ describe('chart for every level', () => {
     }
   });
 
-  it('gives every cell a due time, in time order', () => {
+  it('gives every cue a due time, in time order', () => {
     const song = synthetic(100, 600);
     for (const level of ALL_LEVELS) {
       const cues = chart(song, level, 11, { shapes: true });
       cues.forEach((cue, i) => {
-        expect(cue.times).toHaveLength(cue.cells.length);
-        expect(cue.times[0]).toBe(cue.timeSec);
+        expect(Number.isFinite(cue.timeSec)).toBe(true);
         if (i > 0) expect(cue.timeSec).toBeGreaterThan(cues[i - 1].timeSec);
       });
     }
@@ -292,7 +291,7 @@ describe('level 3', () => {
       expect(slideTargets(from)).toContain(to);
       expect(middle.cells).toEqual([middleCell(from, to)]);
       expect([middle.beatIndex, end.beatIndex]).toEqual([first.beatIndex + 1, first.beatIndex + 2]);
-      for (const cue of [first, middle, end]) expect(cue.times).toEqual([song.beats[cue.beatIndex]]);
+      for (const cue of [first, middle, end]) expect(cue.timeSec).toBe(song.beats[cue.beatIndex]);
     }
   });
 
@@ -630,7 +629,7 @@ describe('moves', () => {
         expect(moveCues.length).toBeGreaterThan(10);
         for (const { cue } of moveCues) {
           expect(cue.cells).toHaveLength(1);
-          expect(cue.times).toEqual([song.beats[cue.beatIndex]]);
+          expect(cue.timeSec).toBe(song.beats[cue.beatIndex]);
         }
       }
     }

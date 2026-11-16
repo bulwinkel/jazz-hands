@@ -29,7 +29,7 @@ function hand(cell: number, gesture: GestureName = 'open'): TrackedHand {
 
 /** A single tap on cell 4, due at 1 s. */
 function tap(gesture?: GestureName): Cue {
-  return { timeSec: 1, beatIndex: 2, cells: [4], times: [1], gesture };
+  return { timeSec: 1, beatIndex: 2, cells: [4], gesture };
 }
 
 /** A player with no cues yet. */

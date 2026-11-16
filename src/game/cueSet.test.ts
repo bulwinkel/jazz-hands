@@ -43,7 +43,7 @@ const solo = (level: Level): ChartFor[] => [{ level, shapes: false }];
 /** A cue on beat `beatIndex` of a test song with one beat a second. */
 function entry(kind: 'single' | 'double', beatIndex: number, role: CueRole = 'beat'): ChartEntry {
   const cells = kind === 'double' ? [0, 2] : [1];
-  const cue: Cue = { timeSec: beatIndex, beatIndex, cells, times: cells.map(() => beatIndex) };
+  const cue: Cue = { timeSec: beatIndex, beatIndex, cells };
   return { cue, role };
 }
 
@@ -56,7 +56,7 @@ const SLIDE_STEPS: SlideStep[] = [1, 2, 3];
 function slide(first: number): ChartEntry[] {
   return SLIDE_STEPS.map((slideStep, k) => {
     const beatIndex = first + k;
-    const cue: Cue = { timeSec: beatIndex, beatIndex, cells: [k], times: [beatIndex], slideStep };
+    const cue: Cue = { timeSec: beatIndex, beatIndex, cells: [k], slideStep };
     return { cue, role: k === 0 ? 'beat' : 'slide' };
   });
 }
@@ -106,25 +106,25 @@ describe('picking a set at random', () => {
     return rolls.map((roll) => pickCueSet(count, avoid, roll));
   };
   /** How often each set comes. */
-  const timesEach = (sets: number[]): Map<number, number> => {
-    const times = new Map<number, number>();
+  const countEach = (sets: number[]): Map<number, number> => {
+    const counts = new Map<number, number>();
     for (const set of sets) {
-      times.set(set, (times.get(set) ?? 0) + 1);
+      counts.set(set, (counts.get(set) ?? 0) + 1);
     }
-    return times;
+    return counts;
   };
 
   it('gives every set, each as often, when there is none to avoid', () => {
-    const times = timesEach(pickedSets(6, null));
-    expect([...times.keys()].sort((a, b) => a - b)).toEqual(ALL_SETS);
-    expect(Math.max(...times.values()) - Math.min(...times.values())).toBeLessThanOrEqual(1);
+    const counts = countEach(pickedSets(6, null));
+    expect([...counts.keys()].sort((a, b) => a - b)).toEqual(ALL_SETS);
+    expect(Math.max(...counts.values()) - Math.min(...counts.values())).toBeLessThanOrEqual(1);
   });
 
   it('never gives the set to avoid, and every other set as often', () => {
     for (const avoid of ALL_SETS) {
-      const times = timesEach(pickedSets(6, avoid));
-      expect([...times.keys()].sort((a, b) => a - b)).toEqual(ALL_SETS.filter((set) => set !== avoid));
-      expect(Math.max(...times.values()) - Math.min(...times.values())).toBeLessThanOrEqual(1);
+      const counts = countEach(pickedSets(6, avoid));
+      expect([...counts.keys()].sort((a, b) => a - b)).toEqual(ALL_SETS.filter((set) => set !== avoid));
+      expect(Math.max(...counts.values()) - Math.min(...counts.values())).toBeLessThanOrEqual(1);
     }
   });
 
