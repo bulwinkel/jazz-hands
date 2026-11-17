@@ -104,32 +104,47 @@ export interface RoundSpan {
  *   `CHART.busyIntensity` and the threshold of `shuffleThreshold`.
  * - The threshold falls through the round, so early only the most intense phrases shuffle and
  *   late any busy phrase can.
- * - The first `CHART.steadyOpeningPhrases` phrases of the round never shuffle: players first
- *   find the beat. A round that starts inside the song counts from its own first cue.
- * - Two shuffle phrases never follow each other: a steady phrase gives a rest between them.
+ * - The round opens steady: players first find the beat. Its first
+ *   `CHART.steadyOpeningPhrases` whole phrases never shuffle, and no phrase that starts less
+ *   than `CHART.firstShuffleAfterSec` after the round's first cue. A part of a phrase before
+ *   the round's first cue does not count as one of its whole phrases.
+ * - After a shuffle phrase, at least `CHART.steadyPhrasesAfterShuffle` steady phrases follow:
+ *   a rest between two shuffles.
  */
 export function shufflePhrases(manifest: Manifest, round: RoundSpan): boolean[] {
   const beatsPerPhrase = phraseBeats(manifest);
   const cueEndSec = tailStartSec(manifest, round.endSec);
   const shuffles: boolean[] = [];
-  let roundPhrases = 0;
-  let previousIsShuffle = false;
+  let wholePhrases = 0;
+  let steadySinceShuffle = Infinity;
 
   for (let firstBeat = manifest.firstDownbeat; firstBeat < manifest.beats.length; firstBeat += beatsPerPhrase) {
     const endBeat = Math.min(firstBeat + beatsPerPhrase, manifest.beats.length);
     const firstSec = manifest.beats[firstBeat];
     const lastSec = manifest.beats[endBeat - 1];
-    // A phrase is in the round when it can hold a cue of the round.
-    const inRound = lastSec >= round.firstCueSec - EPSILON && firstSec < cueEndSec;
-    const opening = roundPhrases < CHART.steadyOpeningPhrases;
+    // A whole phrase lies between the round's first cue and its last bar, which has no cues.
+    const whole = firstSec >= round.firstCueSec - EPSILON && lastSec < cueEndSec;
+    const opening = inOpening(wholePhrases, firstSec, round);
+    const rested = steadySinceShuffle >= CHART.steadyPhrasesAfterShuffle;
     const threshold = shuffleThreshold(firstSec, round);
     const intense = phraseIntensity(manifest, firstBeat, endBeat) >= threshold - EPSILON;
-    const isShuffle: boolean = inRound && !opening && !previousIsShuffle && intense;
-    if (inRound) roundPhrases++;
+    const inRound = firstSec < cueEndSec;
+    const isShuffle = inRound && !opening && rested && intense;
+    if (whole) wholePhrases++;
     shuffles.push(isShuffle);
-    previousIsShuffle = isShuffle;
+    steadySinceShuffle = isShuffle ? 0 : steadySinceShuffle + 1;
   }
   return shuffles;
+}
+
+/**
+ * True for a phrase in the steady opening of the round: one of its first whole phrases, or a
+ * phrase that starts too soon after the round's first cue. `wholeBefore` is the count of whole
+ * phrases of the round before this one.
+ */
+function inOpening(wholeBefore: number, firstSec: number, round: RoundSpan): boolean {
+  if (wholeBefore < CHART.steadyOpeningPhrases) return true;
+  return firstSec < round.firstCueSec + CHART.firstShuffleAfterSec - EPSILON;
 }
 
 /** The mean intensity of the beats from `firstBeat` up to `endBeat`. */

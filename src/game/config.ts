@@ -363,14 +363,21 @@ export const CHART = {
    * threshold is a shuffle phrase: its shape changes from cue to cue, by a pattern. The
    * threshold falls in a straight line, from this value at the round's first cue to
    * `shuffleIntensityTo` at its end, so shuffles come more often late in the song. Tuned on the
-   * 20 songs: 17 Short rounds get 1 to 3 shuffle phrases, and a Full round gets a shuffle in a
-   * median of 24% of its phrases. See shapePatterns.ts.
+   * 20 songs: every Short round gets 2 or 3 shuffle phrases, and a Full round gets a shuffle in
+   * a median of 24% of its phrases. See shapePatterns.ts.
    */
-  shuffleIntensityFrom: 0.98,
+  shuffleIntensityFrom: 0.66,
   /** The threshold of a shuffle phrase at the end of the round: busy music is enough. */
   shuffleIntensityTo: 0.5,
-  /** The first phrases of a round are never shuffle phrases: players first find the beat. */
+  /** The first whole phrases of a round are never shuffle phrases: players first find the beat. */
   steadyOpeningPhrases: 2,
+  /**
+   * No phrase that starts less than this many seconds after the round's first cue is a shuffle
+   * phrase. Two whole phrases of a fast song last only about 11 s.
+   */
+  firstShuffleAfterSec: 20,
+  /** After a shuffle phrase, at least this many steady phrases follow: a rest between two shuffles. */
+  steadyPhrasesAfterShuffle: 2,
   /**
    * In a shuffle phrase, the pattern steps at every cue when the cues are at least this far
    * apart, and at every second cue when they are closer: a hand needs time to change shape.

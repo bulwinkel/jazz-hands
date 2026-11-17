@@ -40,6 +40,14 @@ const inSlide = (cue: Cue): boolean => cue.slideStep !== undefined;
 const rolled = (cue: Cue): boolean => (cue.slideStep ?? 1) === 1;
 /** An extra tap between two cue beats. Its beat index is fractional. */
 const isOffbeat = (cue: Cue): boolean => !Number.isInteger(cue.beatIndex);
+/** The phrase of 4 bars that a cue's beat belongs to, counted from 0 at the first bar start. */
+const phraseOf = (song: Manifest, cue: Cue): number =>
+  Math.floor((Math.floor(cue.beatIndex) - song.firstDownbeat) / phraseBeats(song));
+/** The phrases that hold a shuffle cue, in order. */
+const shufflesOf = (song: Manifest, entries: ChartEntry[]): number[] => {
+  const phrases = entries.flatMap(({ cue }) => (cue.shuffle ? [phraseOf(song, cue)] : []));
+  return [...new Set(phrases)];
+};
 
 function chart(
   manifest: Manifest,
@@ -463,10 +471,6 @@ describe('shuffle phrases at level 5', () => {
   const entriesOf = (song: Manifest, seed = 42): ChartEntry[] =>
     chartEntries(song, { level: 5, shapes: true, seed, endSec: song.durationSec });
 
-  /** The phrase that a cue's beat belongs to, counted from 0 at the first bar start. */
-  const phraseOf = (song: Manifest, cue: Cue): number =>
-    Math.floor((Math.floor(cue.beatIndex) - song.firstDownbeat) / phraseBeats(song));
-
   /**
    * The first shape of each cue that the pattern counts, by shuffle phrase: every cue of the
    * phrase except the off-beat taps, in time order.
@@ -559,8 +563,7 @@ describe('shuffle phrases at level 5', () => {
     const plannedPhrases = planned.flatMap((isShuffle, phrase) => (isShuffle ? [phrase] : []));
     expect(plannedPhrases.length).toBeGreaterThan(5);
     for (const seed of [1, 2, 3, 42]) {
-      const marked = new Set(entriesOf(song, seed).flatMap(({ cue }) => (cue.shuffle ? [phraseOf(song, cue)] : [])));
-      expect([...marked]).toEqual(plannedPhrases);
+      expect(shufflesOf(song, entriesOf(song, seed))).toEqual(plannedPhrases);
     }
   });
 
@@ -573,13 +576,28 @@ describe('shuffle phrases at level 5', () => {
 });
 
 describe('shuffle phrases on every song', () => {
-  /** The phrases that hold a shuffle cue in a played chart. */
-  const shufflesOf = (song: Manifest, entries: ChartEntry[]): number[] => {
-    const phrases = entries.flatMap(({ cue }) =>
-      cue.shuffle ? [Math.floor((Math.floor(cue.beatIndex) - song.firstDownbeat) / phraseBeats(song))] : [],
-    );
-    return [...new Set(phrases)];
-  };
+  /** The part of a level 5 chart that a round plays from `startSec` to `endSec`. */
+  function roundChart(song: Manifest, startSec: number, endSec: number, seed = DEFAULT_SEED): ChartEntry[] {
+    const options = { level: 5 as Level, shapes: true, seed, endSec, roundFromSec: startSec + CHART.leadSec };
+    return entriesFrom(chartEntries(song, options), startSec);
+  }
+
+  /**
+   * Checks the shuffle phrases of a round against the steady opening and the rest after each
+   * shuffle. The round's first cue is the earliest that the chart allows, as the plan knows it.
+   */
+  function expectSteadyOpeningAndRests(song: Manifest, startSec: number, played: ChartEntry[]): void {
+    const firstCueSec = Math.max(leadInEndSec(song), startSec + CHART.leadSec);
+    const phraseStartSec = (phrase: number): number => song.beats[song.firstDownbeat + phrase * phraseBeats(song)];
+    const shuffles = shufflesOf(song, played);
+    shuffles.forEach((phrase, i) => {
+      expect(phraseStartSec(phrase)).toBeGreaterThanOrEqual(firstCueSec + CHART.firstShuffleAfterSec - 1e-8);
+      // The whole phrases before it: the phrases that start at or after the round's first cue.
+      const wholeBefore = Array.from({ length: phrase }, (_, p) => p).filter((p) => phraseStartSec(p) >= firstCueSec);
+      expect(wholeBefore.length).toBeGreaterThanOrEqual(CHART.steadyOpeningPhrases);
+      if (i > 0) expect(phrase - shuffles[i - 1]).toBeGreaterThan(CHART.steadyPhrasesAfterShuffle);
+    });
+  }
 
   it.each(['short', 'full'] as const)('are the same for every cue set of a %s round', (length) => {
     for (const song of SONG_MANIFESTS) {
@@ -596,18 +614,34 @@ describe('shuffle phrases on every song', () => {
     }
   });
 
-  it.each(['short', 'full'] as const)('never come in the first two phrases of a %s round, nor two in a row', (length) => {
+  it.each(['short', 'full'] as const)('open a %s round steady, and rest two phrases after each shuffle', (length) => {
     for (const song of SONG_MANIFESTS) {
       const startSec = playStartSec(song, length);
-      const options = { level: 5 as Level, shapes: true, seed: DEFAULT_SEED, endSec: playEndSec(song, length) };
-      const entries = chartEntries(song, { ...options, roundFromSec: startSec + CHART.leadSec });
-      const played = entriesFrom(entries, startSec);
-      const phraseOf = (cue: Cue): number => Math.floor((Math.floor(cue.beatIndex) - song.firstDownbeat) / phraseBeats(song));
-      const firstPhrase = phraseOf(played[0].cue);
-      for (const phrase of shufflesOf(song, played)) {
-        expect(phrase).toBeGreaterThanOrEqual(firstPhrase + CHART.steadyOpeningPhrases);
-        expect(shufflesOf(song, played)).not.toContain(phrase + 1);
-      }
+      const played = roundChart(song, startSec, playEndSec(song, length));
+      expect(shufflesOf(song, played).length).toBeGreaterThan(0);
+      expectSteadyOpeningAndRests(song, startSec, played);
+    }
+  });
+
+  it('open steady a round that starts where the URL says', () => {
+    // From the Garden to the Cross from 69.1381 s: the second phrase that this round played
+    // once shuffled, because a phrase with no cue of the round counted as its first phrase.
+    const garden = SONG_MANIFESTS[2];
+    expect(garden.title).toBe('From the Garden to the Cross');
+    const played = roundChart(garden, 69.1381, garden.durationSec, 1);
+    expectSteadyOpeningAndRests(garden, 69.1381, played);
+    const firstShuffle = played.find((entry) => entry.cue.shuffle);
+    expect(firstShuffle?.cue.timeSec).toBeGreaterThan(played[0].cue.timeSec + CHART.firstShuffleAfterSec);
+  });
+
+  it('wait 20 s after the first cue in a fast song', () => {
+    // Drum and Bass Violins once shuffled 6.7 s after the first cue: its phrases last 5.3 s.
+    const fast = SONG_MANIFESTS[3];
+    expect(fast.title).toBe('Drum and Bass Violins');
+    for (const length of ['short', 'full'] as const) {
+      const played = roundChart(fast, playStartSec(fast, length), playEndSec(fast, length));
+      const firstShuffle = played.find((entry) => entry.cue.shuffle);
+      expect(firstShuffle?.cue.timeSec).toBeGreaterThan(played[0].cue.timeSec + CHART.firstShuffleAfterSec);
     }
   });
 });
