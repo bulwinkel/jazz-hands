@@ -216,8 +216,9 @@ each of three cue beats in a row.
 - Each cell is judged and scored as a tap of its own. A slide gives 3 cues and 3 results: a
   missed middle cell gives one Miss, and the start cell and the end cell keep their own results.
 - At level 3 a cell of a slide asks for no hand shape. At level 4 with the shapes switch on, a
-  slide can ask for a pattern of shapes over its three cells. At level 5 each cell asks for the
-  shape of its own beat: in a shuffle phrase, the cells step through the pattern. See
+  slide can ask for shapes: a pattern over its three cells when they are at least 0.7 s apart,
+  else one shape for all three. At level 5 each cell asks for the shape of its own beat and
+  phrase: in a shuffle phrase, the cells step through the pattern. See
   [Hand shapes](#hand-shapes).
 
 ### When a chart makes a slide
@@ -298,15 +299,29 @@ The cue gets shapes only when the cue before it is at least 0.55 s earlier
 | --- | --- | --- |
 | Single tap | One shape | One shape |
 | Tap for two hands | No shape | Two different shapes: the first two of a pattern |
-| Slide | No shape | A pattern over its three cells: A B A or A B C |
+| Slide, cells at least 0.7 s apart | No shape | A pattern over its three cells: A B A or A B C |
+| Slide, cells closer than 0.7 s | No shape | One shape for all three cells: a hand has no time to change |
 | Off-beat tap | No shape | No shape |
 | Cue of a move | No shape | No shape |
 
 `shapesOnDoublesAndSlides` in `LEVELS` gives level 4 its shapes on taps for two hands and
-slides. In a Short round at level 4, 18% of the single taps, 25% of the taps for two hands and
-30% of the slides ask for shapes: the 20 songs, 4 seeds each. Single taps and taps for two hands
-get shapes less often than the chance, because many of them come less than 0.55 s after an
-off-beat tap.
+slides. The 0.7 s is `CHART.patternStepSec`, as at level 5.
+
+At level 4, these shares of the cues ask for shapes. They count the 20 songs, the 6 cue sets
+of each, with the seed and the share of moves that each set plays, for one player with the
+switch on:
+
+| Cue | Short round | Full round |
+| --- | --- | --- |
+| Single tap | 22% | 26% |
+| Tap for two hands | 27% | 27% |
+| Slide | 34% | 34% |
+| Every cue, off-beat taps and moves too | 18% | 20% |
+
+Single taps and taps for two hands get shapes less often than the chance, because many of them
+come less than 0.55 s after an off-beat tap. Of the slides with shapes, 36% change shape from
+cell to cell. In the other slides the cells come closer than 0.7 s, in 9 of the 20 songs, and
+one shape lasts all three cells.
 
 ### Steady phrases and shuffle phrases at level 5
 
@@ -322,39 +337,74 @@ The music decides which phrases are shuffle phrases, not the seed. Every cue set
 the same shuffle phrases, so the sets stay equally hard. A phrase is a shuffle phrase when all
 of these are true:
 
-- Its mean intensity reaches a threshold. The threshold falls in a straight line, from 0.98 at
+- Its mean intensity reaches a threshold. The threshold falls in a straight line, from 0.66 at
   the round's first cue to 0.5 at the end of the round (`CHART.shuffleIntensityFrom` and
-  `CHART.shuffleIntensityTo`). Early in the round, only the most intense phrases shuffle. Late
+  `CHART.shuffleIntensityTo`). Early in the round, only the more intense phrases shuffle. Late
   in the round, any busy phrase can.
-- It is not one of the first two phrases of the round (`CHART.steadyOpeningPhrases`). A round
-  that starts inside the song counts its phrases from its own first cue.
-- The phrase before it is not a shuffle phrase.
+- It is not one of the first two whole phrases of the round (`CHART.steadyOpeningPhrases`). A
+  whole phrase lies between the round's first cue and its last bar. The part of a phrase before
+  the first cue does not count. A round that starts inside the song counts from its own first
+  cue.
+- It starts at least 20 s after the round's first cue (`CHART.firstShuffleAfterSec`). Two whole
+  phrases of a fast song last only about 11 s.
+- At least two steady phrases come between it and the shuffle phrase before it
+  (`CHART.steadyPhrasesAfterShuffle`).
 
 In a shuffle phrase:
 
-- The pattern steps on cue beats. Where the cues of the phrase are at least 0.7 s apart
-  (`CHART.patternStepSec`), it steps at every cue. Where they are closer, it steps at every
-  second cue: each shape lasts two cues.
-- A tap for two hands takes the shape of the pattern now and its next shape.
-- A slide steps through the pattern, cell by cell.
+- The pattern steps on cue beats. Where every two cue beats of the phrase that follow each
+  other are at least 0.7 s apart (`CHART.patternStepSec`), it steps at every cue. Where two are
+  closer, it steps at every second cue: each shape lasts two cues. The gaps are the real times
+  of the beats, so a song that gets faster inside a phrase steps at every second cue.
+- The pattern never steps on a cue that comes directly after an off-beat tap: a new shape so
+  soon after a tap is too fast. The step waits for the next cue. A first cue of the phrase
+  directly after an off-beat tap keeps the shape of the cue before the phrase.
+- The pattern starts again in each shuffle phrase. When its first shape is the shape of the cue
+  before the phrase, it starts on its second shape, so a shuffle always starts with a change.
+- A tap for two hands takes the shape of the pattern now and its next shape. Directly after an
+  off-beat tap, the cell on the side of that tap takes the shape of that tap, so its hand keeps
+  its shape.
+- A slide steps through the pattern, cell by cell. Each cell of a slide across a phrase border
+  takes the shapes of its own phrase.
 - A move steps through the pattern too: a point or a circle changes the shape at each cell, or
   at each second cell.
-- An off-beat tap keeps the shape of the cue before it. The pattern does not count it.
+- An off-beat tap keeps the shape of the cue before it, and the pattern does not count it.
+  After a tap for two hands with two shapes, it takes the shape of the cell in its own column.
+  When no cell is in its column, it takes the shape of the first cell.
 
 The 0.7 s comes from 46 rounds played with the camera from 2026-11-12 to 2026-11-16. The first
 cue after a change of shape was Perfect in 56% of 262 cues when it came less than 0.7 s after
 the cue before it, and in 67% of 328 cues when it came later.
 
-On the 20 songs, with the first seed of each of the 6 cue sets:
+On the 20 songs, for one player at level 5:
 
 | | Short round | Full round |
 | --- | --- | --- |
-| Shuffle phrases | 1 to 3 in 17 songs, 4 in 3 songs | A median of 24% of the phrases: 12.5% to 28% |
-| Cues with a change of shape, median | 27%: steady phrases alone give 12% | 32%: steady phrases alone give 13.5% |
+| Shuffle phrases | 2 or 3 in every song | A median of 24% of the phrases: 17% to 29% |
+| The first shuffle phrase starts | 27 s to 41 s into the round | 27 s to 102 s into the round |
+| Cues at which a hand must change its shape, median | 28%: steady phrases alone give 21.5% | 31%: steady phrases alone give 23% |
 
-In the busy music of 11 songs the cues are 0.88 s to 0.99 s apart, and a shuffle phrase changes
-the shape at every cue. In the other 9 songs they are 0.58 s to 0.67 s apart, and it changes the
-shape at every second cue.
+The share of shape changes counts the 6 cue sets of each song, with the seed and the share of
+moves that each set plays. See `shapeChangeShare` in `src/game/player.ts`.
+
+In the busy music of 11 songs, the cue beats of each shuffle phrase are 0.87 s to 1.0 s apart,
+and a shuffle phrase changes the shape at every cue. In the other 9 songs they are 0.58 s to
+0.67 s apart, and it changes the shape at every second cue.
+
+When an off-beat tap comes before most cues of a shuffle phrase, its pattern seldom steps. Of
+the 1,032 shuffle phrases in the Short and Full rounds of the 6 cue sets of the 20 songs, 21
+change the shape at most once.
+
+The run report names:
+
+| Field | What it holds |
+| --- | --- |
+| `schemaVersion` | 2 since 2026-11-17. Version 1 holds one shape for all cells of a cue, in `cues[].gesture`, and the shape readings of the whole cue, in `cues[].observation.shapesRead`. |
+| `players[].cues[].shapes` | The hand shape of each cell, in the order of `cells`. A cue with no shape has no `shapes`. |
+| `players[].cues[].shuffle` | True for a cue of a shuffle phrase. Other cues have no `shuffle`. |
+| `players[].cues[].observation.cells[].shapesRead` | How often the tracker read each shape on a hand in the cell, for a cell with a shape. |
+| `players[].shapeCues` | The cues with shapes: `asked`, `hit`, the share of frames `readAsAsked`, `hitOnFewFrames`, and the `readings` of each asked shape. Each cell adds its frames to the shape that it asks for. |
+| `players[].shapeChanges` | The share of the cues at which a hand must make a shape other than the one it made last. Each cell goes to the hand of its side: the left hand plays the left column, the right hand the right column. A centre cell goes to a hand that already makes its shape, else to the hand that played longer ago. The first shape of a hand, and a cue with no shape, are no change. |
 
 ## Faces
 
@@ -464,11 +514,6 @@ The run report names:
 | `settings.moveShare` | The share of moves of the round. |
 | `players[].moves` | Each player's moves, counted by name. |
 | `players[].cues[].slideStep` | The place of the cue in a slide: 1 for the start cell, 2 for the middle cell, 3 for the end cell. Other cues have no `slideStep`. |
-| `players[].cues[].shapes` | The hand shape of each cell, in the order of `cells`. A cue with no shape has no `shapes`. Reports from before 2026-11-17 hold one shape for all cells of a cue, in `gesture`. |
-| `players[].cues[].shuffle` | True for a cue of a shuffle phrase. Other cues have no `shuffle`. |
-| `players[].cues[].observation.cells[].shapesRead` | How often the tracker read each shape on a hand in the cell, for a cell with a shape. Reports from before 2026-11-17 hold one count for the whole cue, in `observation.shapesRead`. |
-| `players[].shapeCues` | The cues with shapes: `asked`, `hit`, the share of frames `readAsAsked`, `hitOnFewFrames`, and the `readings` of each asked shape. Each cell adds its frames to the shape that it asks for. |
-| `players[].shapeChanges` | The share of the cues whose shapes differ from the shapes of the cue before them. A cue with the same set of shapes is no change: a fist in both cells of a tap for two hands, then a fist in one cell. A cue with no shape is no change. |
 
 ## Rate the cue set
 
@@ -502,7 +547,7 @@ the save fails, the row shows **Not saved**.
 | `cueSet`, `seed`, `cueSetRandom`, `moveShare` | The set, its chart seed, true when the game picked the set, and its share of moves. |
 | `player`, `level`, `shapes`, `faces` | The player (0 is the left player, or the only player), the level, and the switches. `faces` stays on when the round drops the face cues. |
 | `facesDropped` | True when the round dropped the player's face cues before play, because the tracker had not found the face. Records from before 2026-11-17 do not have it, and `npm run ratings` reads them as before. |
-| `chart` | What the played part of the player's chart held: the shares of `slides` and `doubles`, the `offbeats` taps for each cue that the shares count, the number of `cues`, the `moves` by name, and `shapeChanges`, the share of cues whose shapes differ from the cue before them. A slide counts once in `slides` and three times in `cues`. Records from before 2026-11-16 also hold a share of fast slides, and records from before 2026-11-17 have no `shapeChanges`. `npm run ratings` reads them all as before. See `chartMix` in `src/game/cueSet.ts` and `shapeChangeShare` in `src/game/player.ts`. |
+| `chart` | What the played part of the player's chart held: the shares of `slides` and `doubles`, the `offbeats` taps for each cue that the shares count, the number of `cues`, the `moves` by name, and `shapeChanges`, the share of cues at which a hand must change its shape (see [Hand shapes](#hand-shapes)). A slide counts once in `slides` and three times in `cues`. Records from before 2026-11-16 also hold a share of fast slides, and records from before 2026-11-17 have no `shapeChanges`. `npm run ratings` reads them all as before. See `chartMix` in `src/game/cueSet.ts` and `shapeChangeShare` in `src/game/player.ts`. |
 | `result` | `score`, `accuracy` from 0 to 1, `perfect`, `good` and `miss`. |
 | `rating` | 1 to 5. |
 
