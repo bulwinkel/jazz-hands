@@ -6,6 +6,7 @@ import { leadInEndSec } from './manifest';
 import {
   cuesPerStep,
   phraseIntensity,
+  planShuffles,
   rollPattern,
   shapeAtStep,
   shapePattern,
@@ -158,6 +159,25 @@ describe('shuffle phrases', () => {
     expect(shuffleThreshold(110, round)).toBeCloseTo(CHART.shuffleIntensityTo);
     expect(shuffleThreshold(0, round)).toBeCloseTo(CHART.shuffleIntensityFrom);
     expect(shuffleThreshold(200, round)).toBeCloseTo(CHART.shuffleIntensityTo);
+  });
+
+  it('step at the pace of the closest two cue beats of each shuffle phrase', () => {
+    const loud = song(Array(12).fill(1));
+    // Phrase 6 has two cue beats 0.6 s apart. The other phrases have cues 0.9 s apart.
+    const gapOf = (firstBeat: number): number => (firstBeat === 6 * 16 ? 0.6 : 0.9);
+    const plan = planShuffles(loud, wholeRound(loud), seededRandom(7), gapOf);
+    expect(plan.map((shuffle) => shuffle?.cuesPerStep ?? 0)).toEqual([0, 0, 0, 1, 0, 0, 2, 0, 0, 1, 0, 0]);
+  });
+
+  it('give a phrase the same pattern whichever phrases before it shuffle', () => {
+    const loud = song(Array(12).fill(1));
+    const gapOf = (): number => 0.9;
+    const early = planShuffles(loud, wholeRound(loud), seededRandom(7), gapOf);
+    // A round whose first cue comes at 50 s: phrase 9 is its first shuffle.
+    const late = planShuffles(loud, { firstCueSec: 50, endSec: 96 }, seededRandom(7), gapOf);
+    expect(shuffled(loud).filter((phrase) => late[phrase])).toEqual([9]);
+    expect(late[9]?.pattern).toEqual(early[9]?.pattern);
+    expect(late[9]?.pattern).not.toEqual(early[3]?.pattern);
   });
 
   it('take the mean intensity of the beats of a phrase', () => {

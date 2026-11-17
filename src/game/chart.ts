@@ -3,7 +3,7 @@ import type { LevelRules } from './config';
 import { isBarStart, leadInEndSec, medianBeatInterval, tailStartSec } from './manifest';
 import { moveForm, moveSteps, noMoves, phraseBeats, planPhrases } from './moves';
 import type { MoveName, MoveStep, MoveTag, PhrasePlan } from './moves';
-import { cuesPerStep, rollPattern, shapeAtStep, shapePattern, shufflePhrases, shuffleShape } from './shapePatterns';
+import { planShuffles, rollPattern, shapeAtStep, shapePattern, shuffleShape } from './shapePatterns';
 import type { PatternRolls, Shuffle } from './shapePatterns';
 import type { GestureName } from '../tracking/types';
 import type { Cue, Level, Manifest, SlideStep } from './types';
@@ -290,14 +290,20 @@ function chartFrame(manifest: Manifest, options: ChartOptions): ChartFrame {
     share: options.moves ?? 0,
     fromSec: options.roundFromSec ?? -Infinity,
   });
-  const cueIntervalSec = (beat: number): number => strideAt(beat) * beatIntervalSec;
+  const round = {
+    firstCueSec: Math.max(firstCueSec, options.roundFromSec ?? -Infinity),
+    endSec: options.endSec,
+  };
+  const shortestGapSec = (firstBeat: number, endBeat: number): number =>
+    shortestCueGapSec(manifest, isCueBeat, firstBeat, endBeat);
+  const shuffleRandom = seededRandom(options.seed ^ SHUFFLE_SEED_STREAM);
   return {
     manifest,
     options,
     rules,
     master: masterCells(manifest, options.seed),
     phraseShape: rules.shapeOnEveryCue ? phraseShapes(manifest, options.seed) : undefined,
-    shuffles: rules.shapeOnEveryCue ? planShuffles(manifest, options, cueIntervalSec) : [],
+    shuffles: rules.shapeOnEveryCue ? planShuffles(manifest, round, shuffleRandom, shortestGapSec) : [],
     strideAt,
     isCueBeat,
     plans,
@@ -312,40 +318,23 @@ const MOVE_SEED_STREAM = 0xd15c0;
 const SHUFFLE_SEED_STREAM = 0x5b0ff1e;
 
 /**
- * The shuffle of every phrase, by its index, at a level with a shape on every cue: null for a
- * steady phrase. The music and the round choose the shuffle phrases, the seed only their
- * patterns. Every phrase takes the rolls of a pattern, used or not, so one phrase's pattern
- * never shifts another's.
+ * The shortest time between two cue beats that follow each other, over the beats from
+ * `firstBeat` up to `endBeat`. It takes the real times of the beats: a song that gets faster
+ * inside a phrase counts at its fastest. Infinity where fewer than two cue beats come.
  */
-function planShuffles(
+function shortestCueGapSec(
   manifest: Manifest,
-  options: ChartOptions,
-  cueIntervalSec: (beat: number) => number,
-): (Shuffle | null)[] {
-  const round = {
-    firstCueSec: Math.max(leadInEndSec(manifest), options.roundFromSec ?? -Infinity),
-    endSec: options.endSec,
-  };
-  const random = seededRandom(options.seed ^ SHUFFLE_SEED_STREAM);
-  const beatsPerPhrase = phraseBeats(manifest);
-  return shufflePhrases(manifest, round).map((isShuffle, phrase) => {
-    const pattern = shapePattern(rollPattern(random));
-    if (!isShuffle) return null;
-    const firstBeat = manifest.firstDownbeat + phrase * beatsPerPhrase;
-    const endBeat = Math.min(firstBeat + beatsPerPhrase, manifest.beats.length);
-    const closestSec = shortestInterval(cueIntervalSec, firstBeat, endBeat);
-    return { pattern, cuesPerStep: cuesPerStep(closestSec) };
-  });
-}
-
-/**
- * The shortest time from one cue beat to the next, over the beats from `firstBeat` up to
- * `endBeat`. The pace of a phrase can change with its music: the closest cues decide.
- */
-function shortestInterval(cueIntervalSec: (beat: number) => number, firstBeat: number, endBeat: number): number {
+  isCueBeat: (beat: number) => boolean,
+  firstBeat: number,
+  endBeat: number,
+): number {
   let shortestSec = Infinity;
+  let previousSec: number | null = null;
   for (let beat = firstBeat; beat < endBeat; beat++) {
-    shortestSec = Math.min(shortestSec, cueIntervalSec(beat));
+    if (!isCueBeat(beat)) continue;
+    const timeSec = manifest.beats[beat];
+    if (previousSec !== null) shortestSec = Math.min(shortestSec, timeSec - previousSec);
+    previousSec = timeSec;
   }
   return shortestSec;
 }

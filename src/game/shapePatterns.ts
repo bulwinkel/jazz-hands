@@ -71,11 +71,36 @@ export interface Shuffle {
 /**
  * How many cues each step of a pattern lasts. A hand needs time to change shape: in kb's run
  * reports, the first cue after a change of shape was Perfect less often when it came under
- * `CHART.patternStepSec` after the cue before it. So where the cues of a phrase come closer
- * than that, each shape lasts two cues.
+ * `CHART.patternStepSec` after the cue before it. So where two cue beats of a phrase come closer
+ * than that, each shape lasts two cues. `shortestGapSec` is the shortest time between two cue
+ * beats of the phrase that follow each other.
  */
-export function cuesPerStep(cueIntervalSec: number): number {
-  return cueIntervalSec >= CHART.patternStepSec - EPSILON ? 1 : 2;
+export function cuesPerStep(shortestGapSec: number): number {
+  return shortestGapSec >= CHART.patternStepSec - EPSILON ? 1 : 2;
+}
+
+/**
+ * The shuffle of every phrase of the song, by its index: null for a steady phrase. The music
+ * and the round choose the shuffle phrases (see `shufflePhrases`), the seed only their patterns.
+ * Every phrase takes the rolls of a pattern, used or not: one phrase's pattern never shifts
+ * another's, so a phrase that shuffles in two rounds has the same pattern in both.
+ * `shortestGapSec` gives the shortest time between two cue beats that follow each other, from
+ * a phrase's first beat up to its end beat.
+ */
+export function planShuffles(
+  manifest: Manifest,
+  round: RoundSpan,
+  random: () => number,
+  shortestGapSec: (firstBeat: number, endBeat: number) => number,
+): (Shuffle | null)[] {
+  const beatsPerPhrase = phraseBeats(manifest);
+  return shufflePhrases(manifest, round).map((isShuffle, phrase) => {
+    const pattern = shapePattern(rollPattern(random));
+    if (!isShuffle) return null;
+    const firstBeat = manifest.firstDownbeat + phrase * beatsPerPhrase;
+    const endBeat = Math.min(firstBeat + beatsPerPhrase, manifest.beats.length);
+    return { pattern, cuesPerStep: cuesPerStep(shortestGapSec(firstBeat, endBeat)) };
+  });
 }
 
 /**

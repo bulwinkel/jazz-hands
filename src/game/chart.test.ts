@@ -517,6 +517,25 @@ describe('shuffle phrases at level 5', () => {
     }
   });
 
+  it('step at every second cue in a phrase whose music gets faster', () => {
+    // At 130 BPM the cues of busy music come every second beat, 0.92 s apart. In the second
+    // half of the first shuffle phrase, the beats come 0.3 s apart: cues 0.6 s apart.
+    const song = synthetic(130, 600);
+    const round = { firstCueSec: leadInEndSec(song), endSec: song.durationSec };
+    const phrase = shufflePhrases(song, round).indexOf(true);
+    const fasterFrom = phrase * phraseBeats(song) + 8;
+    const shiftSec = (beat: number): number => (Math.min(beat, fasterFrom + 8) - fasterFrom) * (60 / 130 - 0.3);
+    song.beats = song.beats.map((timeSec, beat) => (beat > fasterFrom ? timeSec - shiftSec(beat) : timeSec));
+    expect(shufflePhrases(song, round).indexOf(true)).toBe(phrase);
+
+    const shapes = entriesOf(song)
+      .filter(({ cue, role }) => cue.shuffle && role !== 'offbeat' && phraseOf(song, cue) === phrase)
+      .map(({ cue }) => cue.shapes?.[0]);
+    const changes = shapes.flatMap((shape, k) => (k > 0 && shape !== shapes[k - 1] ? [k] : []));
+    expect(changes.length).toBeGreaterThan(2);
+    changes.slice(1).forEach((k, i) => expect(k - changes[i]).toBeGreaterThanOrEqual(2));
+  });
+
   it('let an off-beat tap keep the shape of the cue before it', () => {
     const song = synthetic(130, 600);
     const entries = entriesOf(song);
