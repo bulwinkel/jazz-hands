@@ -5,13 +5,16 @@ import { synthetic } from './fixtures';
 import { leadInEndSec } from './manifest';
 import {
   cuesPerStep,
+  firstStep,
+  nextPlace,
   phraseIntensity,
+  placeBeforePhrase,
   planShuffles,
   rollPattern,
   shapeAtStep,
   shapePattern,
+  shapeOfStep,
   shufflePhrases,
-  shuffleShape,
   shuffleThreshold,
 } from './shapePatterns';
 import type { PatternRolls, RoundSpan, Shuffle } from './shapePatterns';
@@ -70,17 +73,42 @@ describe('the steps of a shuffle', () => {
     expect(cuesPerStep(0.55)).toBe(2);
   });
 
+  /** The steps that cues take, in order. Each flag says whether the cue comes directly after an off-beat tap. */
+  function steps(shuffle: Shuffle, afterOffbeat: boolean[]): number[] {
+    let place = placeBeforePhrase(shuffle);
+    return afterOffbeat.map((flag) => {
+      place = nextPlace(place, shuffle, flag);
+      return place.step;
+    });
+  }
+  const noOffbeats = [false, false, false, false, false];
+
   it('go through the pattern one cue at a time, or two', () => {
-    const shapes = (shuffle: Shuffle): string[] => [0, 1, 2, 3, 4].map((cues) => shuffleShape(shuffle, cues));
-    expect(shapes(pair)).toEqual(['fist', 'peace', 'fist', 'peace', 'fist']);
-    expect(shapes({ ...pair, cuesPerStep: 2 })).toEqual(['fist', 'fist', 'peace', 'peace', 'fist']);
-    expect(shapes({ pattern: ['open', 'point', 'fist'], cuesPerStep: 1 })).toEqual(['open', 'point', 'fist', 'open', 'point']);
+    expect(steps(pair, noOffbeats)).toEqual([0, 1, 2, 3, 4]);
+    expect(steps({ ...pair, cuesPerStep: 2 }, noOffbeats)).toEqual([0, 0, 1, 1, 2]);
+    const shapesOf = (list: number[]): string[] => list.map((step) => shapeOfStep(pair.pattern, 0, step, 'open'));
+    expect(shapesOf(steps(pair, noOffbeats))).toEqual(['fist', 'peace', 'fist', 'peace', 'fist']);
+  });
+
+  it('never step on a cue directly after an off-beat tap, and step on the next cue', () => {
+    expect(steps(pair, [false, false, true, false, false])).toEqual([0, 1, 1, 2, 3]);
+    expect(steps({ ...pair, cuesPerStep: 2 }, [false, false, true, false, false])).toEqual([0, 0, 0, 1, 1]);
+    // The first cue of the phrase comes after an off-beat tap: it keeps the shape before the phrase.
+    expect(steps(pair, [true, false, false])).toEqual([-1, 0, 1]);
+    expect(shapeOfStep(pair.pattern, 0, -1, 'open')).toBe('open');
+  });
+
+  it('start the pattern one step on when its first shape is the shape before the phrase', () => {
+    expect(firstStep(['fist', 'peace'], 'fist')).toBe(1);
+    expect(firstStep(['fist', 'peace'], 'peace')).toBe(0);
+    expect(firstStep(['fist', 'peace'], undefined)).toBe(0);
+    expect([0, 1, 2].map((step) => shapeOfStep(['fist', 'peace', 'open'], 1, step, 'fist'))).toEqual(['peace', 'open', 'fist']);
   });
 
   it('give the second hand of a tap for two hands the next shape of the pattern', () => {
-    expect(shuffleShape(pair, 0, 1)).toBe('peace');
-    expect(shuffleShape(pair, 1, 1)).toBe('fist');
-    expect(shuffleShape({ ...pair, cuesPerStep: 2 }, 1, 1)).toBe('peace');
+    expect(shapeOfStep(pair.pattern, 0, 1, 'open')).toBe('peace');
+    expect(shapeOfStep(pair.pattern, 0, 2, 'open')).toBe('fist');
+    expect(shapeOfStep(pair.pattern, 1, 0, 'fist')).toBe('peace');
   });
 });
 

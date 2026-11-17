@@ -3,8 +3,17 @@ import type { LevelRules } from './config';
 import { isBarStart, leadInEndSec, medianBeatInterval, tailStartSec } from './manifest';
 import { moveForm, moveSteps, noMoves, phraseBeats, planPhrases } from './moves';
 import type { MoveName, MoveStep, MoveTag, PhrasePlan } from './moves';
-import { planShuffles, rollPattern, shapeAtStep, shapePattern, shuffleShape } from './shapePatterns';
-import type { PatternRolls, Shuffle } from './shapePatterns';
+import {
+  firstStep,
+  nextPlace,
+  placeBeforePhrase,
+  planShuffles,
+  rollPattern,
+  shapeAtStep,
+  shapeOfStep,
+  shapePattern,
+} from './shapePatterns';
+import type { PatternPlace, PatternRolls, Shuffle } from './shapePatterns';
 import type { GestureName } from '../tracking/types';
 import type { Cue, Level, Manifest, SlideStep } from './types';
 
@@ -182,6 +191,14 @@ export function generateChart(manifest: Manifest, options: ChartOptions): Cue[] 
   return chartEntries(manifest, options).map((entry) => entry.cue);
 }
 
+/**
+ * The shuffle of every phrase of a chart with these options, by phrase index: null for a steady
+ * phrase. Empty at a level without a shape on every cue. For tests and tools.
+ */
+export function shufflePlan(manifest: Manifest, options: ChartOptions): (Shuffle | null)[] {
+  return chartFrame(manifest, options).shuffles;
+}
+
 /** The entries of the cues that `cuesFrom` keeps for a round that starts at `startSec`. */
 export function entriesFrom(entries: readonly ChartEntry[], startSec: number): ChartEntry[] {
   const kept = new Set(cuesFrom(entries.map((entry) => entry.cue), startSec));
@@ -354,11 +371,19 @@ interface ChartState {
   previousWasOffbeat: boolean;
   /** The move in progress. Null between moves. */
   move: RunningMove | null;
-  /**
-   * The shuffle phrase whose pattern the cues step through, by its index, and how many of its
-   * cues on cue beats have come so far. The count starts again in each shuffle phrase.
-   */
-  shuffleCues: { phrase: number; count: number };
+  /** The shuffle phrase that the cues step through. Null before the first shuffle phrase. */
+  shuffleRun: ShuffleRun | null;
+}
+
+/**
+ * A shuffle phrase that has started: its index, the step its pattern starts on, the shape of the
+ * cue before it, and where its cues are in the pattern. Each shuffle phrase starts a new run.
+ */
+interface ShuffleRun {
+  phrase: number;
+  first: number;
+  shapeBefore: GestureName | undefined;
+  place: PatternPlace;
 }
 
 /** A move that has started: its steps, the next one to take, and the beat its phrase ends. */
@@ -408,7 +433,7 @@ export function chartEntries(manifest: Manifest, options: ChartOptions): ChartEn
     previousSec: -Infinity,
     previousWasOffbeat: false,
     move: null,
-    shuffleCues: { phrase: -1, count: 0 },
+    shuffleRun: null,
   };
 
   for (let beat = 0; beat < manifest.beats.length; beat++) {
@@ -537,8 +562,8 @@ function addBeatCues(frame: ChartFrame, state: ChartState, beat: number, roll: B
  *
  * In a steady phrase, every cell takes the phrase shape of the beat. In a shuffle phrase, the
  * cue takes the shape of the pattern now, and the second cell of a tap for two hands takes the
- * next shape. Then the pattern counts the cue: each cue on a cue beat is a step, or each second
- * cue where the cues come fast. A shape from the shapes switch gives way to these shapes.
+ * next shape. Each cue on a cue beat moves the pattern on: see `nextPlace`. A shape from the
+ * shapes switch gives way to these shapes.
  */
 function giveEveryCueShapes(frame: ChartFrame, state: ChartState, cue: Cue): void {
   if (!frame.phraseShape) return;
@@ -551,11 +576,54 @@ function giveEveryCueShapes(frame: ChartFrame, state: ChartState, cue: Cue): voi
     return;
   }
 
-  if (state.shuffleCues.phrase !== phrase) state.shuffleCues = { phrase, count: 0 };
-  const cuesBefore = state.shuffleCues.count;
-  cue.shapes = cue.cells.map((_, cell) => shuffleShape(shuffle, cuesBefore, cell));
+  const before = state.entries.at(-1);
+  const run = shuffleRunFor(state, phrase, shuffle, before?.cue);
+  run.place = nextPlace(run.place, shuffle, before?.role === 'offbeat');
+  const now = shapeOfStep(shuffle.pattern, run.first, run.place.step, run.shapeBefore);
+  const next = shapeOfStep(shuffle.pattern, run.first, run.place.step + 1, run.shapeBefore);
+  cue.shapes = cue.cells.length === 2 ? twoHandShapes(cue.cells, now, next, before) : [now];
   cue.shuffle = true;
-  state.shuffleCues.count++;
+}
+
+/**
+ * The shapes of a tap for two hands in a shuffle phrase: the shape of the pattern now, and its
+ * next shape. Directly after an off-beat tap, the cell on the side of that tap takes the shape
+ * that the tap asked for, when it is one of the two: the hand that just made it keeps it.
+ */
+function twoHandShapes(cells: number[], now: GestureName, next: GestureName, before?: ChartEntry): GestureName[] {
+  if (before?.role !== 'offbeat') return [now, next];
+  const side = cellInColumnOf(cells, before.cue.cells[0]);
+  if (side === -1) return [now, next];
+  const sideShape = before.cue.shapes?.[0] === next ? next : now;
+  const otherShape = sideShape === now ? next : now;
+  return side === 0 ? [sideShape, otherShape] : [otherShape, sideShape];
+}
+
+/**
+ * The index of the cell of `cells` in the column of `cell`. One hand plays the cells of a side
+ * column, so that cell is on the same hand's side. -1 when no cell is, as for a cell in the
+ * centre column after a tap for two hands, whose cells are in the side columns.
+ */
+function cellInColumnOf(cells: readonly number[], cell: number): number {
+  return cells.findIndex((other) => column(other) === column(cell));
+}
+
+/**
+ * The run of the shuffle phrase that a cue belongs to. The first cue of a phrase starts a new
+ * run: the pattern starts again in each shuffle phrase, from its first step, or from its second
+ * step when the first shape is the shape of the cue before the phrase.
+ */
+function shuffleRunFor(state: ChartState, phrase: number, shuffle: Shuffle, before: Cue | undefined): ShuffleRun {
+  if (state.shuffleRun?.phrase === phrase) return state.shuffleRun;
+  const shapeBefore = before?.shapes?.[0];
+  const run: ShuffleRun = {
+    phrase,
+    first: firstStep(shuffle.pattern, shapeBefore),
+    shapeBefore,
+    place: placeBeforePhrase(shuffle),
+  };
+  state.shuffleRun = run;
+  return run;
 }
 
 /** Adds a cue, and books its beat and the hands it takes. */

@@ -103,14 +103,54 @@ export function planShuffles(
   });
 }
 
+/** Where the cues of a shuffle phrase are in its pattern. */
+export interface PatternPlace {
+  /** The step that the last cue took. 0 is the first step; -1 is the shape before the phrase. */
+  step: number;
+  /** How many cues have taken this step. */
+  cues: number;
+}
+
 /**
- * The shape for a cue of a shuffle phrase, after `cuesBefore` cues of the phrase on cue beats.
- * `ahead` is 1 for the second cell of a tap for two hands: it takes the next shape of the
- * pattern, so the two hands make two different shapes.
+ * The place before the first cue of a shuffle phrase. The first cue takes the first step of
+ * the pattern, unless it comes directly after an off-beat tap.
  */
-export function shuffleShape(shuffle: Shuffle, cuesBefore: number, ahead = 0): GestureName {
-  const step = Math.floor(cuesBefore / shuffle.cuesPerStep) + ahead;
-  return shapeAtStep(shuffle.pattern, step);
+export function placeBeforePhrase(shuffle: Shuffle): PatternPlace {
+  return { step: -1, cues: shuffle.cuesPerStep };
+}
+
+/**
+ * The place of the next cue of a shuffle phrase. The pattern steps once a shape has lasted its
+ * cues. It never steps on a cue that comes directly after an off-beat tap: that tap came only
+ * half a cue interval before, too soon to make a new shape. The step waits for the next cue.
+ */
+export function nextPlace(place: PatternPlace, shuffle: Shuffle, afterOffbeat: boolean): PatternPlace {
+  const due = place.cues >= shuffle.cuesPerStep;
+  if (due && !afterOffbeat) return { step: place.step + 1, cues: 1 };
+  return { step: place.step, cues: place.cues + 1 };
+}
+
+/**
+ * The step of the pattern that a shuffle phrase starts on: the first step, or the second when
+ * the first shape is the shape of the cue before the phrase. A shuffle then always starts with a
+ * change. It takes no roll.
+ */
+export function firstStep(pattern: readonly GestureName[], shapeBefore: GestureName | undefined): number {
+  return pattern[0] === shapeBefore ? 1 : 0;
+}
+
+/**
+ * The shape of a step of a shuffle phrase that starts on the step `first`. Step -1 is the shape
+ * of the cue before the phrase, `shapeBefore`: the phrase has not stepped into its pattern yet.
+ */
+export function shapeOfStep(
+  pattern: readonly GestureName[],
+  first: number,
+  step: number,
+  shapeBefore: GestureName | undefined,
+): GestureName {
+  if (step < 0 && shapeBefore !== undefined) return shapeBefore;
+  return shapeAtStep(pattern, first + Math.max(step, 0));
 }
 
 /** The part of the song in which a round can have cues. */

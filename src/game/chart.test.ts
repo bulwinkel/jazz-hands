@@ -12,6 +12,7 @@ import {
   middleCell,
   phraseShapes,
   selectStride,
+  shufflePlan,
   slideTargets,
 } from './chart';
 import type { ChartEntry } from './chart';
@@ -20,7 +21,7 @@ import { candidateSeeds, cueSetMoveShare } from './cueSet';
 import { cuesBeyondTwoHands, synthetic } from './fixtures';
 import { leadInEndSec, medianBeatInterval, playEndSec, playStartSec, tailStartSec, validateManifest } from './manifest';
 import { phraseBeats } from './moves';
-import { shufflePhrases } from './shapePatterns';
+import { firstStep, shufflePhrases } from './shapePatterns';
 import type { GestureName } from '../tracking/types';
 import type { Cue, Level, Manifest } from './types';
 
@@ -471,36 +472,65 @@ describe('shuffle phrases at level 5', () => {
   const entriesOf = (song: Manifest, seed = 42): ChartEntry[] =>
     chartEntries(song, { level: 5, shapes: true, seed, endSec: song.durationSec });
 
-  /**
-   * The first shape of each cue that the pattern counts, by shuffle phrase: every cue of the
-   * phrase except the off-beat taps, in time order.
-   */
-  function runs(song: Manifest, entries: ChartEntry[]): GestureName[][] {
-    const byPhrase = new Map<number, GestureName[]>();
-    for (const { cue, role } of entries) {
-      if (!cue.shuffle || role === 'offbeat') continue;
+  /** A cue that the pattern of a shuffle phrase counts, and whether an off-beat tap comes directly before it. */
+  interface Counted {
+    cue: Cue;
+    afterOffbeat: boolean;
+    /** The shape of the cue before the phrase. */
+    shapeBefore: GestureName | undefined;
+  }
+
+  /** The cues that the pattern counts, by shuffle phrase: every cue of the phrase but the off-beat taps. */
+  function runs(song: Manifest, entries: ChartEntry[]): Counted[][] {
+    const byPhrase = new Map<number, Counted[]>();
+    entries.forEach(({ cue, role }, i) => {
+      if (!cue.shuffle || role === 'offbeat') return;
       const phrase = phraseOf(song, cue);
-      const shapes = byPhrase.get(phrase) ?? [];
-      shapes.push(cue.shapes?.[0] as GestureName);
-      byPhrase.set(phrase, shapes);
-    }
+      const run = byPhrase.get(phrase) ?? [];
+      const firstIndex = entries.findIndex((entry) => entry.cue.shuffle && phraseOf(song, entry.cue) === phrase);
+      const shapeBefore = entries[firstIndex - 1]?.cue.shapes?.[0];
+      run.push({ cue, afterOffbeat: entries[i - 1]?.role === 'offbeat', shapeBefore });
+      byPhrase.set(phrase, run);
+    });
     return [...byPhrase.values()];
   }
 
-  it('change the shape at every cue where the cues are at least 0.7 s apart', () => {
+  const twoHandsAfterOffbeat = (counted: Counted): boolean => counted.cue.cells.length === 2 && counted.afterOffbeat;
+
+  /** The positions in a run where the first shape changes from the cue before. */
+  const changesOf = (run: Counted[]): number[] =>
+    run.flatMap((counted, k) => (k > 0 && counted.cue.shapes?.[0] !== run[k - 1].cue.shapes?.[0] ? [k] : []));
+
+  it('change the shape at every cue where the cues are at least 0.7 s apart, but after an off-beat tap', () => {
     // At 130 BPM the cues of busy music come every second beat, 0.92 s apart.
     const song = synthetic(130, 600);
     const shuffles = runs(song, entriesOf(song));
     expect(shuffles.length).toBeGreaterThan(5);
-    for (const shapes of shuffles) {
+    let held = 0;
+    for (const run of shuffles) {
+      run.forEach((counted, k) => {
+        if (k === 0) return;
+        if (counted.afterOffbeat) held++;
+        const same = counted.cue.shapes?.[0] === run[k - 1].cue.shapes?.[0];
+        // A two-hand tap after an off-beat tap may put the shape now in its second cell.
+        if (counted.cue.cells.length === 1 && run[k - 1].cue.cells.length === 1) expect(same).toBe(counted.afterOffbeat);
+      });
+      // Leave out the cues that keep the shape before the phrase: the rest repeats the pattern.
+      // A two-hand tap after an off-beat tap can have the shape now in either cell: leave it out.
+      const firstStepping = run.findIndex((counted) => !counted.afterOffbeat);
+      const stepped = run.slice(firstStepping).filter((counted) => !twoHandsAfterOffbeat(counted));
+      const firsts = stepped.map((counted) => counted.cue.shapes?.[0]);
+      const shapes = firsts.filter((shape, k) => k === 0 || shape !== firsts[k - 1]);
       const length = new Set(shapes).size;
-      expect([2, 3]).toContain(length);
+      // A phrase with few cues that may step, or an off-beat tap before most of its cues, can hold
+      // only one step.
+      const mayStep = stepped.filter((counted) => !counted.afterOffbeat).length;
+      if (mayStep >= 3) expect([2, 3]).toContain(length);
       shapes.forEach((shape, k) => {
-        if (k > 0) expect(shape).not.toBe(shapes[k - 1]);
-        // The pattern repeats: a pair every two cues, a triple every three.
         if (k >= length) expect(shape).toBe(shapes[k - length]);
       });
     }
+    expect(held).toBeGreaterThan(20);
   });
 
   it('change the shape at every second cue where the cues come closer than 0.7 s', () => {
@@ -508,13 +538,58 @@ describe('shuffle phrases at level 5', () => {
     const song = synthetic(100, 600);
     const shuffles = runs(song, entriesOf(song));
     expect(shuffles.length).toBeGreaterThan(5);
-    for (const shapes of shuffles) {
-      expect(new Set(shapes).size).toBeGreaterThan(1);
-      shapes.forEach((shape, k) => {
-        if (k % 2 === 1) expect(shape).toBe(shapes[k - 1]);
-        if (k % 2 === 0 && k > 0) expect(shape).not.toBe(shapes[k - 1]);
+    for (const run of shuffles) {
+      const changes = changesOf(run);
+      expect(changes.length).toBeGreaterThan(0);
+      changes.slice(1).forEach((k, i) => expect(k - changes[i]).toBeGreaterThanOrEqual(2));
+    }
+  });
+
+  it('never ask a single tap directly after an off-beat tap for a shape that the cues before it did not ask for', () => {
+    for (const song of [synthetic(130, 600), synthetic(100, 600), ...SONG_MANIFESTS.slice(0, 6)]) {
+      const entries = entriesOf(song);
+      entries.forEach(({ cue, role }, i) => {
+        if (!cue.shuffle || role === 'offbeat' || entries[i - 1]?.role !== 'offbeat' || cue.cells.length !== 1) return;
+        // The cue before the off-beat tap, and the off-beat tap itself.
+        const earlier = [...(entries[i - 2]?.cue.shapes ?? []), ...(entries[i - 1].cue.shapes ?? [])];
+        expect(earlier).toContain(cue.shapes?.[0]);
       });
     }
+  });
+
+  it('let the hand of an off-beat tap keep its shape in a tap for two hands directly after it', () => {
+    const song = synthetic(130, 600);
+    const entries = entriesOf(song);
+    let doubles = 0;
+    entries.forEach(({ cue }, i) => {
+      const before = entries[i - 1];
+      if (!cue.shuffle || cue.cells.length !== 2 || before?.role !== 'offbeat') return;
+      const side = cue.cells.findIndex((cell) => cell % 3 === before.cue.cells[0] % 3);
+      if (side === -1) return;
+      doubles++;
+      expect(cue.shapes?.[side]).toBe(before.cue.shapes?.[0]);
+    });
+    expect(doubles).toBeGreaterThan(5);
+  });
+
+  it('start the pattern again in each shuffle phrase, always with a change of shape', () => {
+    let startsOnSecond = 0;
+    for (const song of [synthetic(130, 600), synthetic(100, 600), ...SONG_MANIFESTS.slice(0, 6)]) {
+      for (const seed of [1, 42]) {
+        const plan = shufflePlan(song, { level: 5, shapes: true, seed, endSec: song.durationSec });
+        for (const run of runs(song, entriesOf(song, seed))) {
+          const shuffle = plan[phraseOf(song, run[0].cue)];
+          // The first cue that steps: the cues before it come directly after an off-beat tap.
+          const stepping = run.find((counted) => !counted.afterOffbeat);
+          if (!shuffle || !stepping) continue;
+          const first = firstStep(shuffle.pattern, run[0].shapeBefore);
+          if (first === 1) startsOnSecond++;
+          expect(stepping.cue.shapes?.[0]).toBe(shuffle.pattern[first]);
+          expect(stepping.cue.shapes?.[0]).not.toBe(run[0].shapeBefore);
+        }
+      }
+    }
+    expect(startsOnSecond).toBeGreaterThan(5);
   });
 
   it('step at every second cue in a phrase whose music gets faster', () => {
@@ -532,7 +607,7 @@ describe('shuffle phrases at level 5', () => {
       .filter(({ cue, role }) => cue.shuffle && role !== 'offbeat' && phraseOf(song, cue) === phrase)
       .map(({ cue }) => cue.shapes?.[0]);
     const changes = shapes.flatMap((shape, k) => (k > 0 && shape !== shapes[k - 1] ? [k] : []));
-    expect(changes.length).toBeGreaterThan(2);
+    expect(changes.length).toBeGreaterThan(1);
     changes.slice(1).forEach((k, i) => expect(k - changes[i]).toBeGreaterThanOrEqual(2));
   });
 
@@ -550,16 +625,18 @@ describe('shuffle phrases at level 5', () => {
 
   it('give a tap for two hands the shape of the pattern now and its next shape', () => {
     const song = synthetic(130, 600);
-    const counted = entriesOf(song).filter((entry) => entry.cue.shuffle && entry.role !== 'offbeat');
     let doubles = 0;
-    counted.forEach(({ cue }, i) => {
-      const next = counted[i + 1]?.cue;
-      if (cue.cells.length !== 2) return;
-      doubles++;
-      expect(cue.shapes?.[1]).not.toBe(cue.shapes?.[0]);
-      // Each cue is a step here, so the cue after it in the phrase starts with that next shape.
-      if (next && phraseOf(song, next) === phraseOf(song, cue)) expect(next.shapes?.[0]).toBe(cue.shapes?.[1]);
-    });
+    for (const run of runs(song, entriesOf(song))) {
+      run.forEach(({ cue, afterOffbeat }, k) => {
+        const next = run[k + 1];
+        if (cue.cells.length !== 2) return;
+        doubles++;
+        expect(cue.shapes?.[1]).not.toBe(cue.shapes?.[0]);
+        // Each cue is a step here, so the next cue that steps starts with that next shape.
+        if (afterOffbeat || !next || next.afterOffbeat) return;
+        expect(next.cue.shapes?.[0]).toBe(cue.shapes?.[1]);
+      });
+    }
     expect(doubles).toBeGreaterThan(10);
   });
 
