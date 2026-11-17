@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { chartEntries, entriesFrom } from './chart';
 import type { ChartEntry, CueRole } from './chart';
-import { CUE_SETS, DEFAULT_SEED, LEVELS, SONGS } from './config';
+import { CHART, CUE_SETS, DEFAULT_SEED, LEVELS, SONGS } from './config';
 import {
   candidateSeeds,
   chartMix,
@@ -18,6 +18,7 @@ import {
   mixDistance,
   nextCueSetChoice,
   pickCueSet,
+  playedChart,
   playedMix,
   poolDistance,
   poolSeeds,
@@ -265,6 +266,22 @@ describe('the mix of a chart', () => {
     const expected = 0.12 * weights.slides + 0.05 * weights.doubles + 0.04 * weights.offbeats + 0.1 * weights.cues;
     expect(mixDistance(mix, target)).toBeCloseTo(expected, 10);
     expect(mixDistance(target, target)).toBe(0);
+  });
+});
+
+describe('the chart that the choice of a set measures', () => {
+  it('is the chart that the round plays, with the shuffle phrases of a round that starts inside the song', () => {
+    // Todo Bueno, From the Garden to the Cross and Return to the Lord start their Short round late.
+    for (const index of [1, 2, 5]) {
+      const song = realSong(index);
+      const short = round(song, [{ level: 5, shapes: true }]);
+      expect(short.startSec).toBeGreaterThan(60);
+      const options = { level: 5 as Level, shapes: true, seed: DEFAULT_SEED, endSec: short.endSec };
+      const roundChart = chartEntries(song, { ...options, roundFromSec: short.startSec + CHART.leadSec });
+      const played = playedChart(short, short.players[0], DEFAULT_SEED);
+      expect(played).toEqual(entriesFrom(roundChart, short.startSec));
+      expect(played.some((entry) => entry.cue.shuffle)).toBe(true);
+    }
   });
 });
 

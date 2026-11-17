@@ -21,12 +21,13 @@ export interface ChartOptions {
   /** The share of phrases in busy music that hold a move, 0 to 1. Unset or 0: no moves. See moves.ts. */
   moves?: number;
   /**
-   * No move starts before this time, in song seconds. A round that starts inside the song
-   * passes its start plus `CHART.leadSec`, where its first cue may come, so that the round
-   * never begins with the rest of a move. The shuffle phrases of a level with a shape on every
-   * cue count the phrases of the round from here too.
+   * Where the round's first cue may come, in song seconds. A round that starts inside the song
+   * passes its start plus `CHART.leadSec`: `cuesFrom` drops every cue before it. No move starts
+   * before it, so that the round never begins with the rest of a move. The shuffle phrases of a
+   * level with a shape on every cue count the phrases and the seconds of the round from it.
+   * Unset: the round starts with the song.
    */
-  movesFromSec?: number;
+  roundFromSec?: number;
 }
 
 const EPSILON = 1e-8;
@@ -287,7 +288,7 @@ function chartFrame(manifest: Manifest, options: ChartOptions): ChartFrame {
 
   const plans = planPhrases(manifest, seededRandom(options.seed ^ MOVE_SEED_STREAM), {
     share: options.moves ?? 0,
-    fromSec: options.movesFromSec ?? -Infinity,
+    fromSec: options.roundFromSec ?? -Infinity,
   });
   const cueIntervalSec = (beat: number): number => strideAt(beat) * beatIntervalSec;
   return {
@@ -322,7 +323,7 @@ function planShuffles(
   cueIntervalSec: (beat: number) => number,
 ): (Shuffle | null)[] {
   const round = {
-    firstCueSec: Math.max(leadInEndSec(manifest), options.movesFromSec ?? -Infinity),
+    firstCueSec: Math.max(leadInEndSec(manifest), options.roundFromSec ?? -Infinity),
     endSec: options.endSec,
   };
   const random = seededRandom(options.seed ^ SHUFFLE_SEED_STREAM);

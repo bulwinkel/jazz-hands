@@ -189,7 +189,7 @@ describe('a round that starts inside the song', () => {
       seed,
       endSec: playEndSec(song, 'short'),
       moves: cueSetMoveShare(set),
-      movesFromSec: startSec + CHART.leadSec,
+      roundFromSec: startSec + CHART.leadSec,
     };
     const entries = chartEntries(song, options);
     const played = entriesFrom(entries, startSec);
@@ -588,7 +588,7 @@ describe('shuffle phrases on every song', () => {
       const played = [1, 2, 3, 4, 5, 6].map((set) => {
         const seed = candidateSeeds(set)[0];
         const options = { level: 5 as Level, shapes: true, seed, endSec, moves: cueSetMoveShare(set) };
-        const entries = chartEntries(song, { ...options, movesFromSec: startSec + CHART.leadSec });
+        const entries = chartEntries(song, { ...options, roundFromSec: startSec + CHART.leadSec });
         return shufflesOf(song, entriesFrom(entries, startSec));
       });
       expect(played[0].length).toBeGreaterThan(0);
@@ -600,7 +600,7 @@ describe('shuffle phrases on every song', () => {
     for (const song of SONG_MANIFESTS) {
       const startSec = playStartSec(song, length);
       const options = { level: 5 as Level, shapes: true, seed: DEFAULT_SEED, endSec: playEndSec(song, length) };
-      const entries = chartEntries(song, { ...options, movesFromSec: startSec + CHART.leadSec });
+      const entries = chartEntries(song, { ...options, roundFromSec: startSec + CHART.leadSec });
       const played = entriesFrom(entries, startSec);
       const phraseOf = (cue: Cue): number => Math.floor((Math.floor(cue.beatIndex) - song.firstDownbeat) / phraseBeats(song));
       const firstPhrase = phraseOf(played[0].cue);
@@ -755,7 +755,7 @@ describe('moves', () => {
     manifest: Manifest,
     level: Level,
     moves: number,
-    extra: { seed?: number; shapes?: boolean; endSec?: number; movesFromSec?: number } = {},
+    extra: { seed?: number; shapes?: boolean; endSec?: number; roundFromSec?: number } = {},
   ): ChartEntry[] {
     return chartEntries(manifest, {
       level,
@@ -763,7 +763,7 @@ describe('moves', () => {
       shapes: extra.shapes ?? false,
       endSec: extra.endSec ?? manifest.durationSec,
       moves,
-      movesFromSec: extra.movesFromSec,
+      roundFromSec: extra.roundFromSec,
     });
   }
 
@@ -787,7 +787,7 @@ describe('moves', () => {
     for (const song of [synthetic(100, 600), changing(128)]) {
       for (const level of ALL_LEVELS) {
         const unset = chartEntries(song, { level, shapes: true, seed: 7, endSec: song.durationSec });
-        expect(withMoves(song, level, 0, { seed: 7, shapes: true, movesFromSec: 0 })).toEqual(unset);
+        expect(withMoves(song, level, 0, { seed: 7, shapes: true, roundFromSec: 0 })).toEqual(unset);
         expect(unset.some((entry) => entry.role === 'move')).toBe(false);
       }
     }
@@ -927,7 +927,7 @@ describe('moves', () => {
     const fromSec = 200;
     for (const level of ALL_LEVELS) {
       const all = withMoves(song, level, 0.7);
-      const late = withMoves(song, level, 0.7, { movesFromSec: fromSec });
+      const late = withMoves(song, level, 0.7, { roundFromSec: fromSec });
       const lateMoves = late.filter((entry) => entry.role === 'move');
       expect(lateMoves.every((entry) => entry.cue.timeSec >= fromSec)).toBe(true);
       expect(moveKeys(late)).toEqual(moveKeys(all).filter((key) => song.beats[Number(key.split(' ')[0]) * 16] >= fromSec));
@@ -939,7 +939,7 @@ describe('moves', () => {
     const song = synthetic(100, 600);
     const startSec = 100;
     for (const level of ALL_LEVELS) {
-      const played = entriesFrom(withMoves(song, level, 1, { movesFromSec: startSec + CHART.leadSec }), startSec);
+      const played = entriesFrom(withMoves(song, level, 1, { roundFromSec: startSec + CHART.leadSec }), startSec);
       for (const cues of byPhrase(played).values()) expect(cues[0].cue.beatIndex % phraseBeats(song)).toBe(0);
       expect(played[0].cue.timeSec).toBeGreaterThanOrEqual(startSec + CHART.leadSec);
     }

@@ -206,8 +206,17 @@ export function mixDistance(mix: ChartMix, target: ChartMix): number {
 
 /** The mix of the part of one player's chart that the round plays. The chart has no moves. */
 export function playedMix(round: RoundCharts, player: ChartFor, seed: number): ChartMix {
-  const entries = chartEntries(round.manifest, { ...player, seed, endSec: round.endSec });
-  return chartMix(round.manifest, entriesFrom(entries, round.startSec), player.level);
+  return chartMix(round.manifest, playedChart(round, player, seed), player.level);
+}
+
+/**
+ * The part of one player's chart that the round plays, with no moves. The chart knows where the
+ * round starts, as the chart of the round does: its shuffle phrases are then the round's own.
+ */
+export function playedChart(round: RoundCharts, player: ChartFor, seed: number): ChartEntry[] {
+  const roundFromSec = round.startSec + CHART.leadSec;
+  const entries = chartEntries(round.manifest, { ...player, seed, endSec: round.endSec, roundFromSec });
+  return entriesFrom(entries, round.startSec);
 }
 
 /** What the choice of a round's seed works from. Each chart of the pool is made once. */

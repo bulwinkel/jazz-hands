@@ -354,8 +354,8 @@ export class DanceGame {
           endSec: this.endSec,
           moves: this.moveShare,
           // The round's first cue may come this late: no move starts before it, so the round
-          // never begins with the rest of a move.
-          movesFromSec: this.startSec + CHART.leadSec,
+          // never begins with the rest of a move, and the shuffle phrases count from it.
+          roundFromSec: this.startSec + CHART.leadSec,
         });
         const played = entriesFrom(chart, this.startSec);
         player.cues = played.map((entry) => entry.cue);
