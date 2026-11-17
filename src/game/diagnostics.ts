@@ -256,7 +256,12 @@ export interface PlayerReport {
 }
 
 export interface RunReport {
-  schemaVersion: 1;
+  /**
+   * 2 since 2026-11-17: each cue holds a shape for each cell in `shapes`, and each cell of its
+   * observation holds its own `shapesRead`. 1 before: one `gesture` for all cells of a cue, and
+   * one `shapesRead` for the whole cue.
+   */
+  schemaVersion: 2;
   savedAt: string;
   song: { id: string; title: string; length: string; startSec: number; endSec: number };
   settings: {
@@ -421,7 +426,7 @@ export function buildRunReport(context: RunContext): RunReport {
   const { stats } = context;
   const playSec = playedSec(stats.play, context.nowMs);
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     savedAt: new Date().toISOString(),
     song: context.song,
     settings: context.settings,

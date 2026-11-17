@@ -264,6 +264,10 @@ describe('run report', () => {
     expect(report([playOneCue(tap('fist'), () => [])]).players[0].cues[0].shuffle).toBeUndefined();
   });
 
+  it('says its version: 2, since the shapes of a cue sit in its cells', () => {
+    expect(report([playOneCue(tap('fist'), () => [])]).schemaVersion).toBe(2);
+  });
+
   it('gives the share of cues at which a hand must change its shape', () => {
     // All on cell 3, in the left column: one hand makes a fist, then a point twice.
     const onLeft = (timeSec: number, shape?: GestureName): Cue => ({ ...tap(shape), timeSec, cells: [3] });
