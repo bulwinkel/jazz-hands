@@ -120,9 +120,10 @@ export function middleCell(from: number, to: number): number {
 }
 
 /**
- * The hand shape for every beat, for a level that asks for a shape on every cue.
- * One shape lasts a few seconds, from a bar start to a later bar start, and the next one is
- * always different. A new shape on every cue could not be read at this speed.
+ * The hand shape for every beat of a steady phrase, at a level that asks for a shape on every
+ * cue. One shape lasts at least `CHART.shapePhraseSec`, from a bar start to a later bar start,
+ * and the next one is always different. A shuffle phrase changes the shape from cue to cue
+ * instead, by a pattern: see shapePatterns.ts.
  */
 export function phraseShapes(manifest: Manifest, seed: number): GestureName[] {
   const random = seededRandom(seed ^ 0x5a9e);

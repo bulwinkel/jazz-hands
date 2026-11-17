@@ -68,11 +68,18 @@ describe('reading a ratings file', () => {
   it('reads a record saved before 2026-11-17, whose chart holds no share of shape changes', () => {
     const olderChart = { slides: 0.2, doubles: 0.1, offbeats: 0.2, cues: 90, moves: { point: 2, circle: 1 } };
     const older = record({ chart: olderChart, level: 5, cueSet: 2, rating: 4 });
-    const { records, skipped } = readRatings(lines([older, record({ roundId: 'round-b', level: 5, cueSet: 2, rating: 2 })]));
+    const newer = record({ roundId: 'round-b', level: 5, cueSet: 2, rating: 2 });
+    const { records, skipped } = readRatings(lines([older, newer]));
     expect(skipped).toBe(0);
     const text = summaryText(records, skipped);
     expect(text).toContain('Ratings: 2');
-    expect(text).toContain('By level and set\nLevel  Set  Ratings  Mean\n-----  ---  -------  ----\n5      2    2        3.00');
+    const table = [
+      'By level and set',
+      'Level  Set  Ratings  Mean',
+      '-----  ---  -------  ----',
+      '5      2    2        3.00',
+    ];
+    expect(text).toContain(table.join('\n'));
   });
 
   it('leaves out empty lines, and does not count them', () => {

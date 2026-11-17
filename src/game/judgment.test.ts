@@ -127,7 +127,8 @@ describe('hand shapes', () => {
 
 describe('a shape in each cell', () => {
   /** A double on cells 0 and 2 that asks for a fist in cell 0 and a point in cell 2. */
-  const fistAndPoint = (): CueState => newCueState({ timeSec: 1, beatIndex: 2, cells: [0, 2], shapes: ['fist', 'point'] });
+  const fistAndPoint = (): CueState =>
+    newCueState({ timeSec: 1, beatIndex: 2, cells: [0, 2], shapes: ['fist', 'point'] });
 
   it('is Perfect when each hand makes the shape of its own cell', () => {
     expect(step(fistAndPoint(), 5, [hand(0, 'fist'), hand(2, 'point')], 1)).toBe('perfect');

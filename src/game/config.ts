@@ -235,7 +235,10 @@ export interface LevelRules {
    * pattern over the three cells of a slide. See shapePatterns.ts.
    */
   shapesOnDoublesAndSlides: boolean;
-  /** Every cue asks for a hand shape. One shape lasts a few seconds, then it changes. */
+  /**
+   * Every cue asks for a hand shape. In a steady phrase one shape lasts a few seconds, then it
+   * changes. In a shuffle phrase the shape changes from cue to cue, by a pattern.
+   */
   shapeOnEveryCue: boolean;
   /** How long a cue is on screen before it is due. */
   approachSec: number;
@@ -313,8 +316,8 @@ export const LEVELS: Record<Level, LevelRules> = {
     // The slides of level 4: a shape does not change the chart.
     slideChance: 0.35,
     offbeatChance: 0.6,
-    // As level 4. The shape on every cue then takes the place of these shapes.
-    shapesOnDoublesAndSlides: true,
+    // Off: every cue asks for a shape of its own at this level. See shapeOnEveryCue.
+    shapesOnDoublesAndSlides: false,
     shapeOnEveryCue: true,
     approachSec: 1,
     perfectMs: [-120, 160],

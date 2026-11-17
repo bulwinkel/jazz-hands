@@ -513,7 +513,8 @@ describe('shuffle phrases at level 5', () => {
         if (counted.afterOffbeat) held++;
         const same = counted.cue.shapes?.[0] === run[k - 1].cue.shapes?.[0];
         // A two-hand tap after an off-beat tap may put the shape now in its second cell.
-        if (counted.cue.cells.length === 1 && run[k - 1].cue.cells.length === 1) expect(same).toBe(counted.afterOffbeat);
+        const singles = counted.cue.cells.length === 1 && run[k - 1].cue.cells.length === 1;
+        if (singles) expect(same).toBe(counted.afterOffbeat);
       });
       // Leave out the cues that keep the shape before the phrase: the rest repeats the pattern.
       // A two-hand tap after an off-beat tap can have the shape now in either cell: leave it out.
@@ -545,7 +546,7 @@ describe('shuffle phrases at level 5', () => {
     }
   });
 
-  it('never ask a single tap directly after an off-beat tap for a shape that the cues before it did not ask for', () => {
+  it('never ask a single tap directly after an off-beat tap for a shape that is new', () => {
     for (const song of [synthetic(130, 600), synthetic(100, 600), ...SONG_MANIFESTS.slice(0, 6)]) {
       const entries = entriesOf(song);
       entries.forEach(({ cue, role }, i) => {
@@ -1277,7 +1278,7 @@ describe('slides on every song', () => {
     }
   });
 
-  it('at level 4, ask for a shape on all three cells of a slide or on none, a new shape on each cell at a slow pace', () => {
+  it('at level 4, ask for shapes on all three cells of a slide or on none, a new shape at a slow pace', () => {
     let changing = 0;
     let holding = 0;
     for (const { entries } of chartsAt(4)) {

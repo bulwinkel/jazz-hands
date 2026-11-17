@@ -49,7 +49,8 @@ describe('a pattern of hand shapes', () => {
     const pair = ['fist', 'peace'] as const;
     const triple = ['open', 'point', 'fist'] as const;
     expect([0, 1, 2, 3].map((step) => shapeAtStep(pair, step))).toEqual(['fist', 'peace', 'fist', 'peace']);
-    expect([0, 1, 2, 3, 4].map((step) => shapeAtStep(triple, step))).toEqual(['open', 'point', 'fist', 'open', 'point']);
+    const tripleShapes = [0, 1, 2, 3, 4].map((step) => shapeAtStep(triple, step));
+    expect(tripleShapes).toEqual(['open', 'point', 'fist', 'open', 'point']);
   });
 
   it('takes four rolls whether it is a pair or a triple', () => {
@@ -102,7 +103,8 @@ describe('the steps of a shuffle', () => {
     expect(firstStep(['fist', 'peace'], 'fist')).toBe(1);
     expect(firstStep(['fist', 'peace'], 'peace')).toBe(0);
     expect(firstStep(['fist', 'peace'], undefined)).toBe(0);
-    expect([0, 1, 2].map((step) => shapeOfStep(['fist', 'peace', 'open'], 1, step, 'fist'))).toEqual(['peace', 'open', 'fist']);
+    const fromSecond = [0, 1, 2].map((step) => shapeOfStep(['fist', 'peace', 'open'], 1, step, 'fist'));
+    expect(fromSecond).toEqual(['peace', 'open', 'fist']);
   });
 
   it('give the second hand of a tap for two hands the next shape of the pattern', () => {

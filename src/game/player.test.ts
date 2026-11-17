@@ -50,14 +50,16 @@ describe('the share of shape changes', () => {
   });
 
   it('gives a centre cell to a hand that already makes its shape', () => {
-    expect(shapeChangeShare([tap(1, [0, 2], ['fist', 'peace']), tap(2, [4], ['peace']), tap(3, [1], ['fist'])])).toBe(0);
+    const before = tap(1, [0, 2], ['fist', 'peace']);
+    expect(shapeChangeShare([before, tap(2, [4], ['peace']), tap(3, [1], ['fist'])])).toBe(0);
     expect(shapeChangeShare([tap(1, [0, 2], ['fist', 'peace']), tap(2, [4], ['open'])])).toBe(0.5);
   });
 
   it('counts no change for one shape on two hands and then on one, nor for a cue with no shape', () => {
     expect(shapeChangeShare([tap(1, [0, 2], ['fist', 'fist']), tap(2, [4], ['fist']), tap(3, [1])])).toBe(0);
     // The first shape of a hand is no change, and a hand keeps its shape through a cue with none.
-    expect(shapeChangeShare([tap(1, [0], ['fist']), tap(2, [3]), tap(3, [3], ['fist']), tap(4, [5], ['open'])])).toBe(0);
+    const cues = [tap(1, [0], ['fist']), tap(2, [3]), tap(3, [3], ['fist']), tap(4, [5], ['open'])];
+    expect(shapeChangeShare(cues)).toBe(0);
   });
 
   it('is 0 for a chart with no cues, or with no shapes', () => {
