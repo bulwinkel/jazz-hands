@@ -184,6 +184,17 @@ describe('run report', () => {
     expect(Object.keys(shapeCues.readings.fist ?? {})).toEqual(['fist']);
   });
 
+  it('reads each cell against its own shape: two right shapes in a tap for two hands are read as asked', () => {
+    const double: Cue = { timeSec: 1, beatIndex: 2, cells: [0, 2], shapes: ['fist', 'point'] };
+    const player = playOneCue(double, () => [hand(0, 'fist'), hand(2, 'point')]);
+    const { shapeCues } = report([player]).players[0];
+    expect(shapeCues).toMatchObject({ asked: 1, hit: 1, readAsAsked: 1, hitOnFewFrames: 0 });
+    for (const cell of player.observations[0].cells) {
+      expect(cell.framesInCell).toBeGreaterThan(10);
+      expect(cell.framesMatching).toBe(cell.framesInCell);
+    }
+  });
+
   it('adds the readings of each cell to the shape that the cell asked for', () => {
     const double: Cue = { timeSec: 1, beatIndex: 2, cells: [0, 2], shapes: ['fist', 'point'] };
     // The tracker reads the left hand right and the right hand as an open hand.

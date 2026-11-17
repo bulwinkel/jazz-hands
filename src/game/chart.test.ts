@@ -819,6 +819,25 @@ describe('hand shapes', () => {
   });
 });
 
+describe('the hand shapes switch', () => {
+  /** The entries of a chart without their shapes. */
+  const withoutShapes = (entries: ChartEntry[]): ChartEntry[] =>
+    entries.map(({ cue: { shapes: _shapes, shuffle: _shuffle, ...cue }, ...entry }) => ({ ...entry, cue }));
+
+  it('changes no cell, time, role or slide step at levels 1 to 4', () => {
+    const songs = [synthetic(100, 600), synthetic(130, 600), SONG_MANIFESTS[0], SONG_MANIFESTS[3]];
+    for (const song of songs) {
+      for (const level of SWITCH_LEVELS) {
+        const options = { level, seed: 7, endSec: song.durationSec, moves: 0.35 };
+        const on = chartEntries(song, { ...options, shapes: true });
+        const off = chartEntries(song, { ...options, shapes: false });
+        expect(on.some((entry) => entry.cue.shapes)).toBe(true);
+        expect(withoutShapes(on)).toEqual(off);
+      }
+    }
+  });
+});
+
 describe('hand shapes at level 4 with the switch on', () => {
   const song = synthetic(100, 1800);
   const cues = chart(song, 4, 7, { shapes: true });
@@ -1282,6 +1301,30 @@ describe('slides on every song', () => {
     }
     expect(changing).toBeGreaterThan(100);
     expect(holding).toBeGreaterThan(100);
+  });
+
+  it('give each cell of a slide across a phrase border at level 5 the shapes of its own phrase', () => {
+    let crossing = 0;
+    for (const song of [synthetic(130, 600), synthetic(100, 600)]) {
+      const options = { level: 5 as Level, shapes: true, seed: 42, endSec: song.durationSec };
+      const plan = shufflePlan(song, options);
+      const steadyShapes = phraseShapes(song, 42);
+      const cues = chartEntries(song, options).map((entry) => entry.cue);
+      cues.forEach((cue, i) => {
+        const cells = cues.slice(i, i + 3);
+        const phrases = cells.map((cell) => phraseOf(song, cell));
+        if (!startsSlide(cue) || phrases[0] === phrases[2] || !phrases.some((phrase) => plan[phrase])) return;
+        crossing++;
+        cells.forEach((cell, k) => {
+          const inShuffle = plan[phrases[k]] !== null;
+          expect(cell.shuffle === true).toBe(inShuffle);
+          if (!inShuffle) expect(cell.shapes).toEqual([steadyShapes[cell.beatIndex]]);
+          // The first cell in a shuffle phrase starts it with a change.
+          if (inShuffle && k > 0 && !cells[k - 1].shuffle) expect(cell.shapes?.[0]).not.toBe(cells[k - 1].shapes?.[0]);
+        });
+      });
+    }
+    expect(crossing).toBeGreaterThan(5);
   });
 
   it('give each cell of a slide the phrase shape of its own beat at level 5, in a steady phrase', () => {
