@@ -264,8 +264,10 @@ describe('run report', () => {
     expect(report([playOneCue(tap('fist'), () => [])]).players[0].cues[0].shuffle).toBeUndefined();
   });
 
-  it('gives the share of cues whose shapes differ from the cue before them', () => {
-    const cues: Cue[] = [tap('fist'), { ...tap('point'), timeSec: 2 }, { ...tap('point'), timeSec: 3 }, { ...tap(), timeSec: 4 }];
+  it('gives the share of cues at which a hand must change its shape', () => {
+    // All on cell 3, in the left column: one hand makes a fist, then a point twice.
+    const onLeft = (timeSec: number, shape?: GestureName): Cue => ({ ...tap(shape), timeSec, cells: [3] });
+    const cues: Cue[] = [onLeft(1, 'fist'), onLeft(2, 'point'), onLeft(3, 'point'), onLeft(4)];
     const player: PlayerRun = {
       ...newPlayer(),
       cues,

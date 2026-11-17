@@ -17,32 +17,52 @@ describe('the chart summary', () => {
 });
 
 describe('the share of shape changes', () => {
-  /** A tap due at `timeSec` with these shapes, one for each of its cells. */
-  const tap = (timeSec: number, shapes?: Cue['shapes']): Cue => ({
+  /** A tap due at `timeSec` on these cells, with these shapes, one for each cell. */
+  const tap = (timeSec: number, cells: number[], shapes?: Cue['shapes']): Cue => ({
     timeSec,
     beatIndex: timeSec,
-    cells: shapes?.length === 2 ? [0, 2] : [4],
+    cells,
     shapes,
   });
+  // Cells 0 and 3 are in the left column, 2 and 5 in the right column, 1 and 4 in the centre.
 
-  it('counts each cue whose shapes differ from the cue before it', () => {
-    expect(shapeChangeShare([tap(1, ['fist']), tap(2, ['open']), tap(3, ['fist']), tap(4, ['fist'])])).toBe(0.5);
+  it('counts a cue at which a hand must make another shape than it made before', () => {
+    const cues = [tap(1, [0], ['fist']), tap(2, [3], ['open']), tap(3, [0], ['fist']), tap(4, [3], ['fist'])];
+    // The left hand makes a fist, then an open hand, then a fist: two changes in four cues.
+    expect(shapeChangeShare(cues)).toBe(0.5);
   });
 
-  it('counts a shape after a cue with none, and not a cue with none', () => {
-    expect(shapeChangeShare([tap(1, ['fist']), tap(2), tap(3, ['fist']), tap(4)])).toBe(0.25);
+  it('lets each hand keep its own shape', () => {
+    // The left hand makes fists, the right hand open hands: neither hand changes.
+    const cues = [tap(1, [0], ['fist']), tap(2, [2], ['open']), tap(3, [3], ['fist']), tap(4, [5], ['open'])];
+    expect(shapeChangeShare(cues)).toBe(0);
   });
 
-  it('compares the set of shapes that each cue asks for', () => {
-    // A fist in both cells of a tap for two hands, then a fist in one cell: no change.
-    expect(shapeChangeShare([tap(1, ['fist', 'fist']), tap(2, ['fist'])])).toBe(0);
-    expect(shapeChangeShare([tap(1, ['fist', 'peace']), tap(2, ['peace', 'fist'])])).toBe(0);
-    expect(shapeChangeShare([tap(1, ['fist']), tap(2, ['fist', 'peace'])])).toBe(0.5);
+  it('counts two shapes that swap hands, with one hand staying in its cell', () => {
+    expect(shapeChangeShare([tap(1, [0, 2], ['peace', 'point']), tap(2, [0, 5], ['point', 'peace'])])).toBe(0.5);
+  });
+
+  it('counts no change for an off-beat tap with the shape of its own side', () => {
+    const offbeatOnRight = tap(1.5, [5], ['point']);
+    expect(shapeChangeShare([tap(1, [0, 2], ['peace', 'point']), offbeatOnRight])).toBe(0);
+    const offbeatOnLeft = tap(1.5, [3], ['point']);
+    expect(shapeChangeShare([tap(1, [0, 2], ['peace', 'point']), offbeatOnLeft])).toBe(0.5);
+  });
+
+  it('gives a centre cell to a hand that already makes its shape', () => {
+    expect(shapeChangeShare([tap(1, [0, 2], ['fist', 'peace']), tap(2, [4], ['peace']), tap(3, [1], ['fist'])])).toBe(0);
+    expect(shapeChangeShare([tap(1, [0, 2], ['fist', 'peace']), tap(2, [4], ['open'])])).toBe(0.5);
+  });
+
+  it('counts no change for one shape on two hands and then on one, nor for a cue with no shape', () => {
+    expect(shapeChangeShare([tap(1, [0, 2], ['fist', 'fist']), tap(2, [4], ['fist']), tap(3, [1])])).toBe(0);
+    // The first shape of a hand is no change, and a hand keeps its shape through a cue with none.
+    expect(shapeChangeShare([tap(1, [0], ['fist']), tap(2, [3]), tap(3, [3], ['fist']), tap(4, [5], ['open'])])).toBe(0);
   });
 
   it('is 0 for a chart with no cues, or with no shapes', () => {
     expect(shapeChangeShare([])).toBe(0);
-    expect(shapeChangeShare([tap(1), tap(2)])).toBe(0);
+    expect(shapeChangeShare([tap(1, [0]), tap(2, [2])])).toBe(0);
   });
 
   it('is higher at level 5 in a chart with shuffle phrases than in its steady phrases', () => {
@@ -51,7 +71,6 @@ describe('the share of shape changes', () => {
     const shuffles = cues.filter((cue) => cue.shuffle);
     const steady = cues.filter((cue) => !cue.shuffle);
     expect(shuffles.length).toBeGreaterThan(50);
-    expect(shapeChangeShare(shuffles)).toBeGreaterThan(0.5);
-    expect(shapeChangeShare(steady)).toBeLessThan(0.2);
+    expect(shapeChangeShare(shuffles)).toBeGreaterThan(1.5 * shapeChangeShare(steady));
   });
 });
