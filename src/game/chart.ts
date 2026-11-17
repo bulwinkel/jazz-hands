@@ -671,6 +671,20 @@ function slideFits(frame: ChartFrame, state: ChartState, beat: number): boolean 
   return !state.previousWasOffbeat && !crowdsMove(frame, beat, endBeat);
 }
 
+/**
+ * The shapes of a slide that the shapes switch gives shapes, as a pattern that its cells step
+ * through. Where its cells are at least `CHART.patternStepSec` apart, the cells change shape: a
+ * pair (A B A) or a triple (A B C). Where they are closer, one shape lasts all three cells: a
+ * hand has no time to change shape between them.
+ */
+function slidePattern(frame: ChartFrame, beat: number, roll: BeatRolls): GestureName[] {
+  const pattern = shapePattern(roll.pattern);
+  const timesSec = slideBeats(frame, beat).map((cellBeat) => frame.manifest.beats[cellBeat]);
+  const closestSec = Math.min(timesSec[1] - timesSec[0], timesSec[2] - timesSec[1]);
+  if (closestSec >= CHART.patternStepSec - EPSILON) return pattern;
+  return [pattern[0]];
+}
+
 /** The three cue beats of a slide that starts on `beat`: a stride apart, the stride of its first beat. */
 function slideBeats(frame: ChartFrame, beat: number): number[] {
   const stride = frame.strideAt(beat);
@@ -683,10 +697,9 @@ const SLIDE_STEPS: readonly SlideStep[] = [1, 2, 3];
 /**
  * Adds a slide: three taps in a line, from the beat's master cell through the middle cell to a
  * cell two steps away, one tap on each of its three cue beats. With the shapes switch, a level
- * with `shapesOnDoublesAndSlides` may give the slide a pattern: the cells step through it, one
- * shape each (A B A or A B C). A level with a shape on every cue gives each cell the shape of
- * its own beat: the phrase shape, or in a shuffle phrase the next step of the pattern. No
- * off-beat tap follows any of the cells.
+ * with `shapesOnDoublesAndSlides` may give the slide shapes: see `slidePattern`. A level with a
+ * shape on every cue gives each cell the shape of its own beat: the phrase shape, or in a
+ * shuffle phrase the next step of the pattern. No off-beat tap follows any of the cells.
  */
 function addSlide(frame: ChartFrame, state: ChartState, beat: number, roll: BeatRolls): void {
   const from = frame.master[beat];
@@ -695,7 +708,7 @@ function addSlide(frame: ChartFrame, state: ChartState, beat: number, roll: Beat
   const cells = [from, middleCell(from, to), to];
   // The rest before a shape counts from the cue before the slide, so decide before its cells.
   const startSec = frame.manifest.beats[beat];
-  const pattern = switchShapesFit(frame, state, startSec, roll) ? shapePattern(roll.pattern) : null;
+  const pattern = switchShapesFit(frame, state, startSec, roll) ? slidePattern(frame, beat, roll) : null;
 
   slideBeats(frame, beat).forEach((cellBeat, k) => {
     const cue = tapOn(frame, cellBeat, cells[k]);
