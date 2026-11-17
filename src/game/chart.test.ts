@@ -611,16 +611,23 @@ describe('shuffle phrases at level 5', () => {
     changes.slice(1).forEach((k, i) => expect(k - changes[i]).toBeGreaterThanOrEqual(2));
   });
 
-  it('let an off-beat tap keep the shape of the cue before it', () => {
+  it('let an off-beat tap keep the shape of the cue before it, of the cell on its own side', () => {
     const song = synthetic(130, 600);
     const entries = entriesOf(song);
     const offbeats = entries.filter((entry) => entry.role === 'offbeat' && entry.cue.shuffle);
     expect(offbeats.length).toBeGreaterThan(20);
+    let onSecondCell = 0;
     entries.forEach((entry, i) => {
-      if (entry.role !== 'offbeat' || !entries[i - 1].cue.shuffle) return;
+      const before = entries[i - 1]?.cue;
+      if (entry.role !== 'offbeat' || !before.shuffle) return;
       expect(entry.cue.shuffle).toBe(true);
-      expect(entry.cue.shapes).toEqual([entries[i - 1].cue.shapes?.[0]]);
+      // The cell of the cue before in the off-beat tap's column, else its first cell.
+      const sameColumn = before.cells.findIndex((cell) => cell % 3 === entry.cue.cells[0] % 3);
+      const kept = before.shapes?.[sameColumn === -1 ? 0 : sameColumn];
+      expect(entry.cue.shapes).toEqual([kept]);
+      if (sameColumn === 1 && before.shapes?.[1] !== before.shapes?.[0]) onSecondCell++;
     });
+    expect(onSecondCell).toBeGreaterThan(3);
   });
 
   it('give a tap for two hands the shape of the pattern now and its next shape', () => {

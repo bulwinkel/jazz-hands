@@ -779,12 +779,15 @@ function addOffbeatTap(frame: ChartFrame, state: ChartState, cue: Cue, roll: Bea
 }
 
 /**
- * At a level with a shape on every cue, an off-beat tap keeps the shape of the cue before it:
- * the shape of its first cell. It comes too soon after that cue for a new shape to read. In a
- * shuffle phrase, the pattern does not count it.
+ * At a level with a shape on every cue, an off-beat tap keeps the shape of the cue before it.
+ * It comes too soon after that cue for a new shape to read. After a tap for two hands with two
+ * shapes, it takes the shape of the cell in its own column, on the side of the hand that plays
+ * it. When no cell is in its column, it takes the shape of the first cell. In a shuffle phrase,
+ * the pattern does not count it.
  */
 function keepShape(frame: ChartFrame, tap: Cue, before: Cue): void {
   if (!frame.phraseShape || !before.shapes) return;
-  tap.shapes = [before.shapes[0]];
+  const sameSide = cellInColumnOf(before.cells, tap.cells[0]);
+  tap.shapes = [before.shapes[sameSide === -1 ? 0 : sameSide]];
   if (before.shuffle) tap.shuffle = true;
 }
