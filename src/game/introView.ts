@@ -55,8 +55,12 @@ const STAND_CARD = card(
     <p>A big screen helps. A TV is best.</p>
     <fieldset class="choices intro-count">
       <legend>Players</legend>
-      <label data-card-hand="intro-count-1"><input type="radio" name="intro-count" value="1"><span>1 player</span></label>
-      <label data-card-hand="intro-count-2"><input type="radio" name="intro-count" value="2"><span>2 players</span></label>
+      <label data-card-hand="intro-count-1">
+        <input type="radio" name="intro-count" value="1"><span>1 player</span>
+      </label>
+      <label data-card-hand="intro-count-2">
+        <input type="radio" name="intro-count" value="2"><span>2 players</span>
+      </label>
     </fieldset>
     <p class="intro-small" id="intro-stand-hint"></p>
   </div>`,
@@ -70,7 +74,11 @@ const HANDS_CARD = card(
     <ul class="intro-rows">
       ${row('✋ ✊', 'In the menu, point with an open hand. Then hold a fist to choose.')}
       ${row('✋', 'To start a round, hold a hand in the Start cell. It is at the top right of your grid.')}
-      ${row('📏', 'Does the grid not fit you? Hold a hand in the Calibrate cell, at the top left. Then draw big circles with both arms.')}
+      ${row(
+        '📏',
+        'Does the grid not fit you? Hold a hand in the Calibrate cell, at the top left. ' +
+          'Then draw big circles with both arms.',
+      )}
     </ul>
     <p class="intro-small">The mouse, a touch and the keyboard work too.</p>
   </div>`,
@@ -83,8 +91,16 @@ const CAMERA_CARD = card(
   `<div class="intro-text intro-wide">
     <ul class="intro-rows">
       ${row('📷', 'The game needs your camera to see your hands.')}
-      ${row('🔒', 'The picture never leaves this device. The game finds your hands, and your face when Faces is on, right here in your browser.')}
-      ${row('🔴', 'Recording is off until you turn it on. A recorded round stays on this device. The game deletes it when you leave the results, so download it there to keep it.')}
+      ${row(
+        '🔒',
+        'The picture never leaves this device. ' +
+          'The game finds your hands, and your face when Faces is on, right here in your browser.',
+      )}
+      ${row(
+        '🔴',
+        'Recording is off until you turn it on. A recorded round stays on this device. ' +
+          'The game deletes it when you leave the results, so download it there to keep it.',
+      )}
     </ul>
   </div>`,
 );

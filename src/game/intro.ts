@@ -137,6 +137,10 @@ export function forwardButton(card: IntroCard, cameraNext: boolean): ForwardButt
  * True when the menu asks for the camera as it opens: hand control is on, the input is the
  * camera, and no input is open yet. See `syncMenuInput` in flow.ts.
  */
-export function menuAsksForCamera(settings: Pick<Settings, 'handControl'>, input: InputSource, inputOpen: boolean): boolean {
+export function menuAsksForCamera(
+  settings: Pick<Settings, 'handControl'>,
+  input: InputSource,
+  inputOpen: boolean,
+): boolean {
   return settings.handControl && input === 'camera' && !inputOpen;
 }

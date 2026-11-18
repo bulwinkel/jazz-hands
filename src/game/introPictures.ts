@@ -20,8 +20,8 @@ const cornerRadius = (rect: Rect): number => Math.min(16, rect.width * 0.12);
 /** A rounded rectangle with a class. `extra` adds attributes. */
 function box(rect: Rect, className: string, extra = ''): string {
   const { x, y, width, height } = rect;
-  const rx = n(cornerRadius(rect));
-  return `<rect class="${className}" x="${n(x)}" y="${n(y)}" width="${n(width)}" height="${n(height)}" rx="${rx}"${extra}/>`;
+  const place = `x="${n(x)}" y="${n(y)}" width="${n(width)}" height="${n(height)}"`;
+  return `<rect class="${className}" ${place} rx="${n(cornerRadius(rect))}"${extra}/>`;
 }
 
 const centreOf = (rect: Rect): Point => ({ x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 });
@@ -97,9 +97,11 @@ export function beatPicture(): string {
     const name = 'abc'[turn];
     return `--${name}-x: ${n(centre.x)}px; --${name}-y: ${n(centre.y)}px;`;
   });
-  const hand = `<g class="pic-hand" style="${stops.join(' ')}">${label('✋', { x: 0, y: 0 }, HAND_SIZE, 'pic-sign')}</g>`;
+  const handSign = label('✋', { x: 0, y: 0 }, HAND_SIZE, 'pic-sign');
+  const hand = `<g class="pic-hand" style="${stops.join(' ')}">${handSign}</g>`;
   const loop = `--loop: ${BEAT_CELLS.length * BEAT_STEP_SEC}s`;
-  return svg('-22 -44 344 350', 'pic-beat', 0, `${gridLines(BEAT_GRID)}${cues.join('')}${hand}${perfects.join('')}`, loop);
+  const content = `${gridLines(BEAT_GRID)}${cues.join('')}${hand}${perfects.join('')}`;
+  return svg('-22 -44 344 350', 'pic-beat', 0, content, loop);
 }
 
 // --- Card 2: where to stand ---

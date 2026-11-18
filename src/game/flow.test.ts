@@ -205,7 +205,8 @@ describe('the camera on a first visit', () => {
     expect(page.phase()).toBe('menu');
     await settle();
     expect(fakes.createInput).toHaveBeenCalledTimes(1);
-    expect(fakes.createInput).toHaveBeenCalledWith(expect.objectContaining({ input: 'camera' }), 'hands-full', false, page.ui.stage);
+    const cameraOptions = expect.objectContaining({ input: 'camera' });
+    expect(fakes.createInput).toHaveBeenCalledWith(cameraOptions, 'hands-full', false, page.ui.stage);
   });
 
   it('is asked for at once when the kept settings say the intro was seen', async () => {

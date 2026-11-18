@@ -25,14 +25,17 @@ const CARD_TEXTS: Record<IntroCard, string[]> = {
     'Your hands run the game',
     'In the menu, point with an open hand. Then hold a fist to choose.',
     'To start a round, hold a hand in the Start cell. It is at the top right of your grid.',
-    'Does the grid not fit you? Hold a hand in the Calibrate cell, at the top left. Then draw big circles with both arms.',
+    'Does the grid not fit you? Hold a hand in the Calibrate cell, at the top left. ' +
+      'Then draw big circles with both arms.',
     'The mouse, a touch and the keyboard work too.',
   ],
   4: [
     'Your camera picture stays with you',
     'The game needs your camera to see your hands.',
-    'The picture never leaves this device. The game finds your hands, and your face when Faces is on, right here in your browser.',
-    'Recording is off until you turn it on. A recorded round stays on this device. The game deletes it when you leave the results, so download it there to keep it.',
+    'The picture never leaves this device. ' +
+      'The game finds your hands, and your face when Faces is on, right here in your browser.',
+    'Recording is off until you turn it on. A recorded round stays on this device. ' +
+      'The game deletes it when you leave the results, so download it there to keep it.',
   ],
 };
 
@@ -61,7 +64,8 @@ describe('the cards of the intro', () => {
   });
 
   it('put the signs at the left of the rows of cards 3 and 4', () => {
-    const signs = (card: IntroCard) => [...cardHtml(card).matchAll(/class="intro-sign"[^>]*>([^<]+)</g)].map((m) => m[1]);
+    const signs = (card: IntroCard): string[] =>
+      [...cardHtml(card).matchAll(/class="intro-sign"[^>]*>([^<]+)</g)].map((match) => match[1]);
     expect(signs(3)).toEqual(['✋ ✊', '✋', '📏']);
     expect(signs(4)).toEqual(['📷', '🔒', '🔴']);
   });
@@ -178,7 +182,8 @@ function intro(settings: Settings = defaultSettings()) {
   });
   const show = (origin: IntroOrigin, card: IntroCard, cameraNext = true) =>
     view.show({ state: { origin, card }, cameraNext });
-  return { settings, cards, choices, dots, back, forward, note, corner, hint, picture, inputs, controls, onChange, show };
+  const parts = { cards, choices, dots, back, forward, note, corner, hint, picture, inputs };
+  return { ...parts, settings, controls, onChange, show };
 }
 
 describe('the intro at work', () => {
