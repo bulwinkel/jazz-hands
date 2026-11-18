@@ -573,6 +573,11 @@ canvas {
   font-size: clamp(34px, 4vw, 58px);
   margin: 8px 0 18px;
 }
+/* A card's title takes the focus when its card opens, so the keys and a screen reader follow the
+   card (see `buildIntro`). It is no control, so it shows no focus ring. */
+.intro h1:focus {
+  outline: none;
+}
 .intro-cards {
   display: grid;
   width: 100%;
