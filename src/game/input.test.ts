@@ -97,4 +97,11 @@ describe('the hands of the mouse input', () => {
   it('is one hand at the pointer in the menu, where each player has a pointer of their own', () => {
     expect(mouseHandPositions(0.8, 2, 'menu')).toEqual([0.8, null]);
   });
+
+  it('is one hand at the pointer in the intro: a copy would press a second button', () => {
+    expect(mouseHandPositions(0.3, 2, 'intro')).toEqual([0.3, null]);
+    const [pointerHand, copy] = mouseHands({ x: 0.3, y: 0.5 }, 'fist', 2, 'intro');
+    expect(pointerHand.hands).toHaveLength(1);
+    expect(copy.hands).toEqual([]);
+  });
 });

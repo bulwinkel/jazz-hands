@@ -45,7 +45,8 @@ export interface RenderView {
   recording?: boolean;
 }
 
-const HIDDEN_PHASES: readonly Phase[] = ['menu', 'loading', 'error'];
+/** The game view draws nothing in these phases: a panel or a message covers the screen. */
+const HIDDEN_PHASES: readonly Phase[] = ['intro', 'menu', 'loading', 'error'];
 const RATING_COLORS: Record<Rating, string> = { perfect: '#fde047', good: '#86efac', miss: '#fb5c76' };
 const WHITE = '#ffffff';
 /** The grid border glows for this long after each beat. */

@@ -65,7 +65,17 @@ export const MENU_SWITCHES_HTML = `
     <button type="button" id="set-switch" data-hand="cue-set"></button>
   </div>`;
 
-const STAND_HINT: Record<PlayerCount, string> = {
+/**
+ * The "How to play" button, in the top left corner of the menu: the switches' look, a little in
+ * from the side as they are. It opens the intro again, at its first card.
+ */
+export const HOW_TO_PLAY_HTML = `
+  <div class="corner left">
+    <button type="button" id="how-to-play" data-hand="how-to-play">❓ How to play</button>
+  </div>`;
+
+/** Where to stand, for each player count. The menu and the intro both show it. */
+export const STAND_HINT: Record<PlayerCount, string> = {
   1: 'Stand in the middle of the picture.',
   2: 'Stand side by side. Each dancer gets one half of the screen.',
 };
@@ -76,6 +86,8 @@ export interface MenuHandlers {
   onStart: () => void;
   /** A choice changed. The menu has written it into the settings by then. */
   onChange: () => void;
+  /** "How to play" was chosen. */
+  onHowToPlay: () => void;
 }
 
 /** What the page can do with the menu once it is built. */
@@ -87,7 +99,7 @@ export interface MenuControls {
 }
 
 /** Ties a group of radio inputs to one value. */
-function bindRadios(root: ParentNode, name: string, current: string, onPick: (value: string) => void): void {
+export function bindRadios(root: ParentNode, name: string, current: string, onPick: (value: string) => void): void {
   for (const input of root.querySelectorAll<HTMLInputElement>(`input[name="${name}"]`)) {
     input.checked = input.value === current;
     input.addEventListener('change', () => {
@@ -163,11 +175,11 @@ function playerCard(player: PlayerIndex, settings: Settings, onChange: () => voi
 }
 
 /**
- * Builds the menu in `panel`, which holds MENU_HTML and MENU_SWITCHES_HTML. The menu edits
- * `settings` in place and calls `onChange` after each edit.
+ * Builds the menu in `panel`, which holds MENU_HTML, MENU_SWITCHES_HTML and HOW_TO_PLAY_HTML.
+ * The menu edits `settings` in place and calls `onChange` after each edit.
  */
 export function buildMenu(panel: HTMLElement, settings: Settings, handlers: MenuHandlers): MenuControls {
-  const { onStart, onChange } = handlers;
+  const { onStart, onChange, onHowToPlay } = handlers;
   // The menu's listeners on the window end with the menu, also when no click or key came.
   const listening = new AbortController();
 
@@ -268,6 +280,7 @@ export function buildMenu(panel: HTMLElement, settings: Settings, handlers: Menu
     onChange();
   });
   find(panel, '#start').addEventListener('click', () => onStart());
+  find(panel, '#how-to-play').addEventListener('click', () => onHowToPlay());
 
   return { stepSong, close: () => listening.abort() };
 }

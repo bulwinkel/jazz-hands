@@ -96,4 +96,5 @@ export interface Score {
   total: number;
 }
 
-export type Phase = 'menu' | 'loading' | 'fit' | 'ready' | 'countdown' | 'play' | 'results' | 'error';
+/** The phases of the game. `intro` is the "How to play" intro: see intro.ts. */
+export type Phase = 'intro' | 'menu' | 'loading' | 'fit' | 'ready' | 'countdown' | 'play' | 'results' | 'error';

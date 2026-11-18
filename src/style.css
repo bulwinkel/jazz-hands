@@ -3,10 +3,11 @@
 
 /* --- Colours and page base --- */
 
-/* The colours that repeat. Three values come from the game's code, which sets them on this
+/* The colours that repeat. Four values come from the game's code, which sets them on this
    element (see `GameUI` in ui.ts), so a change there reaches the page too:
    - `--game-yellow`: the game's yellow, of the large buttons, the highlights and the hold mark;
    - `--grow-start`: the share of a cell where the block of a cue starts;
+   - `--cue-start`: the colour a cue starts in, before it fades to the player's colour;
    - `--veil`: the veil over the camera picture, which the game view copies. */
 :root {
   --text-soft: #cbd5e1;
@@ -545,6 +546,321 @@ canvas {
 .corner button[aria-pressed="false"] {
   border-style: dashed;
   color: var(--text-faint);
+}
+/* The top left corner of the menu holds the "How to play" button, as far in from the side. */
+.corner.left {
+  right: auto;
+  left: 17%;
+  transform-origin: top left;
+}
+
+/* --- The "How to play" intro ---
+   Four cards in one panel, built as the menu is: the content has one design size, and the game
+   scales it down in a small window (see `fitPanel` in ui.ts). The cards lie on top of each
+   other in one grid cell, and only the open one shows. So the panel is as large as the
+   largest card on every card, and the buttons under the cards never move. */
+
+/* The size of the results' heading: each title fits on one line of the design width. */
+.intro h1 {
+  font-size: clamp(34px, 4vw, 58px);
+  margin: 8px 0 18px;
+}
+.intro-cards {
+  display: grid;
+  width: 100%;
+}
+.intro-card {
+  grid-area: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  visibility: hidden;
+}
+.intro-card.open {
+  visibility: visible;
+}
+/* The picture beside the text, in the middle of the height that the largest card needs. */
+.intro-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 48px;
+  width: 100%;
+  text-align: left;
+}
+.intro-picture {
+  flex: none;
+  width: 400px;
+  height: 340px;
+}
+.intro-picture svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.intro-text {
+  flex: 0 1 660px;
+  font-size: 24px;
+  line-height: 1.35;
+}
+.intro-text p {
+  margin: 0 0 16px;
+}
+.intro-text > :last-child {
+  margin-bottom: 0;
+}
+/* Small print, as the legends of the menu's choices. */
+.intro-text .intro-small {
+  font-size: 18px;
+  color: var(--text-soft);
+}
+/* The camera card has no picture: its rows take the room of the picture and the text. */
+.intro-wide {
+  flex-basis: 900px;
+}
+/* Rows with a sign at their left. The signs have a column of their own, so the texts line up. */
+.intro-rows {
+  display: grid;
+  gap: 18px;
+  margin: 0 0 18px;
+  padding: 0;
+  list-style: none;
+}
+.intro-rows li {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  column-gap: 16px;
+  align-items: center;
+}
+.intro-sign {
+  font-size: 34px;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+}
+/* The player choice of the menu, in the text column. */
+.intro-text .choices {
+  justify-content: flex-start;
+  margin: 4px 0 12px;
+}
+.intro-text .choices legend {
+  margin: 0 0 8px;
+  padding: 0;
+}
+/* Where the player is: a dot for each card, the open one in yellow. */
+.intro-dots {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 26px;
+}
+.intro-dots span {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--border);
+}
+.intro-dots span.on {
+  background: var(--game-yellow);
+}
+.intro-actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  margin-top: 20px;
+}
+/* The big button is as wide on every card, also with the longest words of the last card. */
+.intro-actions .primary {
+  min-width: 440px;
+}
+/* "← Back" keeps its room on the first card, so the big button stays in its place. */
+.intro-actions .unseen {
+  visibility: hidden;
+}
+/* The line under the big button keeps the room of one line also when it is empty. */
+.intro-note {
+  min-height: calc(16px * 1.7);
+  margin: 10px 0 0;
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--text-soft);
+}
+/* A narrow window, such as a phone held upright, limits the intro by its width. There the
+   picture goes over the text, in a narrower design, which then shows at a larger scale. */
+@media (max-aspect-ratio: 13/10) {
+  .intro .fit {
+    width: 640px;
+  }
+  .intro-body {
+    flex-direction: column;
+    gap: 24px;
+  }
+  .intro-picture {
+    width: 360px;
+    height: 300px;
+  }
+  .intro-text {
+    flex: none;
+    width: 100%;
+  }
+}
+
+/* The pictures of the intro (see introPictures.ts). They draw as the game does (see render.ts),
+   in the player's colour, `--player`, which each picture sets. */
+.pic-cell {
+  fill: none;
+  stroke: var(--player);
+  stroke-opacity: 0.44;
+  stroke-width: 1.5;
+}
+.pic-grid {
+  fill: none;
+  stroke: var(--player);
+  stroke-opacity: 0.27;
+  stroke-width: 2;
+}
+.pic-sign,
+.pic-word,
+.pic-perfect {
+  font-weight: 800;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+/* Words keep a dark edge, as the game's text keeps a shadow. */
+.pic-word,
+.pic-perfect {
+  paint-order: stroke;
+  stroke: #080c20;
+  stroke-linejoin: round;
+}
+.pic-word {
+  fill: #fff;
+  stroke-width: 3px;
+}
+/* Card 1. The still frame shows the first cue full, with the hand in it, and "Perfect!". */
+.pic-cue-cell {
+  fill: none;
+  stroke: var(--player);
+  stroke-opacity: 0.7;
+  stroke-width: 2;
+}
+.pic-block {
+  fill: var(--player);
+  fill-opacity: 0.62;
+  stroke: var(--player);
+  stroke-width: 3;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.pic-perfect {
+  fill: var(--game-yellow);
+  stroke-width: 4px;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.pic-hand {
+  transform: translate(var(--a-x), var(--a-y));
+}
+/* Card 2. */
+.pic-bezel {
+  fill: #252b49;
+}
+.pic-screen {
+  fill: #080d20;
+}
+.pic-figure {
+  fill: none;
+  stroke: #e2e8f0;
+  stroke-linecap: round;
+}
+.pic-figure circle {
+  fill: #e2e8f0;
+}
+.pic-palm {
+  fill: none;
+  stroke: var(--player);
+  stroke-width: 2.5;
+}
+/* Card 3. The Calibrate cell is the second choice: thin and dashed, with a fainter sign and word. */
+.pic-start {
+  fill: var(--player);
+  fill-opacity: 0.21;
+  stroke: var(--player);
+  stroke-width: 4;
+}
+.pic-ring {
+  fill: none;
+  stroke: var(--player);
+}
+.pic-calibrate {
+  fill: var(--player);
+  fill-opacity: 0.08;
+  stroke: var(--player);
+  stroke-opacity: 0.6;
+  stroke-width: 2.5;
+  stroke-dasharray: 7 5;
+}
+.pic-faint {
+  opacity: 0.7;
+}
+/* The pictures move only on the open card, and start from the beginning when it opens.
+   Card 1 runs three cues in a loop of `--loop`: each keyframe list spans the loop, and a cue's
+   own turn is its first third (introPictures.ts sets each one's `--delay`). Its block grows
+   for 60% of the turn and fills the cell on the beat, as a cue does; then "Perfect!" pops. The
+   hand reaches each cell just before its block is full. Card 3 fills the Start ring in half of
+   `--ring-loop`, the time a hand must hold, and starts again. */
+@media (prefers-reduced-motion: no-preference) {
+  .intro-card.open .pic-cue {
+    animation: pic-cue-turn var(--loop) step-end var(--delay) infinite;
+  }
+  .intro-card.open .pic-cue-cell {
+    animation: pic-cue-colour var(--loop) linear var(--delay) infinite;
+  }
+  .intro-card.open .pic-block {
+    animation: pic-block-grow var(--loop) linear var(--delay) infinite;
+  }
+  .intro-card.open .pic-perfect {
+    animation: pic-perfect-pop var(--loop) ease-out var(--delay) infinite;
+  }
+  .intro-card.open .pic-hand {
+    animation: pic-hand-move var(--loop) ease-in-out infinite;
+  }
+  .intro-card.open .pic-ring {
+    animation: pic-ring-fill var(--ring-loop) linear infinite;
+  }
+}
+@keyframes pic-cue-turn {
+  0% { opacity: 1; }
+  33.3%, 100% { opacity: 0; }
+}
+@keyframes pic-cue-colour {
+  0% { stroke: var(--cue-start); }
+  20%, 100% { stroke: var(--player); }
+}
+@keyframes pic-block-grow {
+  0% { transform: scale(var(--grow-start)); fill: var(--cue-start); stroke: var(--cue-start); }
+  20%, 100% { transform: scale(1); fill: var(--player); stroke: var(--player); }
+}
+@keyframes pic-perfect-pop {
+  0%, 20% { opacity: 0; transform: translateY(0) scale(0.6); }
+  22% { opacity: 1; transform: translateY(-4px) scale(1.15); }
+  25% { transform: translateY(-8px) scale(1); }
+  30% { opacity: 1; }
+  33.3%, 100% { opacity: 0; transform: translateY(-16px) scale(1); }
+}
+@keyframes pic-hand-move {
+  0% { transform: translate(var(--c-x), var(--c-y)); }
+  18%, 33.3% { transform: translate(var(--a-x), var(--a-y)); }
+  51.3%, 66.6% { transform: translate(var(--b-x), var(--b-y)); }
+  84.6%, 100% { transform: translate(var(--c-x), var(--c-y)); }
+}
+@keyframes pic-ring-fill {
+  0% { stroke-dashoffset: var(--ring); }
+  50%, 85% { stroke-dashoffset: 0px; }
+  85.1%, 100% { stroke-dashoffset: var(--ring); }
 }
 
 /* --- The results ---

@@ -1,9 +1,11 @@
-import { GAME_YELLOW, VEIL } from './colors';
+import { CUE_START_COLOR, GAME_YELLOW, VEIL } from './colors';
 import { GROW_START_SCALE, HAND_MENU, PLAYER_COLORS, TOAST } from './config';
 import { find, isHandClick } from './dom';
 import type { HandTarget, MenuHand } from './handMenu';
-import { buildMenu, MENU_HTML, MENU_SWITCHES_HTML } from './menuView';
-import type { MenuControls } from './menuView';
+import { buildIntro, INTRO_CORNER_HTML, INTRO_HTML } from './introView';
+import type { IntroControls, IntroHandlers, IntroScreen } from './introView';
+import { buildMenu, HOW_TO_PLAY_HTML, MENU_HTML, MENU_SWITCHES_HTML } from './menuView';
+import type { MenuControls, MenuHandlers } from './menuView';
 import type { PlayerRun } from './player';
 import type { ItemHover } from './playerPointers';
 import { buildRatingRows, ratingRowHtml } from './ratingView';
@@ -116,6 +118,8 @@ export class GameUI {
   private readonly fitObserver = new ResizeObserver(() => this.fitPanel());
   /** The open menu. Unset while the menu is closed. */
   private menu?: MenuControls;
+  /** The open "How to play" intro. Unset while it is closed. */
+  private intro?: IntroControls;
   /** The rating rows of the open results. Unset while the results have none. */
   private ratings?: RatingRows;
   /** Goes up each time the panel opens or closes. See `handScreen`. */
@@ -123,11 +127,13 @@ export class GameUI {
 
   constructor(root: HTMLElement) {
     // The stylesheet takes these values from the game's code, so one change reaches the page
-    // and the canvas: the menu's hold mark must grow as a cue's block does, and the game view
-    // copies the veil. The game's yellow stays with the other colours, in colors.ts.
+    // and the canvas: the menu's hold mark and the intro's pictures must grow and colour a
+    // block as a cue does, and the game view copies the veil. The game's yellow stays with the
+    // other colours, in colors.ts.
     const page = root.ownerDocument.documentElement.style;
     page.setProperty('--game-yellow', GAME_YELLOW);
     page.setProperty('--grow-start', String(GROW_START_SCALE));
+    page.setProperty('--cue-start', CUE_START_COLOR);
     page.setProperty('--veil', VEIL);
 
     root.innerHTML = SHELL_HTML;
@@ -164,6 +170,7 @@ export class GameUI {
     this.panel.hidden = true;
     this.panelOpenings++;
     this.closeMenu();
+    this.intro = undefined;
   }
 
   /** Shows a short note at the top of the screen, which goes away by itself after `durationMs`. */
@@ -199,10 +206,25 @@ export class GameUI {
     this.menu?.stepSong(direction);
   }
 
-  /** Shows the menu. It edits `settings` in place and calls `onChange` after each edit. */
-  showMenu(settings: Settings, onStart: () => void, onChange: () => void): void {
-    this.openPanel('menu', MENU_HTML, MENU_SWITCHES_HTML);
-    this.menu = buildMenu(this.panel, settings, { onStart, onChange });
+  /** Shows the menu. It edits `settings` in place and calls `handlers.onChange` after each edit. */
+  showMenu(settings: Settings, handlers: MenuHandlers): void {
+    this.openPanel('menu', MENU_HTML, MENU_SWITCHES_HTML + HOW_TO_PLAY_HTML);
+    this.menu = buildMenu(this.panel, settings, handlers);
+  }
+
+  /**
+   * Shows the "How to play" intro, at the card of `screen`. Its player choice edits `settings`
+   * in place and calls `handlers.onChange`.
+   */
+  showIntro(settings: Settings, screen: IntroScreen, handlers: IntroHandlers): void {
+    this.openPanel('intro', INTRO_HTML, INTRO_CORNER_HTML);
+    this.intro = buildIntro(this.panel, settings, handlers);
+    this.intro.show(screen);
+  }
+
+  /** Shows another card of the open intro. Does nothing while the intro is closed. */
+  showIntroCard(screen: IntroScreen): void {
+    this.intro?.show(screen);
   }
 
   /** `cueSet` is the set that the round played, or null for a round with no set. */
@@ -347,6 +369,7 @@ export class GameUI {
     removePreview(this.panel);
     this.closeMenu();
     this.ratings = undefined;
+    this.intro = undefined;
     this.panelOpenings++;
     this.panel.className = className;
     this.panel.innerHTML = `<div class="fit">${html}</div>${outsideHtml}`;

@@ -33,12 +33,13 @@ export interface InputView {
  * In a round, two players share the one pointer. The hand at the pointer belongs to the player
  * whose half of the frame it is in, and the other player gets a copy half a frame away. The
  * grids of two players are the same shape, half a frame apart, so both hands are in the same
- * cell of each grid: one mouse holds the Start cells of both players. The menu has no player
- * areas and each player has a pointer of their own there (see playerPointers.ts), so a copy
- * would choose a second item. There the mouse is one hand, where the pointer is.
+ * cell of each grid: one mouse holds the Start cells of both players. The menu and the intro
+ * have no player areas and each player has a pointer of their own there (see
+ * playerPointers.ts), so a copy would choose a second item. There the mouse is one hand, where
+ * the pointer is.
  */
 export function mouseHandPositions(pointerX: number, playerCount: PlayerCount, phase: Phase): [number, number | null] {
-  if (playerCount === 1 || phase === 'menu') return [pointerX, null];
+  if (playerCount === 1 || phase === 'menu' || phase === 'intro') return [pointerX, null];
   const left = pointerX >= 0.5 ? pointerX - 0.5 : pointerX;
   return [left, left + 0.5];
 }

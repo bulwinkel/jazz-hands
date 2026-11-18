@@ -30,6 +30,9 @@ import type { MenuHand } from './handMenu';
 import { clearCalibrateHolds, clearHolds, stepHandsUp, stepReadyHolds, stepWaitingHolds } from './handsUp';
 import type { InputView } from './input';
 import { InputHost } from './inputHost';
+import { introAtLoad, introControlOfKey, introMove, menuAsksForCamera } from './intro';
+import type { IntroControl, IntroOrigin, IntroState } from './intro';
+import type { IntroScreen } from './introView';
 import { closingSongTime, frameSongTime, newCueState } from './judgment';
 import { fetchManifest, playEndSec, playStartSec } from './manifest';
 import { createPlayers, summariseChart } from './player';
@@ -87,7 +90,8 @@ function readStoredSettings(): unknown {
 /**
  * Runs the game through its phases:
  * menu → loading → ready → countdown → play → results.
- * Results loop back to countdown on replay. Esc returns to the menu from anywhere.
+ * Results loop back to countdown on replay. Esc returns to the menu from anywhere but the intro.
+ * The "How to play" intro comes before the menu on a first visit, and from the menu's button.
  * A calibration (the fit phase) comes between them only when players ask for it: from the
  * ready screen, with the C key, or with the Recalibrate button of the results. It ends on the
  * ready screen.
@@ -107,6 +111,8 @@ export class DanceGame {
   private readonly inputs: InputHost;
   /** Whether hand control was on at the last look from the menu. See `syncMenuInput`. */
   private menuHandControl = false;
+  /** The open "How to play" intro: how it opened and its card. Unset while it is closed. */
+  private intro?: IntroState;
   /**
    * True when a hand began the current calibration: a hand held in a Calibrate cell, or a fist
    * on the Recalibrate button of the results. It sets the calibration's timing: see `planFit`.
@@ -198,7 +204,9 @@ export class DanceGame {
     window.addEventListener('keydown', this.onKey);
     window.addEventListener('pagehide', () => this.dispose(), { once: true });
 
-    this.showMenu();
+    // A first visit opens on the intro, and the camera waits for its last button.
+    if (introAtLoad(this.options)) this.showIntro('first-visit');
+    else this.showMenu();
     this.render();
     if (this.options.autostart) void this.start();
   }
@@ -218,8 +226,9 @@ export class DanceGame {
     this.ui.player.close();
     this.ui.pauseButton.hidden = phase !== 'play';
     this.ui.restartButton.hidden = phase !== 'play';
-    // The menu and the results have their own ways out. Every other phase needs one for a touch.
-    this.ui.menuButton.hidden = phase === 'menu' || phase === 'results';
+    // The menu, the intro and the results have their own ways out. Every other phase needs one
+    // for a touch. On a first visit, the intro must have no other way out.
+    this.ui.menuButton.hidden = phase === 'menu' || phase === 'intro' || phase === 'results';
     this.clearHandPointer();
     document.body.dataset.phase = phase; // The stylesheet places messages by phase.
     this.expose();
@@ -236,12 +245,64 @@ export class DanceGame {
     this.switchingTracker = false;
     this.ui.resumeButton.hidden = true;
     this.setPhase('menu');
-    this.ui.showMenu(this.options.settings, () => void this.start(), this.onMenuChange);
+    this.ui.showMenu(this.options.settings, {
+      onStart: () => void this.start(),
+      onChange: this.onMenuChange,
+      onHowToPlay: () => this.showIntro('menu'),
+    });
     this.followPreview();
     // A menu that opens is a new chance for the camera, as if hand control had just been turned on.
     this.menuHandControl = false;
     this.syncMenuInput();
   };
+
+  // --- The "How to play" intro ---
+
+  /**
+   * Shows the intro at its first card. No song preview plays, and no input opens: at page load
+   * none is open, so the camera waits until the intro ends and the menu asks for it. From the
+   * menu, an open input stays open, so hands can press the intro's buttons.
+   */
+  private showIntro(origin: IntroOrigin): void {
+    this.intro = { origin, card: 1 };
+    this.setPhase('intro');
+    this.followPreview();
+    this.ui.showIntro(this.options.settings, this.introScreen(this.intro), {
+      onControl: this.onIntroControl,
+      onChange: this.saveSettings,
+    });
+  }
+
+  /** What the intro shows: its card, and whether the menu asks for the camera after it. */
+  private introScreen(state: IntroState): IntroScreen {
+    const inputOpen = this.inputs.input !== undefined;
+    return { state, cameraNext: menuAsksForCamera(this.options.settings, this.options.input, inputOpen) };
+  }
+
+  /** A button of the intro, or its key: another card, the way out, or nothing (see `introMove`). */
+  private onIntroControl = (control: IntroControl): void => {
+    const intro = this.intro;
+    if (this.phase !== 'intro' || !intro) return;
+    const move = introMove(intro, control);
+    if (move.to === 'menu') {
+      this.leaveIntro();
+    } else if (move.to === 'card') {
+      this.intro = { ...intro, card: move.card };
+      this.ui.showIntroCard(this.introScreen(this.intro));
+    }
+  };
+
+  /**
+   * The intro ends by a way out: the button of its last card, or Close when it came from the
+   * menu. Only these mark it as seen, so a page load never does. The menu then opens, and asks
+   * for the camera as it always does.
+   */
+  private leaveIntro(): void {
+    this.intro = undefined;
+    this.options.settings.introSeen = true;
+    this.saveSettings();
+    this.showMenu();
+  }
 
   /** A choice in the menu changed. */
   private onMenuChange = (): void => {
@@ -292,12 +353,12 @@ export class DanceGame {
   }
 
   /**
-   * Tracking broke while running. In a round, that ends the round. In the menu, it ends
-   * pointing: the rings and the highlight go, and a note says how to try again. The menu
-   * opens the camera again only when hand control is turned on (see `syncMenuInput`).
+   * Tracking broke while running. In a round, that ends the round. In the menu and the intro,
+   * it ends pointing: the rings and the highlight go, and a note says how to try again. The
+   * menu opens the camera again only when hand control is turned on (see `syncMenuInput`).
    */
   private onTrackingFailure = (error: unknown): void => {
-    if (this.phase !== 'menu') {
+    if (this.phase !== 'menu' && this.phase !== 'intro') {
       this.fail(error);
       return;
     }
@@ -761,7 +822,7 @@ export class DanceGame {
     this.rememberFaces(frame);
 
     // The ready screen has nothing to point at: its choices are cells of the grids.
-    const pointsAtPanel = this.phase === 'menu' || this.phase === 'results';
+    const pointsAtPanel = this.phase === 'menu' || this.phase === 'intro' || this.phase === 'results';
     if (this.options.settings.handControl && pointsAtPanel) this.pointAtPanel(frame);
 
     if (this.phase === 'fit') {
@@ -1021,6 +1082,7 @@ export class DanceGame {
       event.preventDefault();
       return;
     }
+    if (this.phase === 'intro' && this.onIntroKey(event, key)) return;
 
     switch (key) {
       case 'escape':
@@ -1067,6 +1129,26 @@ export class DanceGame {
         return;
     }
   };
+
+  /**
+   * The keys of the intro: →, Enter and Space go on, ← goes back, and Esc is the corner button.
+   * A focused control keeps its own keys, as in the menu: Space or Enter presses a focused
+   * button, and the arrows move between the player choices. M, R and C do nothing in the
+   * intro. Answers whether the intro took the key. F, D and the offsets work as anywhere.
+   */
+  private onIntroKey(event: KeyboardEvent, key: string): boolean {
+    if (key === 'm' || key === 'r' || key === 'c') return true;
+    const control = introControlOfKey(key);
+    if (!control) return false;
+    const tag = (event.target as HTMLElement | null)?.tagName ?? '';
+    const isAction = key === ' ' || key === 'enter';
+    const isArrow = key === 'arrowleft' || key === 'arrowright';
+    if (isAction && ['INPUT', 'SELECT', 'BUTTON'].includes(tag)) return true;
+    if (isArrow && tag === 'INPUT') return true;
+    event.preventDefault();
+    this.onIntroControl(control);
+    return true;
+  }
 
   /** Space and Enter: the main action of the current phase. */
   private onActionKey(event: KeyboardEvent, key: string): void {
