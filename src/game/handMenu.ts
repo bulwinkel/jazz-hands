@@ -51,7 +51,7 @@ export interface HandMenuStep {
  * Tracking loses a hand, or misreads a fist, for a frame or two now and then. A hover and a
  * hold both survive a gap this long, so a flicker does not send the player back to the start.
  */
-const GAP_MS = 250;
+export const GAP_MS = 250;
 /** A hand counts as on an item this far outside its edge, in pixels. Jitter then does not break a hold. */
 const TARGET_MARGIN_PX = 10;
 
