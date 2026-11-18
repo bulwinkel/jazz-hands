@@ -26,6 +26,10 @@
 // The game picks a cue set at random for each round unless the URL names one. Give `set=1`, or
 // a `seed=`, when a check needs the same chart on every run.
 //
+// Chrome starts with a new profile, so the game has no kept settings, and a camera URL without
+// `autostart=1` would open on the "How to play" intro. The run adds `intro=0` to go to the menu
+// as before. A URL that names `intro=` keeps it: `intro=1` checks the intro (phase `intro`).
+//
 // Prints the phases the game went through, the final `window.__dance` state and any errors of
 // the page and its workers.
 // Exits 0 when the game reached the `--until` phase with no error, else 1.
@@ -51,6 +55,13 @@ const makeFist = flags.includes('--fist');
 const cameraFile = flag('camera-file');
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** The URL with `intro=0` added, unless it names `intro=` itself. See the note at the top. */
+function withoutIntro(address) {
+  const parsed = new URL(address);
+  if (!parsed.searchParams.has('intro')) parsed.searchParams.set('intro', '0');
+  return parsed.toString();
+}
 
 // --- Start Chrome and watch its page and workers for errors ---
 
@@ -78,7 +89,7 @@ async function saveScreenshot(file) {
 // --- Load the game and watch it ---
 
 await send('Page.enable');
-await send('Page.navigate', { url });
+await send('Page.navigate', { url: withoutIntro(url) });
 
 const phasesSeen = [];
 let pressed = false;
