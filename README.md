@@ -38,17 +38,27 @@ Open `http://localhost:5173` in Chrome and allow the camera.
 
 ## Play
 
-The first visit with the camera opens on **How to play**: four cards about the beat, where to stand, how your
-hands run the game, and what happens to the camera picture. The game asks for the camera only
-after the button of the last card. The **How to play** button in the top left corner of the
-menu shows the cards again.
+The first visit with the camera opens on **How to play**: four cards about the beat, where to
+stand, how your hands run the game, and what happens to the camera picture. The game asks for
+the camera only after the button of the last card. The **How to play** button in the top left
+corner of the menu shows the cards again.
+
+- On a first visit, only the button of the last card leaves the cards. **Skip** goes to the
+  last card.
+- On the last card, →, Enter and Space do nothing. Its button works after the card has been
+  open for 0.7 s, so a double click on **Next →** does not press it too.
+- Opened from the menu, the cards close with **✕ Close** or Esc on any card.
+- A focused button keeps its own Space and Enter: they press that button.
+- After a choice that opens another screen, open your hand before you choose again. A fist
+  that stays closed only points on the new screen.
 
 | URL parameter | Use |
 | --- | --- |
-| `intro=1` | Show **How to play** at page load, also when it was seen before, and with any input. |
+| `intro=1` | Show **How to play** at page load, also when it was seen before, and with any input. It acts as a first visit: **Skip**, no **✕ Close**. With `autostart=1`, the round does not start by itself. |
 | `intro=0` | Never show **How to play** at page load. |
+| `autostart=1` | Skip the menu and start a round. Without `intro=1`, no **How to play** shows. |
 
-The game does not keep either value.
+The game does not keep `intro=`.
 
 1. Choose a song, the number of players, a level for each player and the length of the round.
    Point at an item with an open hand ✋, then hold a fist ✊ on it to choose it. The mouse
