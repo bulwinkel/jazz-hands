@@ -24,8 +24,22 @@ describe('kept settings', () => {
       handControl: false,
       record: true,
       cueSet: 4,
+      introSeen: true,
     };
     expect(parseSettings(kept, '').settings).toEqual(kept);
+  });
+
+  it('read the intro as not seen until a visitor has left it, also from settings kept before it existed', () => {
+    expect(parseSettings(null, '').settings.introSeen).toBe(false);
+    const beforeIntro = { playerCount: 1, songIndex: 0, record: false, cueSet: 2 };
+    expect(parseSettings(beforeIntro, '').settings.introSeen).toBe(false);
+    expect(parseSettings({ introSeen: false }, '').settings.introSeen).toBe(false);
+    expect(parseSettings({ introSeen: true }, '').settings.introSeen).toBe(true);
+  });
+
+  it('ignore an intro mark that is not a switch', () => {
+    expect(parseSettings({ introSeen: 'yes' }, '').settings.introSeen).toBe(false);
+    expect(parseSettings({ introSeen: 1 }, '').settings.introSeen).toBe(false);
   });
 
   it('keep previews and hand control on for settings kept before those switches existed', () => {
@@ -166,6 +180,16 @@ describe('URL parameters', () => {
   it('give a chart seed only when the URL names one, so the cue set picks it otherwise', () => {
     expect(parseSettings(null, '').seed).toBeUndefined();
     expect(parseSettings(null, '?set=3&seed=42')).toMatchObject({ seed: 42, settings: { cueSet: 3 } });
+  });
+
+  it('show or hide the intro at page load only when the URL says so, and keep neither', () => {
+    expect(parseSettings(null, '').intro).toBeUndefined();
+    expect(parseSettings(null, '?intro=1').intro).toBe(true);
+    expect(parseSettings(null, '?intro=0').intro).toBe(false);
+    expect(parseSettings(null, '?intro=yes').intro).toBeUndefined();
+    // The URL never changes the kept mark: that is for the intro's own ways out.
+    expect(parseSettings({ introSeen: true }, '?intro=1').settings.introSeen).toBe(true);
+    expect(parseSettings(null, '?intro=0').settings.introSeen).toBe(false);
   });
 
   it('set the one-off options', () => {

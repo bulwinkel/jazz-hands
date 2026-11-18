@@ -29,6 +29,12 @@ export interface Settings {
    * menu then plays a set picked at random. Both players play the same set.
    */
   cueSet: CueSetChoice;
+  /**
+   * True once the visitor has left the "How to play" intro by its last button, or closed it
+   * after opening it from the menu. Until then, a page load with the camera opens on the
+   * intro, so a new player reads why the game needs the camera before the browser asks.
+   */
+  introSeen: boolean;
 }
 
 export type InputSource = 'camera' | 'mouse' | 'bot';
@@ -59,6 +65,12 @@ export interface Options {
   botAccuracy: number;
   /** Keep every tracking frame in `window.__dance.frameLog`, for scripts that compare runs. */
   frameLog: boolean;
+  /**
+   * `intro=1` shows the "How to play" intro at page load in every case, and `intro=0` never
+   * does. Unset leaves it to the kept settings and the input (see `introAtLoad` in intro.ts).
+   * Neither value is kept.
+   */
+  intro?: boolean;
 }
 
 export const STORAGE_KEY = 'dance-game-v1';
@@ -77,6 +89,7 @@ export function defaultSettings(): Settings {
     handControl: true,
     record: false,
     cueSet: RANDOM_CUE_SET,
+    introSeen: false,
   };
 }
 
@@ -130,6 +143,8 @@ function readStored(stored: unknown): Settings {
   if (typeof saved.handControl === 'boolean') settings.handControl = saved.handControl;
   if (typeof saved.record === 'boolean') settings.record = saved.record;
   if (isCueSetChoice(saved.cueSet)) settings.cueSet = saved.cueSet;
+  // Settings kept before the intro existed have no mark: their visitor has not seen it.
+  if (typeof saved.introSeen === 'boolean') settings.introSeen = saved.introSeen;
   settings.inputLatencyMs = finiteOr(saved.inputLatencyMs, settings.inputLatencyMs, ...TIMING.inputLatencyRangeMs);
   settings.avOffsetMs = finiteOr(saved.avOffsetMs, settings.avOffsetMs, ...TIMING.avOffsetRangeMs);
   return settings;
@@ -142,10 +157,12 @@ function readStored(stored: unknown): Settings {
  *   set=random|1..6
  *   tracker=hands-full|hands-split|pose   input=camera|mouse|bot   thread=worker|main
  *   start=<seconds>   autostart=1   seed=<integer>   moves=<0..1>   botAccuracy=<0..1>   framelog=1
+ *   intro=1|0
  *
  * `set=random` picks a set at random for each round from the menu (see cueSet.ts). `seed=`
  * replaces the cue set's seed and plays without moves. `moves=` gives the share of phrases in
- * busy music that hold a move, with a cue set or with `seed=`.
+ * busy music that hold a move, with a cue set or with `seed=`. `intro=1` shows the "How to
+ * play" intro at page load, and `intro=0` never does; the page does not keep either.
  */
 export function parseSettings(stored: unknown, query: string): Options {
   const settings = readStored(stored);
@@ -176,6 +193,7 @@ export function parseSettings(stored: unknown, query: string): Options {
   const input = params.get('input');
   const seed = numberParam('seed');
   const moves = numberParam('moves');
+  const intro = params.get('intro');
   return {
     settings,
     input: input === 'mouse' || input === 'bot' ? input : 'camera',
@@ -187,5 +205,6 @@ export function parseSettings(stored: unknown, query: string): Options {
     moves: moves !== undefined && Number.isFinite(moves) ? clamp(moves, 0, 1) : undefined,
     botAccuracy: finiteOr(numberParam('botAccuracy'), 1, 0, 1),
     frameLog: params.get('framelog') === '1',
+    intro: intro === '1' || intro === '0' ? intro === '1' : undefined,
   };
 }
