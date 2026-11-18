@@ -38,6 +38,18 @@ Open `http://localhost:5173` in Chrome and allow the camera.
 
 ## Play
 
+The first visit with the camera opens on **How to play**: four cards about the beat, where to stand, how your
+hands run the game, and what happens to the camera picture. The game asks for the camera only
+after the button of the last card. The **How to play** button in the top left corner of the
+menu shows the cards again.
+
+| URL parameter | Use |
+| --- | --- |
+| `intro=1` | Show **How to play** at page load, also when it was seen before, and with any input. |
+| `intro=0` | Never show **How to play** at page load. |
+
+The game does not keep either value.
+
 1. Choose a song, the number of players, a level for each player and the length of the round.
    Point at an item with an open hand ✋, then hold a fist ✊ on it to choose it. The mouse
    works too.
@@ -69,14 +81,14 @@ Each player also has two switches:
 
 | Key | Use |
 | --- | --- |
-| Space | Start the round. In a round: pause. On the results: play again. |
-| Enter | Start the round, in the menu. |
-| Esc | Go back to the menu. The **Menu** button at the bottom right does the same. |
+| Space | Start the round. In a round: pause. On the results: play again. In **How to play**: the next card. |
+| Enter | Start the round, in the menu. In **How to play**: the next card. |
+| Esc | Go back to the menu. The **Menu** button at the bottom right does the same. In **How to play**: skip to the last card on a first visit, or close the cards when the menu opened them. |
 | F | Full screen. |
-| ← and → | Step through the songs, in the menu. |
+| ← and → | Step through the songs, in the menu. In **How to play**: the card before and the next card. |
 | R | Start the round again. The **Restart** button beside **Pause** does the same. |
 | C | Calibrate every player. The **Recalibrate** button of the results does the same. |
-| M | Change the hand tracker. |
+| M | Change the hand tracker. Not in **How to play**. |
 | D | Show the tracking numbers. |
 | `[` and `]` | Camera delay, 10 ms less or more. |
 | `,` and `.` | Picture offset, 10 ms less or more. |
@@ -682,7 +694,9 @@ the camera is Chrome's test picture, which shows no hands. Chrome makes no sound
 sound device of the machine: the game's clock then runs also while the machine's sound output
 is busy or stuck. A recorded round still gets its sound track. The game picks a cue set at random
 for each round, so a check that needs the same chart on every run names one: `set=1`, or a
-`seed=`.
+`seed=`. Chrome starts with no kept settings, so the run adds `intro=0` to the URL, and a camera
+URL opens on the menu as before. A URL with `intro=1` checks **How to play**: its phase is
+`intro`.
 
 ```
 npx vite --port 5192 --strictPort
