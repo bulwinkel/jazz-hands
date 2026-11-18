@@ -173,7 +173,7 @@ describe('the buttons under the cards', () => {
   it('say on card 4 that the camera comes next, with a line about the browser, when it does', () => {
     expect(forwardButton(4, true)).toEqual({
       label: 'Turn on the camera →',
-      note: 'Your browser asks next. Choose Allow.',
+      note: 'If your browser asks, choose Allow.',
     });
   });
 

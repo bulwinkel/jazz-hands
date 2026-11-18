@@ -67,11 +67,13 @@ export const MENU_SWITCHES_HTML = `
 
 /**
  * The "How to play" button, in the top left corner of the menu: the switches' look, a little in
- * from the side as they are. It opens the intro again, at its first card.
+ * from the side as they are. It opens the intro again, at its first card. It leaves the menu,
+ * so it takes the longer fist hold, as Start does.
  */
 export const HOW_TO_PLAY_HTML = `
   <div class="corner left">
-    <button type="button" id="how-to-play" data-hand="how-to-play">❓ How to play</button>
+    <button type="button" id="how-to-play" data-hand="how-to-play"
+      data-hand-hold="${HAND_MENU.slowHoldSec}">❓ How to play</button>
   </div>`;
 
 /** Where to stand, for each player count. The menu and the intro both show it. */

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { IntroCard, IntroControl, IntroOrigin } from './intro';
+import { introMove } from './intro';
+import type { IntroCard, IntroControl, IntroOrigin, IntroState } from './intro';
 import { beatPicture, readyPicture, standPicture } from './introPictures';
 import { buildIntro, INTRO_CORNER_HTML, INTRO_HTML } from './introView';
 import { HOW_TO_PLAY_HTML, STAND_HINT } from './menuView';
@@ -78,6 +79,17 @@ describe('the cards of the intro', () => {
     expect(cardHtml(4)).not.toContain('<svg');
   });
 
+  it('give each title the focus of the page only, not of the Tab key', () => {
+    for (const card of [1, 2, 3, 4] as const) {
+      expect(cardHtml(card)).toContain(`id="intro-title-${card}" tabindex="-1"`);
+    }
+  });
+
+  it('describe the big button by the line under it', () => {
+    expect(INTRO_HTML).toMatch(/id="intro-forward"[^>]*aria-describedby="intro-note"/);
+    expect(INTRO_HTML).toContain('id="intro-note"');
+  });
+
   it('make every button of the intro a hand target', () => {
     expect(INTRO_HTML).toMatch(/id="intro-back" data-hand="intro-back"/);
     expect(INTRO_HTML).toMatch(/id="intro-forward" data-hand="intro-forward"/);
@@ -89,7 +101,12 @@ describe('the cards of the intro', () => {
 describe('the menu\'s way to the intro', () => {
   it('is a hand target in the top left corner, with the look of the switches', () => {
     expect(HOW_TO_PLAY_HTML).toContain('class="corner left"');
-    expect(HOW_TO_PLAY_HTML).toMatch(/data-hand="how-to-play">❓ How to play</);
+    expect(HOW_TO_PLAY_HTML).toMatch(/data-hand="how-to-play"\s/);
+    expect(HOW_TO_PLAY_HTML).toContain('>❓ How to play<');
+  });
+
+  it('takes the longer fist hold: it leaves the menu', () => {
+    expect(HOW_TO_PLAY_HTML).toContain('data-hand-hold="0.8"');
   });
 });
 
@@ -100,6 +117,8 @@ type Listener = () => void;
 /** An element with what the intro uses: text, classes, data, hidden, events and queries. */
 class FakeElement {
   hidden = false;
+  readonly focus = vi.fn();
+  readonly blur = vi.fn();
   textContent = '';
   innerHTML = '';
   value = '';
@@ -160,7 +179,10 @@ function intro(settings: Settings = defaultSettings()) {
     label.dataset.cardHand = id;
     return label;
   });
-  const cards = [1, 2, 3, 4].map((card) => new FakeElement().holds('[data-card-hand]', ...(card === 2 ? choices : [])));
+  const titles = [1, 2, 3, 4].map(() => new FakeElement());
+  const cards = [1, 2, 3, 4].map((card) =>
+    new FakeElement().holds('[data-card-hand]', ...(card === 2 ? choices : [])).holds('h1', titles[card - 1]),
+  );
   const dots = [1, 2, 3, 4].map(() => new FakeElement());
   const [back, forward, note, corner, hint, picture] = Array.from({ length: 6 }, () => new FakeElement());
   const inputs = [radio('1'), radio('2')];
@@ -182,7 +204,7 @@ function intro(settings: Settings = defaultSettings()) {
   });
   const show = (origin: IntroOrigin, card: IntroCard, cameraNext = true) =>
     view.show({ state: { origin, card }, cameraNext });
-  const parts = { cards, choices, dots, back, forward, note, corner, hint, picture, inputs };
+  const parts = { cards, titles, choices, dots, back, forward, note, corner, hint, picture, inputs, view };
   return { ...parts, settings, controls, onChange, show };
 }
 
@@ -247,7 +269,7 @@ describe('the intro at work', () => {
     const page = intro();
     page.show('first-visit', 4, true);
     expect(page.forward.textContent).toBe('Turn on the camera →');
-    expect(page.note.textContent).toBe('Your browser asks next. Choose Allow.');
+    expect(page.note.textContent).toBe('If your browser asks, choose Allow.');
     expect(page.forward.dataset.handHold).toBe('0.8');
     page.show('menu', 4, false);
     expect(page.forward.textContent).toBe('To the menu →');
@@ -268,7 +290,63 @@ describe('the intro at work', () => {
   });
 });
 
+describe('the focus in the intro', () => {
+  /**
+   * Presses a button of the intro, and shows the card it leads to, as flow.ts does. `state`
+   * holds the intro's state, and changes with it.
+   */
+  function pressAndShow(page: ReturnType<typeof intro>, state: { now: IntroState }, button: FakeElement): void {
+    button.click();
+    const move = introMove(state.now, page.controls.at(-1) ?? 'next', 10);
+    if (move.to !== 'card') return;
+    state.now = { ...state.now, card: move.card };
+    page.view.show({ state: state.now, cameraNext: true });
+  }
+
+  const focusCounts = (page: ReturnType<typeof intro>) => page.titles.map((title) => title.focus.mock.calls.length);
+
+  it('goes to the title of the first card when the intro opens', () => {
+    const page = intro();
+    page.show('first-visit', 1);
+    expect(focusCounts(page)).toEqual([1, 0, 0, 0]);
+  });
+
+  it('goes to the title of each card that opens, by Next, Back and Skip', () => {
+    const page = intro();
+    const state = { now: { origin: 'first-visit', card: 1 } as IntroState };
+    page.view.show({ state: state.now, cameraNext: true });
+    pressAndShow(page, state, page.forward);
+    expect(focusCounts(page)).toEqual([1, 1, 0, 0]);
+    pressAndShow(page, state, page.back);
+    expect(focusCounts(page)).toEqual([2, 1, 0, 0]);
+    pressAndShow(page, state, page.corner);
+    expect(focusCounts(page)).toEqual([2, 1, 0, 1]);
+  });
+
+  it('stays where it is when the open card shows again with a new label', () => {
+    const page = intro();
+    page.show('menu', 4, false);
+    page.show('menu', 4, true);
+    expect(focusCounts(page)).toEqual([0, 0, 0, 1]);
+  });
+});
+
 describe('the player choice of card 2', () => {
+  it('lets go of the focus after a pointer press, so the arrow keys step through the cards', () => {
+    const page = intro();
+    page.inputs[0].fire('pointerdown');
+    pick(page.inputs, 0);
+    page.inputs[0].fire('click');
+    expect(page.inputs[0].blur).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the focus of a choice made with the keys, so the arrows still move between the choices', () => {
+    const page = intro();
+    pick(page.inputs, 1);
+    page.inputs[1].fire('click');
+    expect(page.inputs[1].blur).not.toHaveBeenCalled();
+  });
+
   it('shows the kept count, with its stand hint and picture', () => {
     const page = intro({ ...defaultSettings(), playerCount: 1 });
     expect(page.inputs.map((input) => input.checked)).toEqual([true, false]);

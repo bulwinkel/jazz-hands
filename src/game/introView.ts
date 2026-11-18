@@ -18,12 +18,15 @@ import type { PlayerCount } from './types';
 /** The eyebrow of a card: where the player is in the intro. */
 const eyebrow = (card: IntroCard): string => `<div class="eyebrow">HOW TO PLAY · ${card} of ${INTRO_CARD_COUNT}</div>`;
 
-/** One card, with its title over its content. */
+/**
+ * One card, with its title over its content. The title can take the focus from the page, not
+ * from the Tab key: the focus moves to it when its card opens (see `buildIntro`).
+ */
 function card(index: IntroCard, title: string, content: string): string {
   return `
     <section class="intro-card" data-card="${index}" aria-labelledby="intro-title-${index}">
       ${eyebrow(index)}
-      <h1 id="intro-title-${index}">${title}</h1>
+      <h1 id="intro-title-${index}" tabindex="-1">${title}</h1>
       <div class="intro-body">${content}</div>
     </section>`;
 }
@@ -108,20 +111,24 @@ const CAMERA_CARD = card(
 /**
  * The intro's content. It scales with the window as one piece, as the menu does. The big button
  * is "Next →" on cards 1 to 3 and the way out on card 4: one button in one place (see
- * `forwardControl` in intro.ts). The line under it keeps its room on every card.
+ * `forwardControl` in intro.ts). The line under it keeps its room on every card, and describes
+ * the button to assistive tech when it has text.
  */
 export const INTRO_HTML = `
   <div class="intro-cards">${BEAT_CARD}${STAND_CARD}${HANDS_CARD}${CAMERA_CARD}</div>
   <div class="intro-dots" aria-hidden="true">${'<span></span>'.repeat(INTRO_CARD_COUNT)}</div>
   <div class="intro-actions">
     <button type="button" id="intro-back" data-hand="intro-back">${INTRO_LABELS.back}</button>
-    <button type="button" class="primary" id="intro-forward" data-hand="intro-forward">${INTRO_LABELS.next}</button>
+    <button type="button" class="primary" id="intro-forward" data-hand="intro-forward"
+      aria-describedby="intro-note">${INTRO_LABELS.next}</button>
   </div>
   <p class="intro-note" id="intro-note"></p>`;
 
 /**
  * The corner button, "Skip" or "✕ Close": in the top right corner, where the menu has its
- * switches. Not in the top left: a fist that chose "How to play" there would choose it next.
+ * switches. On the way in, it is not under the fist that chose "How to play" in the top left.
+ * On the way out, "✕ Close" lies where the menu's Previews switch is: the fist that chose Close
+ * holds nothing on the menu until it opens (see spentFists.ts).
  */
 export const INTRO_CORNER_HTML = `
   <div class="corner">
@@ -165,6 +172,23 @@ export function bindPlayerChoice(root: ParentNode, settings: Settings, onChange:
     showCount();
     onChange();
   });
+  releaseAfterPointer(root.querySelectorAll<HTMLInputElement>('input[name="intro-count"]'));
+}
+
+/**
+ * A pointer press on a choice leaves no focus on it. A focused radio takes the arrow keys, which
+ * then change the choice back, where the player wanted the next card. A choice reached with the
+ * Tab key keeps the focus, and with it its arrows: a key press makes no pointer press.
+ */
+function releaseAfterPointer(inputs: Iterable<HTMLInputElement>): void {
+  let pointerPressed = false;
+  for (const input of inputs) {
+    input.addEventListener('pointerdown', () => (pointerPressed = true));
+    input.addEventListener('click', () => {
+      if (pointerPressed) input.blur();
+      pointerPressed = false;
+    });
+  }
 }
 
 /**
@@ -200,11 +224,12 @@ export function buildIntro(panel: HTMLElement, settings: Settings, handlers: Int
   const forward = find<HTMLButtonElement>(panel, '#intro-forward');
   const note = find(panel, '#intro-note');
   const corner = find<HTMLButtonElement>(panel, '#intro-corner');
-  let shownCard: IntroCard = 1;
+  /** The card on show. Null before the first `show`. */
+  let shownCard: IntroCard | null = null;
 
   bindPlayerChoice(panel, settings, handlers.onChange);
   back.addEventListener('click', () => handlers.onControl('back'));
-  forward.addEventListener('click', () => handlers.onControl(forwardControl(shownCard)));
+  forward.addEventListener('click', () => handlers.onControl(forwardControl(shownCard ?? 1)));
   corner.addEventListener('click', () => handlers.onControl('corner'));
 
   /** "← Back" keeps its room where it does not show, so the big button stays in its place. */
@@ -226,13 +251,20 @@ export function buildIntro(panel: HTMLElement, settings: Settings, handlers: Int
     setHold(corner, leaves);
   };
 
+  /**
+   * A card that opens takes the focus to its title, by any control. A focused button then never
+   * stays focused across a change of card, so a held Enter stops at the next card, and a screen
+   * reader reads the new title. The same card shown again, with a new label, keeps the focus.
+   */
   const show = ({ state, cameraNext }: IntroScreen): void => {
+    const opensCard = state.card !== shownCard;
     shownCard = state.card;
     cards.forEach((element, index) => openCard(element, index + 1 === state.card));
     dots.forEach((dot, index) => dot.classList.toggle('on', index + 1 === state.card));
     showBack(canGoBack(state.card));
     showForward(forwardButton(state.card, cameraNext), forwardControl(state.card) === 'finish');
     showCorner(cornerLabel(state), state.origin === 'menu');
+    if (opensCard) find(cards[state.card - 1], 'h1').focus();
   };
   return { show };
 }

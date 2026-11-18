@@ -58,8 +58,11 @@ export const INTRO_LABELS = {
   close: '✕ Close',
   toCamera: 'Turn on the camera →',
   toMenu: 'To the menu →',
-  /** Under "Turn on the camera →" only: the browser's question comes right after it. */
-  cameraNote: 'Your browser asks next. Choose Allow.',
+  /**
+   * Under "Turn on the camera →" only. The menu asks for the camera next, but a browser that
+   * has an answer already does not ask again.
+   */
+  cameraNote: 'If your browser asks, choose Allow.',
 } as const;
 
 const toCard = (card: number): IntroMove => ({ to: 'card', card: card as IntroCard });
