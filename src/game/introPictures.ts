@@ -55,11 +55,19 @@ const BEAT_GRID: Rect = { x: 0, y: 0, width: BEAT_CELL * 3, height: BEAT_CELL * 
  * keyframes give each cue a third of the loop, so the loop has three cells.
  */
 export const BEAT_CELLS = [0, 5, 7] as const;
-/** Each cue of the loop takes this long: its block grows, it fills its cell, and "Perfect!" shows. */
+/** Each cue of the loop takes this long: its block grows, it fills its cell, and "PERFECT" shows. */
 export const BEAT_STEP_SEC = 2;
 /** The hand sign: a little smaller than half a cell, so it keeps room around it on every device. */
 const HAND_SIZE = 44;
-const PERFECT_SIZE = 24;
+/**
+ * The hand sits this far below the middle of its cell, and the word this far above it. The
+ * game writes its result in the middle of the cell (see `drawFeedback` in render.ts): there it
+ * would cover the hand.
+ */
+const HAND_DROP = 24;
+const WORD_LIFT = 8;
+/** The size of "PERFECT": as wide as most of a cell, as the game's result is. */
+const PERFECT_SIZE = 18;
 
 /**
  * Each cue of the loop runs the same keyframes, a turn later than the one before. A negative
@@ -73,8 +81,9 @@ function turnDelaySec(turn: number): number {
 /**
  * Card 1, animated: a block grows in one cell of a 3 by 3 grid, white at first and the player's
  * colour when it fills the cell, as a cue does. A hand moves into the cell as the block fills,
- * and "Perfect!" pops above the cell when it is full. Then the same in the next cell. Without
- * motion, it shows the first cue full, with the hand in it.
+ * and "PERFECT" pops in the cell when it is full, above the hand, and rises as the game's result
+ * does. Then the same in the next cell. Without motion, it shows the first cue full, with the
+ * hand in it.
  */
 export function beatPicture(): string {
   const cues = BEAT_CELLS.map((cell, turn) => {
@@ -87,21 +96,22 @@ export function beatPicture(): string {
   });
   const perfects = BEAT_CELLS.map((cell, turn) => {
     const rect = cellRect(BEAT_GRID, cell);
-    const at = { x: rect.x + rect.width / 2, y: rect.y - 8 };
+    const centre = centreOf(rect);
+    const at = { x: centre.x, y: centre.y - WORD_LIFT };
     const unseen = turn === 0 ? '' : ' opacity="0"';
-    return label('Perfect!', at, PERFECT_SIZE, 'pic-perfect', ` style="--delay: ${turnDelaySec(turn)}s"${unseen}`);
+    return label('PERFECT', at, PERFECT_SIZE, 'pic-perfect', ` style="--delay: ${turnDelaySec(turn)}s"${unseen}`);
   });
   // The hand's three stops, one in each cell of the loop, for the stylesheet's keyframes.
   const stops = BEAT_CELLS.map((cell, turn) => {
     const centre = centreOf(cellRect(BEAT_GRID, cell));
     const name = 'abc'[turn];
-    return `--${name}-x: ${n(centre.x)}px; --${name}-y: ${n(centre.y)}px;`;
+    return `--${name}-x: ${n(centre.x)}px; --${name}-y: ${n(centre.y + HAND_DROP)}px;`;
   });
   const handSign = label('✋', { x: 0, y: 0 }, HAND_SIZE, 'pic-sign');
   const hand = `<g class="pic-hand" style="${stops.join(' ')}">${handSign}</g>`;
   const loop = `--loop: ${BEAT_CELLS.length * BEAT_STEP_SEC}s`;
   const content = `${gridLines(BEAT_GRID)}${cues.join('')}${hand}${perfects.join('')}`;
-  return svg('-22 -44 344 350', 'pic-beat', 0, content, loop);
+  return svg('-10 -10 320 320', 'pic-beat', 0, content, loop);
 }
 
 // --- Card 2: where to stand ---

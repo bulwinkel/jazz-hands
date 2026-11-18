@@ -25,10 +25,25 @@ describe('the beat picture of card 1', () => {
     expect(picture).toContain('--loop: 6s');
   });
 
-  it('shows "Perfect!" for each cue, and one hand that visits each cell', () => {
-    expect(picture.match(/>Perfect!</g)).toHaveLength(3);
+  it('shows "PERFECT" for each cue, as the game writes it, and one hand that visits each cell', () => {
+    expect(picture.match(/>PERFECT</g)).toHaveLength(3);
     expect(picture.match(/>✋</g)).toHaveLength(1);
-    expect(picture).toMatch(/--a-x: 50px; --a-y: 50px; --b-x: 250px; --b-y: 150px; --c-x: 150px; --c-y: 250px;/);
+    expect(picture).toMatch(/--a-x: 50px; --a-y: 74px; --b-x: 250px; --b-y: 174px; --c-x: 150px; --c-y: 274px;/);
+  });
+
+  it('writes "PERFECT" in its cell, near the middle as the game does, and above the hand', () => {
+    const words = [...picture.matchAll(/x="([\d.]+)" y="([\d.]+)" font-size="([\d.]+)"[^>]*>PERFECT</g)];
+    const hands = [...picture.matchAll(/--[abc]-y: ([\d.]+)px/g)].map((match) => Number(match[1]));
+    BEAT_CELLS.forEach((cell, turn) => {
+      const top = Math.floor(cell / 3) * 100;
+      const [x, y, size] = words[turn].slice(1).map(Number);
+      expect(x).toBe((cell % 3) * 100 + 50);
+      expect(y - size / 2).toBeGreaterThan(top);
+      expect(y).toBeLessThan(top + 50);
+      // The hand sign starts under the word, and ends inside the cell.
+      expect(hands[turn] - 22).toBeGreaterThanOrEqual(y + size / 2);
+      expect(hands[turn] + 22).toBeLessThanOrEqual(top + 100);
+    });
   });
 
   it('stands still on the first cue, full, with the hand in it, where motion is off', () => {
