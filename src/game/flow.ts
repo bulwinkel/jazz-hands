@@ -91,7 +91,8 @@ function readStoredSettings(): unknown {
 /**
  * Runs the game through its phases:
  * menu → loading → ready → countdown → play → results.
- * Results loop back to countdown on replay. Esc returns to the menu from anywhere but the intro.
+ * Results loop back to countdown on replay. Esc returns to the menu from anywhere but an intro
+ * of a first visit, where it skips to the intro's last card.
  * The "How to play" intro comes before the menu on a first visit, and from the menu's button.
  * A calibration (the fit phase) comes between them only when players ask for it: from the
  * ready screen, with the C key, or with the Recalibrate button of the results. It ends on the
@@ -114,6 +115,10 @@ export class DanceGame {
   private menuHandControl = false;
   /** The open "How to play" intro: how it opened and its card. Unset while it is closed. */
   private intro?: IntroState;
+  /** When the intro's open card opened, in page time. Its last button waits for it (see `canFinish`). */
+  private introCardOpenedMs = 0;
+  /** Whether the intro's open card shows that the camera comes next. See `followIntroLabel`. */
+  private introShowsCameraNext = false;
   /**
    * True when a hand began the current calibration: a hand held in a Calibrate cell, or a fist
    * on the Recalibrate button of the results. It sets the calibration's timing: see `planFit`.
@@ -267,10 +272,15 @@ export class DanceGame {
   /**
    * Shows the intro at its first card. No song preview plays, and no input opens: at page load
    * none is open, so the camera waits until the intro ends and the menu asks for it. From the
-   * menu, an open input stays open, so hands can press the intro's buttons.
+   * menu, an open input stays open, so hands can press the intro's buttons. Work that the menu
+   * left pending, such as a tracker that the M key loads, belongs to an old session: it can no
+   * longer replace the intro with an error.
    */
   private showIntro(origin: IntroOrigin): void {
+    this.session++;
+    this.switchingTracker = false;
     this.intro = { origin, card: 1 };
+    this.introCardOpenedMs = performance.now();
     this.setPhase('intro');
     this.followPreview();
     this.ui.showIntro(this.options.settings, this.introScreen(this.intro), {
@@ -279,21 +289,41 @@ export class DanceGame {
     });
   }
 
-  /** What the intro shows: its card, and whether the menu asks for the camera after it. */
+  /**
+   * What the intro shows: its card, and whether the menu asks for the camera after it. Keeps the
+   * second, so `followIntroLabel` sees when it changes.
+   */
   private introScreen(state: IntroState): IntroScreen {
     const inputOpen = this.inputs.input !== undefined;
-    return { state, cameraNext: menuAsksForCamera(this.options.settings, this.options.input, inputOpen) };
+    const cameraNext = menuAsksForCamera(this.options.settings, this.options.input, inputOpen);
+    this.introShowsCameraNext = cameraNext;
+    return { state, cameraNext };
+  }
+
+  /**
+   * Shows the open card again when what follows the intro has changed since it showed: the
+   * camera opened while the card showed, or tracking broke and closed it. The label of the
+   * last button then says what really comes next. Called on every drawn frame of the intro.
+   */
+  private followIntroLabel(): void {
+    const intro = this.intro;
+    if (!intro) return;
+    const inputOpen = this.inputs.input !== undefined;
+    const cameraNext = menuAsksForCamera(this.options.settings, this.options.input, inputOpen);
+    if (cameraNext !== this.introShowsCameraNext) this.ui.showIntroCard(this.introScreen(intro));
   }
 
   /** A button of the intro, or its key: another card, the way out, or nothing (see `introMove`). */
   private onIntroControl = (control: IntroControl): void => {
     const intro = this.intro;
     if (this.phase !== 'intro' || !intro) return;
-    const move = introMove(intro, control);
+    const cardOpenSec = (performance.now() - this.introCardOpenedMs) / 1000;
+    const move = introMove(intro, control, cardOpenSec);
     if (move.to === 'menu') {
       this.leaveIntro();
     } else if (move.to === 'card') {
       this.intro = { ...intro, card: move.card };
+      this.introCardOpenedMs = performance.now();
       this.ui.showIntroCard(this.introScreen(this.intro));
     }
   };
@@ -301,13 +331,16 @@ export class DanceGame {
   /**
    * The intro ends by a way out: the button of its last card, or Close when it came from the
    * menu. Only these mark it as seen, so a page load never does. The menu then opens, and asks
-   * for the camera as it always does.
+   * for the camera as it always does. An intro that the menu's button opened gives the focus
+   * back to that button, so the keyboard goes on where it was.
    */
   private leaveIntro(): void {
+    const origin = this.intro?.origin;
     this.intro = undefined;
     this.options.settings.introSeen = true;
     this.saveSettings();
     this.showMenu();
+    if (origin === 'menu') this.ui.focusHowToPlay();
   }
 
   /** A choice in the menu changed. */
@@ -370,8 +403,13 @@ export class DanceGame {
     }
     this.frame = undefined;
     this.clearHandPointer();
-    // The note is a sentence to read from the dance spot: it stays a while.
-    this.ui.showToast('Hand control stopped. Turn it off and on to try again.', TOAST.longMs);
+    // The note is a sentence to read from the dance spot: it stays a while. The intro has no
+    // hand control switch to name.
+    const note =
+      this.phase === 'intro'
+        ? 'Hand control stopped. Use a touch or the mouse.'
+        : 'Hand control stopped. Turn it off and on to try again.';
+    this.ui.showToast(note, TOAST.longMs);
   };
 
   /**
@@ -1149,13 +1187,16 @@ export class DanceGame {
   /**
    * The keys of the intro: →, Enter and Space go on, ← goes back, and Esc is the corner button.
    * A focused control keeps its own keys, as in the menu: Space or Enter presses a focused
-   * button, and the arrows move between the player choices. M, R and C do nothing in the
-   * intro. Answers whether the intro took the key. F, D and the offsets work as anywhere.
+   * button, and the arrows move between the player choices. With Alt, Ctrl or Cmd, a key is
+   * the browser's (Alt+← goes back a page): the intro does nothing with it. M, R and C do
+   * nothing in the intro. Answers whether the intro took the key. F, D and the offsets work as
+   * anywhere.
    */
   private onIntroKey(event: KeyboardEvent, key: string): boolean {
     if (key === 'm' || key === 'r' || key === 'c') return true;
     const control = introControlOfKey(key);
     if (!control) return false;
+    if (event.altKey || event.ctrlKey || event.metaKey) return true;
     const tag = (event.target as HTMLElement | null)?.tagName ?? '';
     const isAction = key === ' ' || key === 'enter';
     const isArrow = key === 'arrowleft' || key === 'arrowright';
@@ -1193,6 +1234,7 @@ export class DanceGame {
     else if (this.phase === 'play') this.updatePlay();
     if (this.phase === 'play' && !this.paused) this.trackingStats.drawnFrames++;
     if (this.phase === 'results') this.ui.updateHold(this.players);
+    if (this.phase === 'intro') this.followIntroLabel();
 
     this.feedback = this.feedback.filter((item) => nowMs - item.atMs < TIMING.feedbackSec * 1000);
     this.renderer.draw(

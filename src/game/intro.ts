@@ -1,3 +1,4 @@
+import { TIMING } from './config';
 import type { InputSource, Options, Settings } from './settings';
 
 /**
@@ -74,11 +75,22 @@ export function introAtLoad(options: Pick<Options, 'intro' | 'input' | 'autostar
 }
 
 /**
- * Where a control leads from the open card. "Next" and "Back" step through the cards and stop
- * at the ends. The corner skips to the last card on a first visit, so the camera card is never
- * skipped, and closes the intro when it came from the menu. The button of the last card leaves.
+ * True once the last card has been open long enough for its button to leave. Until then a
+ * second press of the big button, which was "Next →" a moment ago, does nothing.
+ * `cardOpenSec`: how long the open card has been open.
  */
-export function introMove(state: IntroState, control: IntroControl): IntroMove {
+export function canFinish(cardOpenSec: number): boolean {
+  return cardOpenSec >= TIMING.introFinishDelaySec;
+}
+
+/**
+ * Where a control leads from the open card, which has been open for `cardOpenSec`. "Next" and
+ * "Back" step through the cards and stop at the ends. The corner skips to the last card on a
+ * first visit, so the camera card is never skipped, and closes the intro when it came from the
+ * menu. The button of the last card leaves, once that card has been open long enough (see
+ * `canFinish`).
+ */
+export function introMove(state: IntroState, control: IntroControl, cardOpenSec: number): IntroMove {
   switch (control) {
     case 'next':
       return state.card < LAST_CARD ? toCard(state.card + 1) : STAY;
@@ -88,7 +100,7 @@ export function introMove(state: IntroState, control: IntroControl): IntroMove {
       if (state.origin === 'menu') return TO_MENU;
       return state.card < LAST_CARD ? toCard(LAST_CARD) : STAY;
     case 'finish':
-      return state.card === LAST_CARD ? TO_MENU : STAY;
+      return state.card === LAST_CARD && canFinish(cardOpenSec) ? TO_MENU : STAY;
   }
 }
 

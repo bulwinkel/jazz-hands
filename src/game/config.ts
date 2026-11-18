@@ -499,6 +499,12 @@ export const TIMING = {
   replayHoldSec: 1.5,
   /** A hand held this long in the Calibrate cell calibrates its player. Longer than the start: it is the second choice. */
   calibrateHoldSec: 1.5,
+  /**
+   * The button of the intro's last card leaves only after the card has been open this long. The
+   * same button is "Next →" on the card before, so a double click or a held key would otherwise
+   * leave a first visit, and ask for the camera, before the camera card was read.
+   */
+  introFinishDelaySec: 0.7,
   countdownSec: 3,
   feedbackSec: 0.6,
   /** A tracking frame older than this is stale: hands are hidden and holds reset. */

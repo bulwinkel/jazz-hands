@@ -500,6 +500,78 @@ describe('the song preview in the intro', () => {
   });
 });
 
+describe('the button of card 4', () => {
+  it('does nothing until card 4 has been open for 0.7 s', () => {
+    const page = loadPage();
+    for (let step = 0; step < 3; step++) page.press('ArrowRight');
+    page.control('finish');
+    page.advance(699);
+    page.control('finish');
+    expect(page.phase()).toBe('intro');
+    page.advance(1);
+    page.control('finish');
+    expect(page.phase()).toBe('menu');
+  });
+
+  it('is not pressed by the second click of a double click on Next of card 3', async () => {
+    const page = loadPage();
+    page.press('ArrowRight');
+    page.press('ArrowRight');
+    page.advance(5000);
+    page.control('next');
+    page.advance(150);
+    page.control('finish');
+    await settle();
+    expect(page.phase()).toBe('intro');
+    expect(page.screen()?.state.card).toBe(4);
+    expect(fakes.createInput).not.toHaveBeenCalled();
+  });
+
+  it('waits as long in an intro opened from the menu', async () => {
+    const page = loadPage('', { introSeen: true });
+    await settle();
+    page.ui.menuHandlers?.onHowToPlay();
+    for (let step = 0; step < 3; step++) page.press('ArrowRight');
+    page.control('finish');
+    expect(page.phase()).toBe('intro');
+    page.finish();
+    expect(page.phase()).toBe('menu');
+  });
+});
+
+describe('the focus around the intro', () => {
+  it('shows a new card for each key that moves, so its title takes the focus', () => {
+    const page = loadPage();
+    const steps: Array<[string, number]> = [['ArrowRight', 2], ['Enter', 3], ['ArrowLeft', 2], [' ', 3], ['Escape', 4]];
+    for (const [key, card] of steps) {
+      const shown = page.ui.introScreens.length;
+      page.press(key);
+      expect(page.ui.introScreens).toHaveLength(shown + 1);
+      expect(page.screen()?.state.card).toBe(card);
+    }
+  });
+
+  it('goes back to "How to play" when the intro that it opened closes', async () => {
+    const page = loadPage('', { introSeen: true });
+    await settle();
+    page.ui.menuHandlers?.onHowToPlay();
+    page.press('Escape');
+    expect(page.phase()).toBe('menu');
+    expect(page.ui.focusHowToPlay).toHaveBeenCalledTimes(1);
+    page.ui.menuHandlers?.onHowToPlay();
+    page.control('corner');
+    expect(page.ui.focusHowToPlay).toHaveBeenCalledTimes(2);
+  });
+
+  it('is not put on "How to play" after the intro of a first visit', () => {
+    const page = loadPage();
+    page.press('Escape');
+    page.finish();
+    expect(page.phase()).toBe('menu');
+    expect(page.ui.focusHowToPlay).not.toHaveBeenCalled();
+  });
+});
+
 describe('hands in the intro opened from the menu', () => {
   /** "✕ Close" of the intro and the menu's Previews switch: the same box in the top right corner. */
   const CORNER = { x: 1300, y: 40, width: 236, height: 52 };
@@ -547,5 +619,81 @@ describe('hands in the intro opened from the menu', () => {
     page.trackFor(800, [hand(1000 / 1600, 0.75, true)], [hand(200 / 1600, 0.75, true)]);
     expect(page.ui.chosen).toEqual(['intro-forward']);
     expect(page.screen()?.state.card).toBe(3);
+  });
+});
+
+describe('tracking that breaks in the intro', () => {
+  it('keeps the intro open, with a note that names no switch', async () => {
+    const page = loadPage('', { introSeen: true });
+    await settle();
+    page.ui.menuHandlers?.onHowToPlay();
+    page.breakTracking();
+    expect(page.phase()).toBe('intro');
+    expect(page.ui.panel).toBe('intro');
+    expect(page.ui.toasts).toEqual(['Hand control stopped. Use a touch or the mouse.']);
+  });
+
+  it('keeps the menu\'s own note in the menu', async () => {
+    const page = loadPage('', { introSeen: true });
+    await settle();
+    page.breakTracking();
+    expect(page.phase()).toBe('menu');
+    expect(page.ui.toasts).toEqual(['Hand control stopped. Turn it off and on to try again.']);
+  });
+});
+
+describe('work that the menu left pending', () => {
+  it('cannot replace the intro with the error screen', async () => {
+    const page = loadPage('', { introSeen: true });
+    await settle();
+    let failLoad: (error: unknown) => void = () => {};
+    fakes.input.setMode.mockImplementationOnce(() => new Promise((_, reject) => (failLoad = reject)));
+    page.press('m');
+    page.ui.menuHandlers?.onHowToPlay();
+    failLoad(new Error('The tracker did not load.'));
+    await settle();
+    expect(page.phase()).toBe('intro');
+  });
+});
+
+describe('the label of the last button', () => {
+  it('turns to the camera when tracking breaks while card 4 says "To the menu"', async () => {
+    const page = loadPage('', { introSeen: true });
+    await settle();
+    page.ui.menuHandlers?.onHowToPlay();
+    for (let step = 0; step < 3; step++) page.press('ArrowRight');
+    expect(page.screen()).toEqual({ state: { origin: 'menu', card: 4 }, cameraNext: false });
+    page.breakTracking();
+    page.drawFrame();
+    expect(page.screen()).toEqual({ state: { origin: 'menu', card: 4 }, cameraNext: true });
+  });
+
+  it('turns to the menu when the camera opens while card 4 says "Turn on the camera"', async () => {
+    let finishOpening: () => void = () => {};
+    fakes.input.init.mockImplementationOnce(() => new Promise<void>((resolve) => (finishOpening = resolve)));
+    const page = loadPage('', { introSeen: true });
+    page.ui.menuHandlers?.onHowToPlay();
+    for (let step = 0; step < 3; step++) page.press('ArrowRight');
+    expect(page.screen()?.cameraNext).toBe(true);
+    const shown = page.ui.introScreens.length;
+    page.drawFrame();
+    expect(page.ui.introScreens).toHaveLength(shown);
+    finishOpening();
+    await settle();
+    page.drawFrame();
+    expect(page.screen()).toEqual({ state: { origin: 'menu', card: 4 }, cameraNext: false });
+  });
+});
+
+describe('keys with Alt, Ctrl or Cmd in the intro', () => {
+  it('are left to the browser, and change nothing', () => {
+    const page = loadPage();
+    page.press('ArrowRight');
+    expect(page.press('ArrowLeft', { tagName: 'BODY' }, { altKey: true })).toBe(false);
+    expect(page.press('ArrowRight', { tagName: 'BODY' }, { metaKey: true })).toBe(false);
+    expect(page.press('Escape', { tagName: 'BODY' }, { ctrlKey: true })).toBe(false);
+    expect(page.press('Enter', { tagName: 'BODY' }, { ctrlKey: true })).toBe(false);
+    expect(page.phase()).toBe('intro');
+    expect(page.screen()?.state.card).toBe(2);
   });
 });

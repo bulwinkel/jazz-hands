@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { TIMING } from './config';
 import {
+  canFinish,
   canGoBack,
   cornerLabel,
   forwardButton,
@@ -13,6 +15,8 @@ import type { IntroCard, IntroOrigin } from './intro';
 import { parseSettings } from './settings';
 
 const ALL_CARDS: IntroCard[] = [1, 2, 3, 4];
+/** A card that has been open this long is open for every rule. */
+const LONG_OPEN_SEC = 10;
 
 /** Whether the page opens on the intro, with these kept settings and this URL. */
 const opensOnIntro = (kept: unknown, query: string): boolean => introAtLoad(parseSettings(kept, query));
@@ -57,31 +61,31 @@ describe('the controls of the intro on a first visit', () => {
   const firstVisit = (card: IntroCard) => ({ origin: 'first-visit' as IntroOrigin, card });
 
   it('go to the next card with Next, and stop on the last card', () => {
-    expect(introMove(firstVisit(1), 'next')).toEqual({ to: 'card', card: 2 });
-    expect(introMove(firstVisit(2), 'next')).toEqual({ to: 'card', card: 3 });
-    expect(introMove(firstVisit(3), 'next')).toEqual({ to: 'card', card: 4 });
-    expect(introMove(firstVisit(4), 'next')).toEqual({ to: 'stay' });
+    expect(introMove(firstVisit(1), 'next', LONG_OPEN_SEC)).toEqual({ to: 'card', card: 2 });
+    expect(introMove(firstVisit(2), 'next', LONG_OPEN_SEC)).toEqual({ to: 'card', card: 3 });
+    expect(introMove(firstVisit(3), 'next', LONG_OPEN_SEC)).toEqual({ to: 'card', card: 4 });
+    expect(introMove(firstVisit(4), 'next', LONG_OPEN_SEC)).toEqual({ to: 'stay' });
   });
 
   it('go to the card before with Back, but not from card 1', () => {
-    expect(introMove(firstVisit(1), 'back')).toEqual({ to: 'stay' });
-    expect(introMove(firstVisit(2), 'back')).toEqual({ to: 'card', card: 1 });
-    expect(introMove(firstVisit(4), 'back')).toEqual({ to: 'card', card: 3 });
+    expect(introMove(firstVisit(1), 'back', LONG_OPEN_SEC)).toEqual({ to: 'stay' });
+    expect(introMove(firstVisit(2), 'back', LONG_OPEN_SEC)).toEqual({ to: 'card', card: 1 });
+    expect(introMove(firstVisit(4), 'back', LONG_OPEN_SEC)).toEqual({ to: 'card', card: 3 });
   });
 
   it('skip to the camera card with the corner, and do nothing there', () => {
-    expect(introMove(firstVisit(1), 'corner')).toEqual({ to: 'card', card: 4 });
-    expect(introMove(firstVisit(3), 'corner')).toEqual({ to: 'card', card: 4 });
-    expect(introMove(firstVisit(4), 'corner')).toEqual({ to: 'stay' });
+    expect(introMove(firstVisit(1), 'corner', LONG_OPEN_SEC)).toEqual({ to: 'card', card: 4 });
+    expect(introMove(firstVisit(3), 'corner', LONG_OPEN_SEC)).toEqual({ to: 'card', card: 4 });
+    expect(introMove(firstVisit(4), 'corner', LONG_OPEN_SEC)).toEqual({ to: 'stay' });
   });
 
   it('leave only by the button of the last card', () => {
     for (const card of ALL_CARDS) {
       for (const control of ['next', 'back', 'corner'] as const) {
-        expect(introMove(firstVisit(card), control)).not.toEqual({ to: 'menu' });
+        expect(introMove(firstVisit(card), control, LONG_OPEN_SEC)).not.toEqual({ to: 'menu' });
       }
     }
-    expect(introMove(firstVisit(4), 'finish')).toEqual({ to: 'menu' });
+    expect(introMove(firstVisit(4), 'finish', LONG_OPEN_SEC)).toEqual({ to: 'menu' });
   });
 
   it('show the corner as Skip, and not on the last card', () => {
@@ -95,21 +99,46 @@ describe('the controls of the intro opened from the menu', () => {
   const fromMenu = (card: IntroCard) => ({ origin: 'menu' as IntroOrigin, card });
 
   it('step through the cards as on a first visit', () => {
-    expect(introMove(fromMenu(1), 'next')).toEqual({ to: 'card', card: 2 });
-    expect(introMove(fromMenu(4), 'next')).toEqual({ to: 'stay' });
-    expect(introMove(fromMenu(1), 'back')).toEqual({ to: 'stay' });
-    expect(introMove(fromMenu(3), 'back')).toEqual({ to: 'card', card: 2 });
+    expect(introMove(fromMenu(1), 'next', LONG_OPEN_SEC)).toEqual({ to: 'card', card: 2 });
+    expect(introMove(fromMenu(4), 'next', LONG_OPEN_SEC)).toEqual({ to: 'stay' });
+    expect(introMove(fromMenu(1), 'back', LONG_OPEN_SEC)).toEqual({ to: 'stay' });
+    expect(introMove(fromMenu(3), 'back', LONG_OPEN_SEC)).toEqual({ to: 'card', card: 2 });
   });
 
   it('close the intro with the corner, from every card', () => {
     for (const card of ALL_CARDS) {
-      expect(introMove(fromMenu(card), 'corner')).toEqual({ to: 'menu' });
+      expect(introMove(fromMenu(card), 'corner', LONG_OPEN_SEC)).toEqual({ to: 'menu' });
       expect(cornerLabel(fromMenu(card))).toBe('✕ Close');
     }
   });
 
   it('leave by the button of the last card', () => {
-    expect(introMove(fromMenu(4), 'finish')).toEqual({ to: 'menu' });
+    expect(introMove(fromMenu(4), 'finish', LONG_OPEN_SEC)).toEqual({ to: 'menu' });
+  });
+});
+
+describe('the button of the last card', () => {
+  const lastCard = (origin: IntroOrigin) => ({ origin, card: 4 as IntroCard });
+
+  it('does nothing until card 4 has been open for 0.7 s, on a first visit and from the menu', () => {
+    expect(TIMING.introFinishDelaySec).toBe(0.7);
+    for (const origin of ['first-visit', 'menu'] as const) {
+      expect(introMove(lastCard(origin), 'finish', 0)).toEqual({ to: 'stay' });
+      expect(introMove(lastCard(origin), 'finish', 0.69)).toEqual({ to: 'stay' });
+      expect(introMove(lastCard(origin), 'finish', 0.7)).toEqual({ to: 'menu' });
+      expect(introMove(lastCard(origin), 'finish', 3)).toEqual({ to: 'menu' });
+    }
+  });
+
+  it('holds back only the way out: the other controls work at once', () => {
+    expect(introMove(lastCard('first-visit'), 'back', 0)).toEqual({ to: 'card', card: 3 });
+    expect(introMove(lastCard('menu'), 'corner', 0)).toEqual({ to: 'menu' });
+    expect(introMove({ origin: 'first-visit', card: 1 }, 'next', 0)).toEqual({ to: 'card', card: 2 });
+  });
+
+  it('is free once the delay has passed', () => {
+    expect(canFinish(0.5)).toBe(false);
+    expect(canFinish(0.7)).toBe(true);
   });
 });
 

@@ -227,6 +227,11 @@ export class GameUI {
     this.intro?.show(screen);
   }
 
+  /** Puts the focus on the menu's "How to play" button. Does nothing while the menu is closed. */
+  focusHowToPlay(): void {
+    this.panel.querySelector<HTMLElement>('#how-to-play')?.focus();
+  }
+
   /** `cueSet` is the set that the round played, or null for a round with no set. */
   showResults(players: readonly PlayerRun[], cueSet: number | null, handlers: ResultHandlers): void {
     const { onReplay, onMenu, onRefit, onRate } = handlers;
