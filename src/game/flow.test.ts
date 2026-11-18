@@ -1,14 +1,19 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { TrackedHand, TrackingFrame } from '../tracking/types';
+import type { HandTarget, MenuHand } from './handMenu';
+import { forwardControl } from './intro';
 import type { IntroControl } from './intro';
 import type { IntroHandlers, IntroScreen } from './introView';
 import type { MenuHandlers } from './menuView';
+import type { ItemHover } from './playerPointers';
 import { STORAGE_KEY } from './settings';
 import type { Settings } from './settings';
 
 /**
  * The game's flow at page load and around the "How to play" intro. The flow is real, and so is
  * the host that opens the input. The page, the canvas and the song preview are stand-ins, and
- * so is the input: `createInput` is where the browser would be asked for the camera.
+ * so is the input: `createInput` is where the browser would be asked for the camera. The page
+ * clock is a stand-in too, so a test says how much time passes.
  */
 
 const fakes = vi.hoisted(() => {
@@ -28,7 +33,8 @@ const fakes = vi.hoisted(() => {
   /** The page: it keeps which panel shows, and what the game handed the menu and the intro. */
   class FakeUI {
     static last: FakeUI;
-    readonly stage = {};
+    /** The camera picture fills a 1600 by 900 stage: a hand at (0.5, 0.5) is at (800, 450). */
+    readonly stage = { getBoundingClientRect: () => ({ left: 0, top: 0, width: 1600, height: 900 }) };
     readonly canvas = {};
     readonly debug = { hidden: true, textContent: '' };
     readonly pauseButton = new FakeButton();
@@ -44,6 +50,16 @@ const fakes = vi.hoisted(() => {
     introHandlers?: IntroHandlers;
     /** Every intro screen the game showed, the latest last. */
     readonly introScreens: IntroScreen[] = [];
+    /** The items a hand can choose, for each panel. */
+    targets: Record<string, HandTarget[]> = {};
+    /** Every item that a hand chose, in order, and what choosing it does. */
+    readonly chosen: string[] = [];
+    onChoose: (id: string) => void = () => {};
+    /** The hands and the highlights of the last frame. */
+    hands: MenuHand[] = [];
+    hovers: ItemHover[] = [];
+    readonly toasts: string[] = [];
+    readonly focusHowToPlay = vi.fn();
 
     constructor() {
       FakeUI.last = this;
@@ -64,12 +80,20 @@ const fakes = vi.hoisted(() => {
       this.panel = 'none';
     }
     showMessage(): void {}
-    showToast(): void {}
-    showHands(): void {}
-    handTargets(): never[] {
-      return [];
+    showToast(text: string): void {
+      this.toasts.push(text);
     }
-    chooseHandTarget(): void {}
+    showHands(hands: MenuHand[], hovers: ItemHover[]): void {
+      this.hands = hands;
+      this.hovers = hovers;
+    }
+    handTargets(): HandTarget[] {
+      return this.targets[this.panel] ?? [];
+    }
+    chooseHandTarget(id: string): void {
+      this.chosen.push(id);
+      this.onChoose(id);
+    }
     showRecordingMark(): void {}
     showRecordings(): void {}
     stepSong(): void {}
@@ -118,11 +142,30 @@ const { DanceGame } = await import('./flow');
 
 type KeyTarget = { tagName: string };
 
+/** Keys held with a key: Alt, Ctrl and Cmd. */
+type Modifiers = Partial<Record<'altKey' | 'ctrlKey' | 'metaKey', boolean>>;
+
+/** One tracking frame every this many milliseconds, as a camera at 30 frames per second. */
+const FRAME_MS = 33;
+
+/** A hand at a place in the camera frame, in fractions. */
+const hand = (x: number, y: number, fist: boolean): TrackedHand => ({
+  x,
+  y,
+  size: 0.05,
+  gesture: fist ? 'fist' : 'open',
+  gestureScore: 1,
+});
+
 /**
  * Loads the page with `stored` settings in storage and `query` as the URL. Returns the parts a
- * test reads, and ways to press a key and to wait for the input to open.
+ * test reads, and ways to press a key, to let time pass, to draw a frame, to send a tracking
+ * frame and to wait for the input to open.
  */
 function loadPage(query = '', stored: Partial<Settings> | null = null) {
+  let nowMs = 1000;
+  vi.spyOn(performance, 'now').mockImplementation(() => nowMs);
+  let drawFrame: FrameRequestCallback = () => {};
   const storage = new Map<string, string>();
   if (stored) storage.set(STORAGE_KEY, JSON.stringify(stored));
   const keyListeners: Array<(event: KeyboardEvent) => void> = [];
@@ -148,32 +191,82 @@ function loadPage(query = '', stored: Partial<Settings> | null = null) {
     setItem: (key: string, value: string) => storage.set(key, value),
   });
   vi.stubGlobal('location', { search: query });
-  vi.stubGlobal('requestAnimationFrame', () => 0);
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+    drawFrame = callback;
+    return 1;
+  });
   vi.stubGlobal('cancelAnimationFrame', () => {});
 
   new DanceGame({} as HTMLElement);
   const ui = fakes.FakeUI.last;
 
-  /** Presses a key, on `target` when a control has the focus. Answers whether the game took it. */
-  const press = (key: string, target: KeyTarget = { tagName: 'BODY' }): boolean => {
+  /**
+   * Presses a key, on `target` when a control has the focus, with `modifiers` held. Answers
+   * whether the game took the key from the browser.
+   */
+  const press = (key: string, target: KeyTarget = { tagName: 'BODY' }, modifiers: Modifiers = {}): boolean => {
     const preventDefault = vi.fn();
-    const event = { key, repeat: false, target, preventDefault } as unknown as KeyboardEvent;
+    const event = { key, repeat: false, target, preventDefault, ...modifiers } as unknown as KeyboardEvent;
     for (const listener of keyListeners) listener(event);
     return preventDefault.mock.calls.length > 0;
+  };
+  const advance = (ms: number): void => {
+    nowMs += ms;
+  };
+  /** Sends a tracking frame with each player's hands, a frame later than the last. */
+  const track = (first: TrackedHand[], second: TrackedHand[] = []): void => {
+    advance(FRAME_MS);
+    const onFrame = fakes.input.start.mock.calls.at(-1)?.[1] as (frame: TrackingFrame) => void;
+    onFrame({ timeMs: nowMs, inferenceMs: 1, players: [{ hands: first }, { hands: second }] });
+  };
+  /** Sends the same hands for `durationMs`. */
+  const trackFor = (durationMs: number, first: TrackedHand[], second: TrackedHand[] = []): void => {
+    for (let passed = 0; passed < durationMs; passed += FRAME_MS) track(first, second);
+  };
+  /** Tracking breaks, as the open input reports it. */
+  const breakTracking = (): void => {
+    const onError = fakes.input.start.mock.calls.at(-1)?.[2] as (error: unknown) => void;
+    onError(new Error('The tracker stopped.'));
   };
   /** The kept settings now, or null when nothing is kept. */
   const kept = (): Settings | null => {
     const json = storage.get(STORAGE_KEY);
     return json ? JSON.parse(json) : null;
   };
+  const control = (intro: IntroControl) => ui.introHandlers?.onControl(intro);
   return {
     ui,
     press,
     kept,
     requestFullscreen,
+    advance,
+    track,
+    trackFor,
+    breakTracking,
+    drawFrame: () => drawFrame(nowMs),
     phase: () => (fakeWindow.__dance as { phase: string }).phase,
     screen: () => ui.introScreens.at(-1),
-    control: (control: IntroControl) => ui.introHandlers?.onControl(control),
+    control,
+    /** Presses the button of card 4 once that card has been open long enough. */
+    finish: () => {
+      advance(700);
+      control('finish');
+    },
+  };
+}
+
+type Page = ReturnType<typeof loadPage>;
+
+/** Makes a hand's choice of an intro button press it, as a click on the page would. */
+function clickIntroByHand(page: Page): void {
+  const pressFor: Record<string, () => IntroControl> = {
+    'intro-forward': () => forwardControl(page.screen()?.state.card ?? 1),
+    'intro-back': () => 'back',
+    'intro-corner': () => 'corner',
+  };
+  page.ui.onChoose = (id) => {
+    const control = pressFor[id];
+    if (control) page.control(control());
   };
 }
 
@@ -182,6 +275,7 @@ const settle = () => new Promise((done) => setTimeout(done, 0));
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   vi.clearAllMocks();
 });
 
@@ -201,7 +295,7 @@ describe('the camera on a first visit', () => {
     await settle();
     expect(fakes.createInput).not.toHaveBeenCalled();
 
-    page.control('finish');
+    page.finish();
     expect(page.phase()).toBe('menu');
     await settle();
     expect(fakes.createInput).toHaveBeenCalledTimes(1);
@@ -220,7 +314,7 @@ describe('the camera on a first visit', () => {
     const page = loadPage('?hands=0');
     page.press('Escape');
     expect(page.screen()).toEqual({ state: { origin: 'first-visit', card: 4 }, cameraNext: false });
-    page.control('finish');
+    page.finish();
     await settle();
     expect(page.phase()).toBe('menu');
     expect(fakes.createInput).not.toHaveBeenCalled();
@@ -233,9 +327,16 @@ describe('the camera on a first visit', () => {
     await settle();
     expect(fakes.createInput).not.toHaveBeenCalled();
     page.press('Escape');
-    page.control('finish');
+    page.finish();
     await settle();
     expect(fakes.createInput).toHaveBeenCalledTimes(1);
+  });
+
+  it('is not asked for with intro=1&autostart=1: the intro stays, and no round starts', async () => {
+    const page = loadPage('?intro=1&autostart=1');
+    await settle();
+    expect(page.phase()).toBe('intro');
+    expect(fakes.createInput).not.toHaveBeenCalled();
   });
 });
 
@@ -271,7 +372,7 @@ describe('the intro opened from the menu', () => {
   it('leaves by the button of card 4 too', async () => {
     const page = await introFromMenu();
     for (let step = 0; step < 3; step++) page.press('ArrowRight');
-    page.control('finish');
+    page.finish();
     expect(page.phase()).toBe('menu');
   });
 });
@@ -358,7 +459,7 @@ describe('the kept mark of the intro', () => {
   it('is written by the button of card 4', () => {
     const page = loadPage();
     page.press('Escape');
-    page.control('finish');
+    page.finish();
     expect(page.kept()?.introSeen).toBe(true);
   });
 
@@ -386,7 +487,7 @@ describe('the song preview in the intro', () => {
     const preview = fakes.FakePreview.last;
     expect(preview.follow.mock.calls.every(([song]) => song === null)).toBe(true);
     page.press('Escape');
-    page.control('finish');
+    page.finish();
     expect(preview.follow).toHaveBeenLastCalledWith(0);
   });
 
@@ -396,5 +497,55 @@ describe('the song preview in the intro', () => {
     expect(preview.follow).toHaveBeenLastCalledWith(0);
     page.ui.menuHandlers?.onHowToPlay();
     expect(preview.follow).toHaveBeenLastCalledWith(null);
+  });
+});
+
+describe('hands in the intro opened from the menu', () => {
+  /** "✕ Close" of the intro and the menu's Previews switch: the same box in the top right corner. */
+  const CORNER = { x: 1300, y: 40, width: 236, height: 52 };
+  /** A hand on that box, in fractions of the camera frame (the stage is 1600 by 900). */
+  const ON_CORNER = { x: 1400 / 1600, y: 66 / 900 };
+
+  async function introByHand() {
+    const page = loadPage('', { introSeen: true });
+    await settle();
+    page.ui.menuHandlers?.onHowToPlay();
+    clickIntroByHand(page);
+    return page;
+  }
+
+  it('point at the intro: a hand moves its ring there', async () => {
+    const page = await introByHand();
+    page.track([hand(0.5, 0.5, false)]);
+    expect(page.ui.hands).toEqual([{ x: 800, y: 450, fist: false }]);
+  });
+
+  it('choose Close, and the same fist then does not change the Previews switch in its place', async () => {
+    const page = await introByHand();
+    page.ui.targets = {
+      intro: [{ id: 'intro-corner', rect: CORNER, holdSec: 0.8 }],
+      menu: [{ id: 'previews', rect: CORNER, holdSec: 0.5 }],
+    };
+    page.trackFor(2500, [hand(ON_CORNER.x, ON_CORNER.y, true)]);
+    expect(page.phase()).toBe('menu');
+    expect(page.ui.chosen).toEqual(['intro-corner']);
+    // The spent fist still points: its ring is open, and the switch is highlighted with no hold.
+    expect(page.ui.hands).toEqual([{ x: 1400, y: 66, fist: false }]);
+    expect(page.ui.hovers).toEqual([{ id: 'previews', progress: 0 }]);
+  });
+
+  it('act on one card only when two holds end in one frame', async () => {
+    const page = await introByHand();
+    page.press('ArrowRight');
+    page.ui.targets = {
+      intro: [
+        { id: 'intro-back', rect: { x: 100, y: 600, width: 300, height: 200 }, holdSec: 0.5 },
+        { id: 'intro-forward', rect: { x: 900, y: 600, width: 300, height: 200 }, holdSec: 0.5 },
+      ],
+    };
+    // Player 1 holds Next, player 2 holds Back. Both holds end in the same frame.
+    page.trackFor(800, [hand(1000 / 1600, 0.75, true)], [hand(200 / 1600, 0.75, true)]);
+    expect(page.ui.chosen).toEqual(['intro-forward']);
+    expect(page.screen()?.state.card).toBe(3);
   });
 });

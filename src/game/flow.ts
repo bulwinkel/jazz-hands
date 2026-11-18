@@ -38,6 +38,7 @@ import { fetchManifest, playEndSec, playStartSec } from './manifest';
 import { createPlayers, summariseChart } from './player';
 import type { ChartSummary, PlayerRun } from './player';
 import { chooseInTurn, newPlayerPointers, stepPlayerPointers } from './playerPointers';
+import { newSpentFists, spendFists, withSpentFists } from './spentFists';
 import { inCurrentStretch, pausePlay, resumePlay } from './playTime';
 import { MenuPreview } from './preview';
 import type { PreviewState } from './preview';
@@ -145,6 +146,11 @@ export class DanceGame {
    * In the menu and the results, and in the video player.
    */
   private pointers = newPlayerPointers(PLAYER_SLOTS.length);
+  /**
+   * Each player's fist that chose an item which changed the screen, until it opens (see
+   * spentFists.ts). Unlike the pointers, these last across a change of screen.
+   */
+  private spentFists = newSpentFists(PLAYER_SLOTS.length);
   private manifest?: Manifest;
   private players: PlayerRun[] = [];
   /** The latest tracking frame, after the one-player merge. */
@@ -867,13 +873,20 @@ export class DanceGame {
    * An open hand highlights an item on screen, a fist held on it chooses it. Each player's
    * hands move a pointer of their own (see playerPointers.ts), so two players can point at
    * two items at once. A ring shows at each hand.
+   *
+   * A choice that changes the screen spends every fist that is closed at that moment: it
+   * chooses nothing on the new screen until it opens (see spentFists.ts).
    */
   private pointAtPanel(frame: TrackingFrame): void {
     const handsByPlayer = frame.players.map((player) => this.pointingHands(player.hands));
-    const step = stepPlayerPointers(this.pointers, this.ui.handTargets(), handsByPlayer, frame.timeMs);
+    const seen = withSpentFists(this.spentFists, handsByPlayer, frame.timeMs);
+    this.spentFists = seen.spent;
+    const step = stepPlayerPointers(this.pointers, this.ui.handTargets(), seen.hands, frame.timeMs);
     this.pointers = step.states;
-    this.ui.showHands(handsByPlayer.flat(), step.hovers);
+    this.ui.showHands(seen.hands.flat(), step.hovers);
+    const screen = this.handScreen();
     chooseInTurn(step.chooseIds, (id) => this.ui.chooseHandTarget(id), this.handScreen);
+    if (this.handScreen() !== screen) this.spentFists = spendFists(this.spentFists, handsByPlayer, frame.timeMs);
   }
 
   /** The hands that point, as screen positions. Hands low in the frame are resting. */
@@ -883,8 +896,11 @@ export class DanceGame {
       .map((hand) => ({ ...this.toScreen(hand), fist: hand.gesture === 'fist' }));
   }
 
-  /** What the hands point at: the phase, the open panel and the video player. A choice may change it. */
-  private handScreen = (): string => `${this.phase} ${this.ui.handScreen}`;
+  /**
+   * What the hands point at: the phase, the open card of the intro, the open panel and the video
+   * player. A choice may change it.
+   */
+  private handScreen = (): string => `${this.phase} ${this.intro?.card ?? ''} ${this.ui.handScreen}`;
 
   /** A point in the camera frame, as a position on the screen in pixels. */
   private toScreen(point: Point): Point {
