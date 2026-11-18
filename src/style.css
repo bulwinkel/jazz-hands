@@ -246,6 +246,12 @@ canvas {
 #panel.results {
   background: #0b1025d9;
 }
+/* The intro's corner button lies over the panel's top padding: 4% from the top, and 52 px high
+   at most (see `.corner`). This padding keeps the scaled content under it, with 12 px to spare,
+   also in a short window, where the game scales the content down to fit (see `fitPanel`). */
+#panel.intro {
+  padding-block: calc(4vh + 64px);
+}
 .fit {
   display: grid;
   justify-items: center;
@@ -560,7 +566,9 @@ canvas {
    other in one grid cell, and only the open one shows. So the panel is as large as the
    largest card on every card, and the buttons under the cards never move. */
 
-/* The size of the results' heading: each title fits on one line of the design width. */
+/* The size of the results' heading. In the wide layout the longest title, "Your camera picture
+   stays with you", takes one line of the 1200 px design: about 1000 px at 58 px. The narrow
+   layout gives the titles a size of their own. */
 .intro h1 {
   font-size: clamp(34px, 4vw, 58px);
   margin: 8px 0 18px;
@@ -693,6 +701,12 @@ canvas {
 @media (max-aspect-ratio: 13/10) {
   .intro .fit {
     width: 640px;
+  }
+  /* A fixed size: the window's width would make it larger than the narrow design has room for.
+     The longest title takes about 560 px of the 640 px design at this size, so it keeps one
+     line, and the picture under it does not move from card to card. */
+  .intro h1 {
+    font-size: 34px;
   }
   .intro-body {
     flex-direction: column;
